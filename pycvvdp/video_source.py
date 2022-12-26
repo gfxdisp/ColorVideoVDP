@@ -6,6 +6,8 @@ from torch.functional import Tensor
 import pycvvdp.utils as utils
 from pycvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
 
+from pycvvdp.colorspace import ColorTransform
+
 """
 fvvdp_video_source_* objects are used to supply test/reference frames to FovVideoVDP. 
 Those could be comming from memory or files. The subclasses of this abstract class implement
@@ -76,16 +78,7 @@ class fvvdp_video_source_dm( fvvdp_video_source ):
 
     def __init__( self,  display_photometry='sdr_4k_30', color_space_name='sRGB' ):
 
-        #colorspaces_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/color_spaces.json")
-        colorspaces_file = utils.config_files.find( "color_spaces.json" )
-        colorspaces = utils.json2dict(colorspaces_file)
-
-        if not color_space_name in colorspaces:
-            raise RuntimeError( "Unknown color space: \"" + color_space_name + "\"" )
-
-        self.color_to_luminance = colorspaces[color_space_name]['RGB2Y']
-
-        self.rgb2xyz_list = [colorspaces[color_space_name]['RGB2X'], colorspaces[color_space_name]['RGB2Y'], colorspaces[color_space_name]['RGB2Z'] ]
+        self.color_trans = ColorTransform(color_space_name)
 
         if isinstance( display_photometry, str ):
             self.dm_photometry = fvvdp_display_photometry.load(display_photometry) 
@@ -173,13 +166,13 @@ class fvvdp_video_source_array( fvvdp_video_source_dm ):
     # % starting from 0. If use_gpu==true, the function should return a
     # % gpuArray.
 
-    def get_test_frame( self, frame, device=torch.device('cpu') ):
-        return self._get_frame(self.test_video, frame, device )
+    def get_test_frame( self, frame, device, colorspace ):
+        return self._get_frame(self.test_video, frame, device, colorspace )
 
-    def get_reference_frame( self, frame, device=torch.device('cpu') ):
-        return self._get_frame(self.reference_video, frame, device )
+    def get_reference_frame( self, frame, device, colorspace ):
+        return self._get_frame(self.reference_video, frame, device, colorspace )
 
-    def _get_frame( self, from_array, frame, device ):        
+    def _get_frame( self, from_array, frame, device, colorspace ):        
         # Determine the maximum value of the data type storing the
         # image/video
 
@@ -201,13 +194,13 @@ class fvvdp_video_source_array( fvvdp_video_source_dm ):
         else:
             raise RuntimeError( "Only uint8, uint16 and float32 is currently supported" )
 
-        L = self.dm_photometry.forward( frame )
-        
-        if self.is_color:
-            # Convert to grayscale
-            L = L[:,0:1,:,:,:]*self.color_to_luminance[0] + L[:,1:2,:,:,:]*self.color_to_luminance[1] + L[:,2:3,:,:,:]*self.color_to_luminance[2]
+        L_lin = self.dm_photometry.forward( frame )
 
-        return L
+        if self.is_color:
+            return self.color_trans.rgb2colourspace(L_lin, colorspace)
+        else:
+            return L_lin
+
 
 class fvvdp_video_source_packed_array( fvvdp_video_source_dm ):
     def __init__(self, test_video, reference_video, fps, display_photometry='sdr_4k_30', color_space_name='sRGB', yuv=True, resize_mode='bilinear'):

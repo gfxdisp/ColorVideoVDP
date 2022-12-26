@@ -255,13 +255,15 @@ class cvvdp:
         else:
             block_N_frames = 1
 
+        met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+
         for ff in range(0, N_frames, block_N_frames):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
             if is_image:                
-                R = torch.empty((1, 2, 3, height, width), device=self.device)
-                R[:,0, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace="XYZ")
-                R[:,1, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace="XYZ")
+                R = torch.empty((1, 6, 1, height, width), device=self.device)
+                R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+                R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
 
             else: # This is video
                 if self.debug: print("Frame %d:\n----" % ff)
@@ -273,8 +275,8 @@ class cvvdp:
                     if self.temp_padding == "replicate":
                         for fi in range(cur_block_N_frames):
                             ind = fl+fi-1
-                            sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff, device=self.device, colorspace="XYZ")
-                            sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff, device=self.device, colorspace="XYZ")
+                            sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff, device=self.device, colorspace=met_colorspace)
+                            sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace)
 
                         sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,-cur_block_N_frames:(-cur_block_N_frames+1),:,:] # Replicate the first frame
                         sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,-cur_block_N_frames:(-cur_block_N_frames+1),:,:] # Replicate the first frame
@@ -309,8 +311,8 @@ class cvvdp:
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1
-                        sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff, device=self.device, colorspace="XYZ")
-                        sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff, device=self.device, colorspace="XYZ")
+                        sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff, device=self.device, colorspace=met_colorspace)
+                        sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace)
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # Images do not have the two last channels
