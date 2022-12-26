@@ -1,7 +1,7 @@
 import torch
 
-from pyfvvdp.utils import PU
-from pyfvvdp.video_source import *
+from pycvvdp.utils import PU
+from pycvvdp.video_source import *
 
 """
 PU21-PSNR metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).

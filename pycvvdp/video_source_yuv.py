@@ -283,17 +283,36 @@ class fvvdp_video_source_yuv_file(fvvdp_video_source_dm):
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
-    def get_test_frame( self, frame, device ) -> Tensor:
-        L = self._get_frame( self.test_vidr, frame, device )
+    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        L = self._get_frame( self.test_vidr, frame, device, colorspace )
         return L
 
-    def get_reference_frame( self, frame, device ) -> Tensor:
-        L = self._get_frame( self.reference_vidr, frame, device )
+    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        L = self._get_frame( self.reference_vidr, frame, device, colorspace )
         return L
 
-    def _get_frame( self, vid_reader, frame, device ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace="Y" ):        
         RGB = vid_reader.get_frame_rgb_tensor(frame, device)
         RGB_bcfhw = reshuffle_dims( RGB, in_dims='HWC', out_dims="BCFHW" )
         RGB_lin = self.dm_photometry.forward(RGB_bcfhw)
-        L = RGB_lin[:,0:1,:,:,:]*self.color_to_luminance[0] + RGB_lin[:,1:2,:,:,:]*self.color_to_luminance[1] + RGB_lin[:,2:3,:,:,:]*self.color_to_luminance[2]
-        return L
+        return self.rgb2colourspace(RGB_lin, colorspace)
+
+    def rgb2colourspace(self, RGB_lin, colorspace):
+        
+        if colorspace=="Y":
+            return RGB_lin[:,0:1,:,:,:]*self.color_to_luminance[0] + RGB_lin[:,1:2,:,:,:]*self.color_to_luminance[1] + RGB_lin[:,2:3,:,:,:]*self.color_to_luminance[2]
+        elif colorspace=="XYZ":
+            if hasattr(self, "rgb2xyz"):
+                rgb2xyz = self.rgb2xyz
+            else:
+                rgb2xyz = torch.tensor( self.rgb2xyz_list, dtype=torch.float32, device=RGB_lin.device )
+                self.rgb2xyz = rgb2xyz
+
+            XYZ = torch.empty_like(RGB_lin)
+            # To avoid permute (slow), perform separate dot products
+            for cc in range(3):
+                XYZ[...,cc,:,:,:] = torch.sum(RGB_lin*(rgb2xyz[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+            return XYZ
+        else:
+            raise RuntimeError( f"Unknown colorspace '{colorspace}'" )
+    

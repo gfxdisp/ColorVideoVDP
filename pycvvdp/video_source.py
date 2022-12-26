@@ -3,8 +3,8 @@ import torch
 import os
 import numpy as np 
 from torch.functional import Tensor
-import pyfvvdp.utils as utils
-from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
+import pycvvdp.utils as utils
+from pycvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
 
 """
 fvvdp_video_source_* objects are used to supply test/reference frames to FovVideoVDP. 
@@ -84,6 +84,8 @@ class fvvdp_video_source_dm( fvvdp_video_source ):
             raise RuntimeError( "Unknown color space: \"" + color_space_name + "\"" )
 
         self.color_to_luminance = colorspaces[color_space_name]['RGB2Y']
+
+        self.rgb2xyz_list = [colorspaces[color_space_name]['RGB2X'], colorspaces[color_space_name]['RGB2Y'], colorspaces[color_space_name]['RGB2Z'] ]
 
         if isinstance( display_photometry, str ):
             self.dm_photometry = fvvdp_display_photometry.load(display_photometry) 

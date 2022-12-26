@@ -3,12 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import ex_utils as utils
-import pyfvvdp
+import pycvvdp
 
 debug = False
 
 
-I_ref = pyfvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
+I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 
 noise_fname = os.path.join('example_media', 'wavy_facade_noise.png')
 if os.path.isfile(noise_fname) and debug:

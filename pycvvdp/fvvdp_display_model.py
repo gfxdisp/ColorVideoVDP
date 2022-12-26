@@ -6,7 +6,7 @@ import math
 import logging
 import os
 
-import pyfvvdp.utils as utils
+import pycvvdp.utils as utils
 
 # Convert pixel values to linear RGB using sRGB non-linearity
 # 

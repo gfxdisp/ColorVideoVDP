@@ -1,7 +1,7 @@
 # Visualization of difference maps.
 
 import torch
-from pyfvvdp.interp import interp1
+from pycvvdp.interp import interp1
 
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import *
