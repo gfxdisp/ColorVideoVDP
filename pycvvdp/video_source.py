@@ -13,7 +13,7 @@ fvvdp_video_source_* objects are used to supply test/reference frames to FovVide
 Those could be comming from memory or files. The subclasses of this abstract class implement
 reading the frames and converting them to the approprtate format. 
 """
-class fvvdp_video_source:
+class video_source:
    
     # Return (height, width, frames) touple with the resolution and
     # the length of the video clip.
@@ -74,7 +74,7 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
 """
 This video_source uses a photometric display model to convert input content (e.g. sRGB) to luminance maps. 
 """
-class fvvdp_video_source_dm( fvvdp_video_source ):
+class video_source_dm( video_source ):
 
     def __init__( self,  display_photometry='sdr_4k_30', color_space_name='sRGB' ):
 
@@ -96,7 +96,7 @@ be added as a singleton dimension.
 
 This class is for display-encoded (gamma-encoded) content that will be processed by a display model to produce linear  absolute luminance emitted from a display.
 """
-class fvvdp_video_source_array( fvvdp_video_source_dm ):
+class video_source_array( video_source_dm ):
                
     # test_video, reference video - tensor with test and reference video frames. See the class description above for the explanation of dimensions of those tensors.
     # fps - frames per second. Must be 0 for images
@@ -202,7 +202,7 @@ class fvvdp_video_source_array( fvvdp_video_source_dm ):
             return L_lin
 
 
-class fvvdp_video_source_packed_array( fvvdp_video_source_dm ):
+class video_source_packed_array( video_source_dm ):
     def __init__(self, test_video, reference_video, fps, display_photometry='sdr_4k_30', color_space_name='sRGB', yuv=True, resize_mode='bilinear'):
         super().__init__(display_photometry, color_space_name)
 

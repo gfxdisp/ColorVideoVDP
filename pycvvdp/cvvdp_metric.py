@@ -177,7 +177,7 @@ class cvvdp:
     '''
     def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, fixation_point=None):
 
-        test_vs = fvvdp_video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry, color_space_name=self.color_space )
+        test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry, color_space_name=self.color_space )
 
         return self.predict_video_source(test_vs, fixation_point=fixation_point)
 
@@ -217,8 +217,6 @@ class cvvdp:
             self.filter_len = int(np.ceil( 250.0 / (1000.0/vid_source.get_frames_per_second()) ))
 
             self.F, self.omega = self.get_temporal_filters(vid_source.get_frames_per_second())
-            # if self.debug: self.tb.verify_against_matlab(self.F,     'F_pod', self.device)
-            # if self.debug: self.tb.verify_against_matlab(self.omega, 'omega', self.device)
 
         all_ch = 2+temp_ch
 
@@ -240,18 +238,24 @@ class cvvdp:
             # Determine how much memory we have
             total = torch.cuda.get_device_properties(self.device).total_memory
             allocated = torch.cuda.memory_allocated(self.device)
-            mem_avail = total-allocated-500000000  # Total available - 0.5G
+            mem_avail = total-allocated-1000000000  # Total available - 1G
 
             # Estimate how much we need for processing (may be inaccurate - to be improved)
             pix_cnt = width*height
             # sw_buf            
             mem_const = pix_cnt*4*3*2*(fl-1)
             # sw_buf + R + B_bands + L_bkg_pyr + (T_f + R_f) + S
-            mem_per_frame = pix_cnt*4*3*2 + pix_cnt*4*all_ch*2 + int(pix_cnt*4*all_ch*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*1.33) 
+            if self.debug: 
+                self.mem_allocated_start = allocated
+                self.mem_allocated_peak = 0
+
+            #mem_per_frame = pix_cnt*4*3*2 + pix_cnt*4*all_ch*2 + int(pix_cnt*4*all_ch*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*1.33) 
+            mem_per_frame = pix_cnt*350   # Estimated memory required per frame
 
             max_frames = int((mem_avail-mem_const)/mem_per_frame) # how many frames can we fit into memory
 
             block_N_frames = max(1, min(max_frames,N_frames))  # Process so many frames in one pass 
+            if self.debug: logging.debug( f"Processing {block_N_frames} frames in a batch." )
         else:
             block_N_frames = 1
 
@@ -266,7 +270,7 @@ class cvvdp:
                 R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
 
             else: # This is video
-                if self.debug: print("Frame %d:\n----" % ff)
+                #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
                     sw_buf[0] = torch.empty((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
@@ -275,11 +279,12 @@ class cvvdp:
                     if self.temp_padding == "replicate":
                         for fi in range(cur_block_N_frames):
                             ind = fl+fi-1
-                            sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff, device=self.device, colorspace=met_colorspace)
-                            sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace)
+                            sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
+                            sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
 
-                        sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,-cur_block_N_frames:(-cur_block_N_frames+1),:,:] # Replicate the first frame
-                        sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,-cur_block_N_frames:(-cur_block_N_frames+1),:,:] # Replicate the first frame
+                        ind = fl-1
+                        sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,ind:ind+1,:,:] # Replicate the first frame
+                        sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,ind:ind+1,:,:] # Replicate the first frame
 
                     # elif self.temp_padding == "circular":
                     #     sw_buf[0] = torch.zeros([1, 1, fl, height, width], device=self.device)
@@ -311,8 +316,8 @@ class cvvdp:
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1
-                        sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff, device=self.device, colorspace=met_colorspace)
-                        sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace)
+                        sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
+                        sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # Images do not have the two last channels
@@ -351,6 +356,15 @@ class cvvdp:
         if self.do_heatmap:            
             stats['heatmap'] = heatmap
 
+        if self.debug: 
+            logging.debug( f"Allocated at start: {self.mem_allocated_start/1e9} GB" )
+            logging.debug( f"Max allocated: {self.mem_allocated_peak/1e9} GB" )
+            pix_cnt = width*height
+            # sw_buf            
+            mem_const = pix_cnt*4*3*2*(fl-1)
+            per_pixel = (self.mem_allocated_peak-self.mem_allocated_start-mem_const)/(pix_cnt*block_N_frames)
+            logging.debug( f"Memory used per pixel: {per_pixel} B" )
+
         return (Q_jod.squeeze(), stats)
 
     # Perform pooling with per-band weights and map to JODs
@@ -384,8 +398,6 @@ class cvvdp:
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
-
-        if self.debug: self.tb.verify_against_matlab(R.permute(0,2,3,4,1), 'Rdata', self.device, file='R_%d' % (ff+1), tolerance = 0.01)
 
         # Perform Laplacian pyramid decomposition
         B_bands, L_bkg_pyr = self.lpyr.decompose(R[0,...])
@@ -457,6 +469,11 @@ class cvvdp:
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
         D = self.mask_func_perc_norm( torch.abs(T-R), M )
         D = torch.clamp(D, max=1e4)
+
+        if self.debug: 
+            allocated = torch.cuda.memory_allocated(self.device)
+            self.mem_allocated_peak = max( self.mem_allocated_peak, allocated )
+
         return D
 
     def phase_uncertainty(self, M):

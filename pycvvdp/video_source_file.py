@@ -264,7 +264,7 @@ class video_reader_yuv_pytorch(video_reader):
 '''
 Use ffmpeg to read video frames, one by one.
 '''
-class fvvdp_video_source_video_file(fvvdp_video_source_dm):
+class video_source_video_file(video_source_dm):
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', color_space_name='auto', frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
 
@@ -320,21 +320,21 @@ class fvvdp_video_source_video_file(fvvdp_video_source_dm):
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
-    def get_test_frame( self, frame, device ) -> Tensor:
+    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
         # if not self.last_test_frame is None and frame == self.last_test_frame[0]:
         #     return self.last_test_frame[1]
-        L = self._get_frame( self.test_vidr, frame, device )
+        L = self._get_frame( self.test_vidr, frame, device, colorspace )
         # self.last_test_frame = (frame,L)
         return L
 
-    def get_reference_frame( self, frame, device ) -> Tensor:
+    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
         # if not self.last_reference_frame is None and frame == self.last_reference_frame[0]:
         #     return self.last_reference_frame[1]
-        L = self._get_frame( self.reference_vidr, frame, device )
+        L = self._get_frame( self.reference_vidr, frame, device, colorspace )
         # self.reference_test_frame = (frame,L)
         return L
 
-    def _get_frame( self, vid_reader, frame, device ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace ):        
 
         if frame != (vid_reader.curr_frame+1):
             raise RuntimeError( 'Video can be currently only read frame-by-frame. Random access not implemented.' )
@@ -344,25 +344,23 @@ class fvvdp_video_source_video_file(fvvdp_video_source_dm):
         if frame_np is None:
             raise RuntimeError( 'Could not read frame {}'.format(frame) )
 
-        return self._prepare_frame(frame_np, device, vid_reader.unpack)
+        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
 
-    def _prepare_frame( self, frame_np, device, unpack_fn ):
+    def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y" ):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
         L = self.dm_photometry.forward( frame_t )
 
         # Convert to grayscale
-        L = L[:,0:1,:,:,:]*self.color_to_luminance[0] + L[:,1:2,:,:,:]*self.color_to_luminance[1] + L[:,2:3,:,:,:]*self.color_to_luminance[2]
-
-        return L
+        return self.color_trans.rgb2colourspace(L, colorspace)
 
 
 '''
 The same functionality as to fvvdp_video_source_video_file, but preloads all the frames and stores in the CPU memory - allows for random access.
 '''
-class fvvdp_video_source_video_file_preload(fvvdp_video_source_video_file):
+class video_source_video_file_preload(video_source_video_file):
     
-    def _get_frame( self, vid_reader, frame, device ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace ):        
 
         if not hasattr( self, "frame_array_tst" ):
 
@@ -390,13 +388,13 @@ class fvvdp_video_source_video_file_preload(fvvdp_video_source_video_file):
         if frame_np is None:
             raise RuntimeError( 'Could not read frame {}'.format(frame) )
 
-        return self._prepare_frame(frame_np, device, vid_reader.unpack)
+        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
 
 
 '''
 Recognize whether the file is an image of video and wraps an appropriate video_source for the given content.
 '''
-class fvvdp_video_source_file(fvvdp_video_source):
+class video_source_file(video_source):
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', color_space_name='auto', frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
         # these extensions switch mode to images instead
@@ -413,10 +411,10 @@ class fvvdp_video_source_file(fvvdp_video_source):
             img_reference = load_image_as_array(reference_fname)
             if not full_screen_resize is None:
                 logging.error("full-screen-resize not implemented for images.")
-            self.vs = fvvdp_video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, color_space_name=color_space_name )            
+            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, color_space_name=color_space_name )            
         else:
             assert os.path.splitext(reference_fname)[1].lower() not in image_extensions, 'Test is a video, but reference is an image'
-            vs_class = fvvdp_video_source_video_file_preload if preload else fvvdp_video_source_video_file
+            vs_class = video_source_video_file_preload if preload else video_source_video_file
             self.vs = vs_class( test_fname, reference_fname, 
                                 display_photometry=display_photometry, 
                                 color_space_name=color_space_name, 
@@ -438,8 +436,8 @@ class fvvdp_video_source_file(fvvdp_video_source):
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
-    def get_test_frame( self, frame, device ) -> Tensor:
-        return self.vs.get_test_frame( frame, device )
+    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        return self.vs.get_test_frame( frame, device, colorspace )
 
-    def get_reference_frame( self, frame, device ) -> Tensor:
-        return self.vs.get_reference_frame( frame, device )
+    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        return self.vs.get_reference_frame( frame, device, colorspace )

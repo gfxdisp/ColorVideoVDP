@@ -4,19 +4,26 @@ import glob
 import time
 
 import pycvvdp
-import pycvvdp.video_source_yuv
+import logging
 
 display_name = 'standard_4k'
-media_folder = 'S:\\Datasets\\XR-DAVID\\cache'
 
-ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
-TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
+# media_folder = 'S:\\Datasets\\XR-DAVID\\cache'
+# ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
+# TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
+
+media_folder = 'S:\\Datasets\\XR-DAVID'
+ref_file = os.path.join(media_folder, 'Bonfire_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.mp4'))
+
+logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
 cvvdp = pycvvdp.cvvdp(display_name=display_name)
+cvvdp.debug = False
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_yuv.fvvdp_video_source_yuv_file( tst_fname, ref_file, display_photometry=display_name )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=100 )    
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
