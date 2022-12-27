@@ -33,20 +33,7 @@ import pycvvdp.utils as utils
 #from fvvdp_test import FovVideoVDP_Testbench
 
 from pycvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
-
-
-class castleCSF:
-    def sensitivity(self, rho, omega, L_bkg, cc, sigma):
-        # rho - spatial frequency
-        # omega - temporal frequency
-        # L_bkg - background luminance
-        # sigma - radius of spatial integration (Gaussian envelope)
-
-        S = torch.ones(L_bkg.shape, device=L_bkg.device)*0.01
-
-        return S
-
-
+from pycvvdp.csf import castleCSF
 
 """
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
@@ -78,7 +65,7 @@ class cvvdp:
         # if self.mask_s > 0.0:
         #     self.mask_p = self.mask_q + self.mask_s
 
-        self.csf = castleCSF()
+        self.csf = castleCSF(device=self.device)
 
         # self.csf_cache              = {}
         # self.csf_cache_dirs         = [
