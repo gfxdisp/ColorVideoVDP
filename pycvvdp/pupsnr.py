@@ -4,9 +4,9 @@ from pycvvdp.utils import PU
 from pycvvdp.video_source import *
 
 """
-PU21-PSNR metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
+PU21-PSNR-Y metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
 """
-class pu_psnr:
+class pu_psnr_y:
     def __init__(self, device=None):
         # Use GPU if available
         if device is None:
@@ -18,7 +18,7 @@ class pu_psnr:
             self.device = device
 
         self.pu = PU()
-
+        self.colorspace = 'Y'
 
     '''
     Videos/images are encoded using perceptually uniform PU21 before computing PSNR.
@@ -64,8 +64,8 @@ class pu_psnr:
 
         psnr = 0.0
         for ff in range(N_frames):
-            T = vid_source.get_test_frame(ff, device=self.device)
-            R = vid_source.get_reference_frame(ff, device=self.device)
+            T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
+            R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
 
             # Apply PU
             T_enc = self.pu.encode(T)
@@ -86,3 +86,9 @@ class pu_psnr:
 
     def get_info_string(self):
         return None
+
+class pu_psnr_rgb2020:
+    def __init__(self, device=None):
+        super().__init__(device)
+        self.colorspace = 'RGB2020'
+
