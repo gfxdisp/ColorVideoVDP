@@ -1,0 +1,29 @@
+{
+    "version": "1.2.0",
+    "__comment": "Calibration parameters of FovVideoVDP 1.2. See the source of fvvdp_core.m for their description.",
+
+    "calibration_date": "20/11/2021",
+    "internal_model_name": "fvvdp_1_20",
+
+    "mask_p": 2.4,
+    "mask_c": -0.973838, 
+    "pu_dilate": 0,
+    "beta": 1.52134, 
+    "beta_t": 1, 
+    "beta_tch": 0.666092,
+    "beta_sch": 1,
+    "sustained_sigma": 0.5,
+    "sustained_beta": 0.06,
+    "csf_sigma": -1.5,
+    "sensitivity_correction": 16.2596, 
+    "masking_model": "min_mutual_masking_perc_norm2",
+    "local_adapt": "gpyr",
+    "contrast": "weber", 
+    "jod_a": -0.0161713, 
+    "log_jod_exp": -0.2280,
+    "mask_q_sust": 2.43685,
+    "mask_q_trans": 4.946,
+    "k_cm": 0.604562,
+    "filter_len": -1,
+    "ch_weights": [1, 1, 1, 1]
+}

@@ -11,12 +11,12 @@ import numpy as np
 import torch
 import imageio.v2 as imageio
 
-import pyfvvdp
+import pycvvdp
 
-from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
+#from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
 # from pyfvvdp.visualize_diff_map import visualize_diff_map
 #from pytorch_msssim import SSIM
-import pyfvvdp.utils as utils
+import pycvvdp.utils as utils
 
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
@@ -104,7 +104,7 @@ def main():
         utils.config_files.set_config_dir(args.config_dir)
 
     if args.display == "?":
-        fvvdp_display_photometry.list_displays()
+        vvdp_display_photometry.list_displays()
         return
 
     if args.test is None or args.ref is None:
@@ -167,8 +167,8 @@ def main():
         sys.exit()
 
     metrics = []
-    display_photometry = fvvdp_display_photometry.load(args.display)
-    display_geometry = fvvdp_display_geometry.load(args.display)
+    display_photometry = vdp_display_photometry.load(args.display)
+    display_geometry = vdp_display_geometry.load(args.display)
     if args.verbose:
         display_photometry.print()
 

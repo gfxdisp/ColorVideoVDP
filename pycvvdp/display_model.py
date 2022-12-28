@@ -18,7 +18,7 @@ def srgb2lin( p ):
     L = torch.where(p > 0.04045, ((p + 0.055) / 1.055)**2.4, p/12.92)
     return L
 
-class fvvdp_display_photometry:
+class vvdp_display_photometry:
 
     # Transforms gamma-encoded pixel values V, which must be in the range
     # 0-into absolute linear colorimetric values emitted from
@@ -45,7 +45,7 @@ class fvvdp_display_photometry:
         models = utils.json2dict(models_file)
 
         for display_name in models:
-            dm = fvvdp_display_photometry.load(display_name)
+            dm = vvdp_display_photometry.load(display_name)
             dm.print()
 
     @classmethod
@@ -91,7 +91,7 @@ class fvvdp_display_photometry:
         else:
             gamma = 2.2
 
-        obj = fvvdp_display_photo_eotf( Y_peak, contrast=contrast, gamma=gamma, EOTF=EOTF, E_ambient=E_ambient, k_refl=k_refl, name=display_name)
+        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, gamma=gamma, EOTF=EOTF, E_ambient=E_ambient, k_refl=k_refl, name=display_name)
         obj.full_name = model["name"]
         obj.short_name = display_name
 
@@ -111,7 +111,7 @@ def pq2lin( V ):
     L = Lmax * torch.pow((im_t-c1).clamp(min=0)/(c2-c3*im_t), 1/n)
     return L
 
-class fvvdp_display_photo_eotf(fvvdp_display_photometry): 
+class vvdp_display_photo_eotf(vvdp_display_photometry): 
     # Display model with several EOTF, to simulate both SDR and HDR displays
     #
     # dm = fvvdp_display_photo_eotf( Y_peak, contrast, EOTF, gamma, E_ambient, k_refl )
@@ -188,7 +188,7 @@ class fvvdp_display_photo_eotf(fvvdp_display_photometry):
         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
     
 
-class fvvdp_display_photo_absolute(fvvdp_display_photometry):
+class vvdp_display_photo_absolute(vvdp_display_photometry):
     # Use this photometric model when passing absolute colorimetric of
     # photometric values, scaled in cd/m^2
     # Object variables:
@@ -228,7 +228,7 @@ class fvvdp_display_photo_absolute(fvvdp_display_photometry):
 
 
 
-class fvvdp_display_photo_gog(fvvdp_display_photometry): 
+class vvdp_display_photo_gog(vvdp_display_photometry): 
     # Gain-gamma-offset display model to simulate SDR displays
     #
     # Depreciated, included for compatibility. Use fvvdp_display_photo_eotf instead
@@ -302,7 +302,7 @@ class fvvdp_display_photo_gog(fvvdp_display_photometry):
         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
     
 
-class fvvdp_display_photo_absolute(fvvdp_display_photometry):
+class vvdp_display_photo_absolute(vvdp_display_photometry):
     # Use this photometric model when passing absolute colorimetric of
     # photometric values, scaled in cd/m^2
     # Object variables:
@@ -380,7 +380,7 @@ class fvvdp_display_photo_absolute(fvvdp_display_photometry):
 #
 # Some information about the effective FOV of VR headsets
 # http://www.sitesinvr.com/viewer/htcvive/index.html
-class fvvdp_display_geometry:
+class vvdp_display_geometry:
 
     def __init__(self, resolution, distance_m=None, distance_display_heights=None, fov_horizontal=None, fov_vertical=None, fov_diagonal=None, diagonal_size_inches=None) -> None:
 
@@ -553,7 +553,7 @@ class fvvdp_display_geometry:
                 elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"] 
                 else:                                 diag_size_inch = None
 
-                obj = fvvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
+                obj = vvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
                 return obj
 
         logging.error("Error: Display model '%s' not found in display_models.json" % display_name)

@@ -32,7 +32,7 @@ import pycvvdp.utils as utils
 #from utils import *
 #from fvvdp_test import FovVideoVDP_Testbench
 
-from pycvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
 """
@@ -47,7 +47,7 @@ class cvvdp:
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
 
-        self.set_display_model(display_name, display_geometry, display_photometry)
+        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
 
         self.do_heatmap = (not self.heatmap is None) and (self.heatmap != "none")
 
@@ -95,15 +95,14 @@ class cvvdp:
     def load_config( self ):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
-        self.parameters_file = utils.config_files.find( "fvvdp_parameters.json" )
-        logging.debug( f"Loading FovVideoVDP parameters from '{self.parameters_file}'" )
+        self.parameters_file = utils.config_files.find( "cvvdp_parameters.json" )
+        logging.debug( f"Loading ColourVideoVDP parameters from '{self.parameters_file}'" )
         parameters = utils.json2dict(self.parameters_file)
 
         #all common parameters between Matlab and Pytorch, loaded from the .json file
         self.mask_p = parameters['mask_p']
         self.mask_c = parameters['mask_c'] # content masking adjustment
         self.pu_dilate = parameters['pu_dilate']
-        # self.w_transient = parameters['w_transient'] # The weight of the transient temporal channel
         self.beta = parameters['beta'] # The exponent of the spatial summation (p-norm)
         self.beta_t = parameters['beta_t'] # The exponent of the summation over time (p-norm)
         self.beta_tch = parameters['beta_tch'] # The exponent of the summation over temporal channels (p-norm)
@@ -122,21 +121,21 @@ class cvvdp:
         self.k_cm = parameters['k_cm']  # new parameter controlling cortical magnification
         self.filter_len = parameters['filter_len']
         self.version = parameters['version']
-        self.ch_w = torch.as_tensor( (1., 1., 1., 1.), device=self.device ) # Per-channel weight
+        self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
 
         # other parameters
         self.debug = False
 
     def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
         if display_photometry is None:
-            self.display_photometry = fvvdp_display_photometry.load(display_name)
+            self.display_photometry = vvdp_display_photometry.load(display_name)
             self.display_name = display_name
         else:
             self.display_photometry = display_photometry
             self.display_name = "unspecified"
         
         if display_geometry is None:
-            self.display_geometry = fvvdp_display_geometry.load(display_name)
+            self.display_geometry = vvdp_display_geometry.load(display_name)
         else:
             self.display_geometry = display_geometry
 
@@ -199,10 +198,10 @@ class cvvdp:
 
         if is_image:
             temp_ch = 1  # How many temporal channels
+            self.omega = [0]
         else:
             temp_ch = 2
             self.filter_len = int(np.ceil( 250.0 / (1000.0/vid_source.get_frames_per_second()) ))
-
             self.F, self.omega = self.get_temporal_filters(vid_source.get_frames_per_second())
 
         all_ch = 2+temp_ch
@@ -213,7 +212,6 @@ class cvvdp:
         else:
             heatmap = None
 
-        N_nCSF = []
         sw_buf = [None, None]
         Q_per_ch = None
 
@@ -343,7 +341,7 @@ class cvvdp:
         if self.do_heatmap:            
             stats['heatmap'] = heatmap
 
-        if self.debug: 
+        if self.debug and hasattr(self,"mem_allocated_peak"): 
             logging.debug( f"Allocated at start: {self.mem_allocated_start/1e9} GB" )
             logging.debug( f"Max allocated: {self.mem_allocated_peak/1e9} GB" )
             pix_cnt = width*height
@@ -362,7 +360,7 @@ class cvvdp:
         no_channels = Q_per_ch.shape[0]
         no_frames = Q_per_ch.shape[1]
         if no_frames>1: # If video
-            per_ch_w = self.ch_w[0:no_channels].view(-1,1,1)
+            per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
             #torch.stack( (torch.ones(1, device=self.device), torch.as_tensor(self.w_transient, device=self.device)[None] ), dim=1)[:,:,None]
         else: # If image
             per_ch_w = 1
@@ -457,7 +455,7 @@ class cvvdp:
         D = self.mask_func_perc_norm( torch.abs(T-R), M )
         D = torch.clamp(D, max=1e4)
 
-        if self.debug: 
+        if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
             self.mem_allocated_peak = max( self.mem_allocated_peak, allocated )
 
@@ -473,7 +471,10 @@ class cvvdp:
     def mask_func_perc_norm(self, G, G_mask ):
         # Masking on perceptually normalized quantities (as in Daly's VDP)        
         p = self.mask_p
-        q = torch.tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
+        if G_mask.shape[0]==3: # image
+            q = torch.tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
+        else: # video
+            q = torch.tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
         R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 

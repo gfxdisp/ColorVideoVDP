@@ -3,9 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import ex_utils as utils
 
-import pyfvvdp
+import pycvvdp
 
-I_ref = pyfvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
+I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 std = np.sqrt(0.001)
 I_test_noise = utils.imnoise(I_ref, std)
 
@@ -20,10 +20,10 @@ k_refl = 0.005    # Reflectivity of the display
 
 Q_JOD = []
 for dd, Y_peak in enumerate(disp_peaks):
-    disp_photo = pyfvvdp.fvvdp_display_photo_eotf(Y_peak=Y_peak, contrast=contrast, EOTF='sRGB', gamma=gamma, E_ambient=E_ambient, k_refl=k_refl)
-    fv = pyfvvdp.fvvdp(display_name='standard_4k', display_photometry=disp_photo, heatmap='threshold')
+    disp_photo = pycvvdp.vvdp_display_photo_eotf(Y_peak=Y_peak, contrast=contrast, EOTF='sRGB', gamma=gamma, E_ambient=E_ambient, k_refl=k_refl)
+    cv = pycvvdp.cvvdp(display_name='standard_4k', display_photometry=disp_photo, heatmap='threshold')
     
-    q, stats = fv.predict(I_test_noise, I_ref, dim_order="HWC")
+    q, stats = cv.predict(I_test_noise, I_ref, dim_order="HWC")
     Q_JOD.append(q.cpu())
 
 plt.plot(disp_peaks, Q_JOD, '-o')

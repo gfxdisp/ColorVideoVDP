@@ -4,7 +4,7 @@ import os
 import numpy as np 
 from torch.functional import Tensor
 import pycvvdp.utils as utils
-from pycvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 
 from pycvvdp.colorspace import ColorTransform
 
@@ -81,8 +81,8 @@ class video_source_dm( video_source ):
         self.color_trans = ColorTransform(color_space_name)
 
         if isinstance( display_photometry, str ):
-            self.dm_photometry = fvvdp_display_photometry.load(display_photometry) 
-        elif isinstance( display_photometry, fvvdp_display_photometry ):
+            self.dm_photometry = vvdp_display_photometry.load(display_photometry) 
+        elif isinstance( display_photometry, vvdp_display_photometry ):
             self.dm_photometry = display_photometry
         else:
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
