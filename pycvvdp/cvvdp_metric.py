@@ -450,7 +450,7 @@ class cvvdp:
 
     def apply_masking_model(self, T, R, S):
         T = T*S
-        R = T*S
+        R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
         D = self.mask_func_perc_norm( torch.abs(T-R), M )
         D = torch.clamp(D, max=1e4)

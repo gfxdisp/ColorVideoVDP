@@ -12,13 +12,13 @@ display_name = 'standard_4k'
 # ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
 
-# media_folder = 'S:\\Datasets\\XR-DAVID'
-# ref_file = os.path.join(media_folder, 'Dance_reference_Level001.mp4')
-# TST_FILEs = glob.glob(os.path.join(media_folder, 'Dance_CSub_Level001.mp4'))
+media_folder = 'S:\\Datasets\\XR-DAVID'
+ref_file = os.path.join(media_folder, 'Dance_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'Dance_CSub_Level001.mp4'))
 
-media_folder = 'S:\\Datasets\\LIVEHDR\\train'
-ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, '4k_3M_CenterPanorama.mp4'))
+# media_folder = 'S:\\Datasets\\LIVEHDR\\train'
+# ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')
+# TST_FILEs = glob.glob(os.path.join(media_folder, '4k_3M_CenterPanorama.mp4'))
 
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
