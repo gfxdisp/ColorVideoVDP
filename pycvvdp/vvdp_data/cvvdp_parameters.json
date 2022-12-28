@@ -15,7 +15,7 @@
     "sustained_sigma": 0.5,
     "sustained_beta": 0.06,
     "csf_sigma": -1.5,
-    "sensitivity_correction": 16.2596, 
+    "sensitivity_correction": 0, 
     "masking_model": "min_mutual_masking_perc_norm2",
     "local_adapt": "gpyr",
     "contrast": "weber", 
@@ -23,7 +23,6 @@
     "log_jod_exp": -0.2280,
     "mask_q_sust": 2.43685,
     "mask_q_trans": 4.946,
-    "k_cm": 0.604562,
     "filter_len": -1,
     "ch_weights": [1, 1, 1, 1]
 }

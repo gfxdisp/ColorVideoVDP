@@ -15,7 +15,7 @@ class fvvdp_lpyr_dec():
     def __init__(self, W, H, ppd, device):
         self.device = device
         self.ppd = ppd
-        self.min_freq = 0.5
+        self.min_freq = 0.2
         self.W = W
         self.H = H
 

@@ -118,7 +118,6 @@ class cvvdp:
         self.log_jod_exp = parameters['log_jod_exp']
         self.mask_q_sust = parameters['mask_q_sust']
         self.mask_q_trans = parameters['mask_q_trans']
-        self.k_cm = parameters['k_cm']  # new parameter controlling cortical magnification
         self.filter_len = parameters['filter_len']
         self.version = parameters['version']
         self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
