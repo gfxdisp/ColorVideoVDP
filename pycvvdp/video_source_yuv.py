@@ -1,6 +1,8 @@
 from video_source import *
 import re
 
+import logging
+
 def decode_video_props( fname ):
     vprops = dict()
     vprops["width"]=1920
@@ -179,12 +181,6 @@ class YUVReader:
                                     [1, 1.772, 0]], device=device)
 
         RGB = Yuv_float @ ycbcr2rgb.transpose(1, 0)
-        # if (hasattr(self, 'resize_fn')) and (self.resize_fn is not None) \
-        #     and (self.height != self.resize_height or self.width != self.resize_width):
-        #     RGB = torch.nn.functional.interpolate(RGB.permute(2,0,1)[None],
-        #                                           size=(self.resize_height, self.resize_width),
-        #                                           mode=self.resize_fn)
-        #     RGB = RGB.squeeze().permute(1,2,0)
         return RGB.clip(0, 1)
 
 
@@ -243,24 +239,12 @@ class video_source_yuv_file(video_source_dm):
 
     def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', color_space_name='auto', frames=-1, full_screen_resize=None, resize_resolution=None, verbose=False ):
 
-        fs_width = -1 if full_screen_resize is None else resize_resolution[0]
-        fs_height = -1 if full_screen_resize is None else resize_resolution[1]
-
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
-
         self.frames = self.test_vidr.frame_count if frames==-1 else min(self.test_vidr.frame_count, frames)
 
-        # for vr in [self.test_vidr, self.reference_vidr]:
-        #     if vr == self.test_vidr:
-        #         logging.debug(f"Test video '{test_fname}':")
-        #     else:
-        #         logging.debug(f"Reference video '{reference_fname}':")
-        #     if full_screen_resize is None:
-        #         rs_str = ""
-        #     else:
-        #         rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-        #     logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {vr.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
+        self.full_screen_resize = full_screen_resize
+        self.resize_resolution = resize_resolution
 
         if color_space_name=='auto':
             if self.test_vidr.color_space=='2020':
@@ -270,11 +254,25 @@ class video_source_yuv_file(video_source_dm):
 
         super().__init__(display_photometry=display_photometry, color_space_name=color_space_name)        
 
+        for vr in [self.test_vidr, self.reference_vidr]:
+            if vr == self.test_vidr:
+                logging.debug(f"Test video '{test_fname}':")
+            else:
+                logging.debug(f"Reference video '{reference_fname}':")
+            if full_screen_resize is None:
+                rs_str = ""
+            else:
+                rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
+            logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry.EOTF}, fps: {vr.fps}, frames: {self.frames}" )
+
         
     # Return (height, width, frames) touple with the resolution and
     # the length of the video clip.
     def get_video_size(self):
-        return [self.test_vidr.height, self.test_vidr.width, self.frames]
+        if not self.full_screen_resize is None:
+            return [self.resize_resolution[1], self.resize_resolution[0], self.frames]
+        else:
+            return [self.test_vidr.height, self.test_vidr.width, self.frames]
 
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
@@ -294,6 +292,12 @@ class video_source_yuv_file(video_source_dm):
     def _get_frame( self, vid_reader, frame, device, colorspace="Y" ):        
         RGB = vid_reader.get_frame_rgb_tensor(frame, device)
         RGB_bcfhw = reshuffle_dims( RGB, in_dims='HWC', out_dims="BCFHW" )
+
+        if not self.full_screen_resize is None and (vid_reader.height != self.resize_resolution[1] or vid_reader.width != self.resize_resolution[0]):
+            RGB_bcfhw = torch.nn.functional.interpolate(RGB_bcfhw.view(1,RGB_bcfhw.shape[1],RGB_bcfhw.shape[3],RGB_bcfhw.shape[4]),
+                                                size=(self.resize_resolution[1], self.resize_resolution[0]),
+                                                mode=self.full_screen_resize).view(1,RGB_bcfhw.shape[1],1,self.resize_resolution[1],self.resize_resolution[0]).clip(0.,1.)
+
         RGB_lin = self.dm_photometry.forward(RGB_bcfhw)
         return self.color_trans.rgb2colourspace(RGB_lin, colorspace)
     
