@@ -147,7 +147,7 @@ class config_files:
             if os.path.isfile(path):
                 return path
 
-        path = os.path.join(os.path.dirname(__file__), "fvvdp_data", fname)
+        path = os.path.join(os.path.dirname(__file__), "vvdp_data", fname)
         if os.path.isfile(path):
             return path
 
