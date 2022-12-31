@@ -160,25 +160,20 @@ class cvvdp:
           'circular'  - tile the video in the front, so that the last frame is used for frame 0.
           'pingpong'  - the video frames are mirrored so that frames -1, -2, ... correspond to frames 0, 1, ...
     '''
-    def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, fixation_point=None):
+    def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0):
 
         test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry, color_space_name=self.color_space )
 
-        return self.predict_video_source(test_vs, fixation_point=fixation_point)
+        return self.predict_video_source(test_vs)
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
     '''
-    def predict_video_source(self, vid_source, fixation_point=None):
+    def predict_video_source(self, vid_source):
         # We assume the pytorch default NCDHW layout
 
         vid_sz = vid_source.get_video_size() # H, W, F
         height, width, N_frames = vid_sz
-
-        if fixation_point is None:
-            fixation_point = torch.tensor([width//2, height//2])
-        elif isinstance(fixation_point, np.ndarray):
-            fixation_point = torch.tensor(fixation_point)
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.local_adapt=="gpyr":
@@ -317,9 +312,9 @@ class cvvdp:
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block = checkpoint.checkpoint(self.process_block_of_frames, ff, R, vid_sz, temp_ch, fixation_point, heatmap, use_reentrant=False)
+                Q_per_ch_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, heatmap, use_reentrant=False)
             else:
-                Q_per_ch_block = self.process_block_of_frames(ff, R, vid_sz, temp_ch, fixation_point, heatmap)
+                Q_per_ch_block = self.process_block_of_frames(R, vid_sz, temp_ch, heatmap)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
@@ -381,7 +376,7 @@ class cvvdp:
         # Q_jod = sign(self.jod_a) * ((abs(self.jod_a)**(1.0/beta_jod))* Q)**beta_jod + 10.0 # This one can help with very large numbers
         # return Q_jod.squeeze()
 
-    def process_block_of_frames(self, ff, R, vid_sz, temp_ch, fixation_point, heatmap):
+    def process_block_of_frames(self, R, vid_sz, temp_ch, heatmap):
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
