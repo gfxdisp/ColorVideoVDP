@@ -8,10 +8,10 @@
     "mask_p": 2.4,
     "mask_c": -0.973838, 
     "pu_dilate": 0,
-    "beta": 1.52134, 
+    "beta": 2, 
     "beta_t": 1, 
-    "beta_tch": 0.666092,
-    "beta_sch": 1,
+    "beta_tch": 4,
+    "beta_sch": 4,
     "sustained_sigma": 0.5,
     "sustained_beta": 0.06,
     "csf_sigma": -1.5,
@@ -19,10 +19,10 @@
     "masking_model": "min_mutual_masking_perc_norm2",
     "local_adapt": "gpyr",
     "contrast": "weber", 
-    "jod_a": -0.0161713, 
-    "log_jod_exp": -0.2280,
+    "jod_a": 0.109088, 
+    "jod_exp": 0.405971,
     "mask_q_sust": 2.43685,
     "mask_q_trans": 4.946,
     "filter_len": -1,
-    "ch_weights": [1, 1, 1, 1]
+    "ch_weights": [1, 0.29013, 0.29013, 0.491553]
 }

@@ -115,7 +115,7 @@ class cvvdp:
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
         self.contrast = parameters['contrast']  # Either 'weber' or 'log'
         self.jod_a = parameters['jod_a']
-        self.log_jod_exp = parameters['log_jod_exp']
+        self.jod_exp = parameters['jod_exp']
         self.mask_q_sust = parameters['mask_q_sust']
         self.mask_q_trans = parameters['mask_q_trans']
         self.filter_len = parameters['filter_len']
@@ -372,11 +372,14 @@ class cvvdp:
         Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
         Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
         Q = Q.squeeze()
+            
+        Q_JOD = 10. - self.jod_a * Q**self.jod_exp
+        return Q_JOD
 
-        sign = lambda x: (1, -1)[x<0]
-        beta_jod = 10.0**self.log_jod_exp
-        Q_jod = sign(self.jod_a) * ((abs(self.jod_a)**(1.0/beta_jod))* Q)**beta_jod + 10.0 # This one can help with very large numbers
-        return Q_jod.squeeze()
+        # sign = lambda x: (1, -1)[x<0]
+        # beta_jod = 10.0**self.log_jod_exp
+        # Q_jod = sign(self.jod_a) * ((abs(self.jod_a)**(1.0/beta_jod))* Q)**beta_jod + 10.0 # This one can help with very large numbers
+        # return Q_jod.squeeze()
 
     def process_block_of_frames(self, ff, R, vid_sz, temp_ch, fixation_point, heatmap):
         # R[channels,frames,width,height]
