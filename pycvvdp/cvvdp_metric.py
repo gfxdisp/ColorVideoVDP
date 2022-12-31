@@ -396,36 +396,47 @@ class cvvdp:
         Q_per_ch_block = None
         block_N_frames = R.shape[-3] 
 
-        for bb in range(self.lpyr.get_band_count()-1):  # For each spatial frequency band
+        for bb in range(self.lpyr.get_band_count()):  # For each spatial frequency band
+
+            is_baseband = (bb==(self.lpyr.get_band_count()-1))
 
             T_f = self.lpyr.get_band(B_bands, bb)[0::2,...] # Test
             R_f = self.lpyr.get_band(B_bands, bb)[1::2,...] # Reference
 
-            if self.local_adapt=="gpyr":
-                L_bkg = self.lpyr.get_gband(L_bkg_pyr, bb) 
+            if is_baseband:
+                L_bkg = torch.mean(R_f[0:1,...], dim=(-2,-1), keepdim=True)  # Use the mean from the reference sustained as the background luminance
+                rho = 0.1
+                S = torch.empty((all_ch,block_N_frames,1,1), device=self.device)
+                for cc in range(all_ch):
+                    S = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+
+                D = (T_f-R_f) / L_bkg * S
             else:
-                raise RuntimeError( "Not implemented")
-                # # 1:2 below is passing reference sustained
-                # L_bkg, R_f, T_f = self.compute_local_contrast(R_f, T_f, 
-                #     self.lpyr.get_gband(L_bkg_pyr, bb+1)[1:2,...], L_adapt)
+                if self.local_adapt=="gpyr":
+                    L_bkg = self.lpyr.get_gband(L_bkg_pyr, bb) 
+                else:
+                    raise RuntimeError( "Not implemented")
+                    # # 1:2 below is passing reference sustained
+                    # L_bkg, R_f, T_f = self.compute_local_contrast(R_f, T_f, 
+                    #     self.lpyr.get_gband(L_bkg_pyr, bb+1)[1:2,...], L_adapt)
 
-            # Compute CSF
-            rho = rho_band[bb] # Spatial frequency in cpd
-            ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
-            S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-            for cc in range(all_ch):
-                tch = 0 if cc<3 else 1  # Sustained or transient
-                cch = cc if cc<3 else 0 # Y, rg, yv
-                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                # Compute CSF
+                rho = rho_band[bb] # Spatial frequency in cpd
+                ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
+                S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+                for cc in range(all_ch):
+                    tch = 0 if cc<3 else 1  # Sustained or transient
+                    cch = cc if cc<3 else 0 # Y, rg, yv
+                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-            D = self.apply_masking_model(T_f, R_f, S)
+                D = self.apply_masking_model(T_f, R_f, S)
 
             # if self.do_heatmap:
             #     if cc == 0: self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, D)
             #     else:       self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, self.heatmap_pyr.get_band(Dmap_pyr_bands, bb) + w_temp_ch[cc] * D)
 
             if Q_per_ch_block is None:
-                Q_per_ch_block = torch.empty((all_ch, block_N_frames, self.lpyr.height), device=self.device)
+                Q_per_ch_block = torch.empty((all_ch, block_N_frames, self.lpyr.get_band_count()), device=self.device)
 
             Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
