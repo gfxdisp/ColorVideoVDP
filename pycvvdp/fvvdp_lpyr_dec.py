@@ -268,7 +268,7 @@ class fvvdp_contrast_pyr(fvvdp_lpyr_dec):
             lpyr.append(contrast)
             L_bkg_pyr.append(L_bkg)
 
-        lpyr.append(gpyr[height-1]) 
+        lpyr.append(gpyr[height-1]) # Base band
         
         return lpyr, L_bkg_pyr
 

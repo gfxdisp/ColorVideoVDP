@@ -386,9 +386,6 @@ class cvvdp:
 
         if self.debug: assert len(B_bands) == self.lpyr.get_band_count()
 
-        # CSF
-        S = [None] * (self.lpyr.get_band_count()-1)
-
         # if self.do_heatmap:
         #     Dmap_pyr_bands, Dmap_pyr_gbands = self.heatmap_pyr.decompose( torch.zeros([1,1,height,width], dtype=torch.float, device=self.device))
 
@@ -412,18 +409,16 @@ class cvvdp:
                 # L_bkg, R_f, T_f = self.compute_local_contrast(R_f, T_f, 
                 #     self.lpyr.get_gband(L_bkg_pyr, bb+1)[1:2,...], L_adapt)
 
-            # Pre-compute CSF
-            if S[bb] is None:
-                rho = rho_band[bb] # Spatial frequency in cpd
+            # Compute CSF
+            rho = rho_band[bb] # Spatial frequency in cpd
+            ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
+            S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+            for cc in range(all_ch):
+                tch = 0 if cc<3 else 1  # Sustained or transient
+                cch = cc if cc<3 else 0 # Y, rg, yv
+                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
-                S[bb] = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-                for cc in range(all_ch):
-                    tch = 0 if cc<3 else 1  # Sustained or transient
-                    cch = cc if cc<3 else 0 # Y, rg, yv
-                    S[bb][cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
-
-            D = self.apply_masking_model(T_f, R_f, S[bb])
+            D = self.apply_masking_model(T_f, R_f, S)
 
             # if self.do_heatmap:
             #     if cc == 0: self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, D)
