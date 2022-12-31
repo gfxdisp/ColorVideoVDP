@@ -19,10 +19,11 @@
     "masking_model": "min_mutual_masking_perc_norm2",
     "local_adapt": "gpyr",
     "contrast": "weber", 
-    "jod_a": 0.109088, 
-    "jod_exp": 0.405971,
+    "jod_a": 0.329211, 
+    "jod_exp": 0.273115,
     "mask_q_sust": 2.43685,
     "mask_q_trans": 4.946,
     "filter_len": -1,
-    "ch_weights": [1, 0.29013, 0.29013, 0.491553]
+    "ch_weights": [1, 0.119421, 0.119421, 0.53489],
+    "baseband_weight": 5.50161
 }

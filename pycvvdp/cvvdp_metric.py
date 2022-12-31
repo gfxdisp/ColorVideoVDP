@@ -119,8 +119,9 @@ class cvvdp:
         self.mask_q_sust = parameters['mask_q_sust']
         self.mask_q_trans = parameters['mask_q_trans']
         self.filter_len = parameters['filter_len']
-        self.version = parameters['version']
         self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
+        self.baseband_weight = parameters['baseband_weight']
+        self.version = parameters['version']
 
         # other parameters
         self.debug = False
@@ -410,7 +411,7 @@ class cvvdp:
                 for cc in range(all_ch):
                     S = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                D = (T_f-R_f) / L_bkg * S
+                D = ((T_f-R_f) / L_bkg * S) * self.baseband_weight
             else:
                 if self.local_adapt=="gpyr":
                     L_bkg = self.lpyr.get_gband(L_bkg_pyr, bb) 
