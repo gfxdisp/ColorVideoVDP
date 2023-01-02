@@ -140,7 +140,18 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         self.E_ambient = E_ambient
         self.k_refl = k_refl
         self.name = name    
-        
+
+    def __eq__(self, other): 
+        if not isinstance(other, self.__class__):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+        return self.Y_peak == other.Y_peak \
+            and self.contrast == other.contrast \
+            and self.EOTF == other.EOTF \
+            and self.gamma == other.gamma \
+            and self.E_ambient == other.E_ambient \
+            and self.k_refl == other.k_refl
+
     # Transforms display-encoded pixel values V, which must be in the range
     # 0-1 into absolute linear colorimetric values emitted from
     # the display.
@@ -199,6 +210,12 @@ class vvdp_display_photo_absolute(vvdp_display_photometry):
         self.L_max = L_max
         self.L_min = L_min
 
+    def __eq__(self, other): 
+        if not isinstance(other, self.__class__):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+        return self.L_max == other.L_max \
+            and self.L_min == other.L_min
 
     def forward( self, V ):
 
@@ -258,8 +275,17 @@ class vvdp_display_photo_gog(vvdp_display_photometry):
         self.E_ambient = E_ambient
         self.k_refl = k_refl
         self.name = name
-    
-        
+
+    def __eq__(self, other): 
+        if not isinstance(other, self.__class__):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+        return self.Y_peak == other.Y_peak \
+            and self.contrast == other.contrast \
+            and self.gamma == other.gamma \
+            and self.E_ambient == other.E_ambient \
+            and self.k_refl == other.k_refl
+
     # Transforms gamma-encoded pixel values V, which must be in the range
     # 0-into absolute linear colorimetric values emitted from
     # the display.
@@ -313,6 +339,12 @@ class vvdp_display_photo_absolute(vvdp_display_photometry):
         self.L_max = L_max
         self.L_min = L_min
 
+    def __eq__(self, other): 
+        if not isinstance(other, self.__class__):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+        return self.L_max == other.L_max \
+            and self.L_min == other.L_min
 
     def forward( self, V ):
 
@@ -431,7 +463,15 @@ class vvdp_display_geometry:
         
         self.display_size_deg = ( 2 * math.degrees(math.atan( self.display_size_m[0] / (2*self.distance_m) )), \
                                   2 * math.degrees(math.atan( self.display_size_m[1] / (2*self.distance_m) )) )
-        
+
+    def __eq__(self, other): 
+        if not isinstance(other, self.__class__):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+        return self.resolution == other.resolution \
+            and self.distance_m == other.distance_m \
+            and self.display_size_m == other.display_size_m
+
     # Get the number of pixels per degree
     #
     # ppd = R.get_ppd()
