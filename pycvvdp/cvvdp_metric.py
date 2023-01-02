@@ -84,13 +84,16 @@ class cvvdp:
     def update_device( self, device ):
         self.device = device
         self.omega = torch.tensor([0,5], device=self.device, requires_grad=False)
-        for oo in self.omega:
-            self.preload_cache(oo, self.csf_sigma)
+        # for oo in self.omega:
+        #     self.preload_cache(oo, self.csf_sigma)
+        self.ch_weights = self.ch_weights.to(device)
 
         self.lpyr = None
         self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
         # self.quality_band_freq_log = self.quality_band_freq_log.to(device)
         # self.quality_band_w_log = self.quality_band_w_log.to(device)
+
+        self.csf.update_device(device)
 
     def load_config( self ):
 
