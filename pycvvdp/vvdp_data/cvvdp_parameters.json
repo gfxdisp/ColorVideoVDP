@@ -12,8 +12,6 @@
     "beta_t": 1, 
     "beta_tch": 4,
     "beta_sch": 4,
-    "sustained_sigma": 0.5,
-    "sustained_beta": 0.06,
     "csf_sigma": -1.5,
     "sensitivity_correction": 0, 
     "masking_model": "min_mutual_masking_perc_norm2",
@@ -25,5 +23,7 @@
     "mask_q_trans": 4.946,
     "filter_len": -1,
     "ch_weights": [1, 0.119421, 0.119421, 0.53489],
+    "sigma_tf": [5.79336, 14.1255, 6.63661, 0.12314],
+    "beta_tf": [1.3314, 1.1196, 0.947901, 0.1898],    
     "baseband_weight": 5.50161
 }

@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from urllib.parse import ParseResultBytes
 from numpy.lib.shape_base import expand_dims
+import math
 import torch
 from torch.utils import checkpoint
 from torch.functional import Tensor
@@ -107,8 +108,6 @@ class cvvdp:
         self.beta_t = parameters['beta_t'] # The exponent of the summation over time (p-norm)
         self.beta_tch = parameters['beta_tch'] # The exponent of the summation over temporal channels (p-norm)
         self.beta_sch = parameters['beta_sch'] # The exponent of the summation over spatial channels (p-norm)
-        self.sustained_sigma = parameters['sustained_sigma']
-        self.sustained_beta = parameters['sustained_beta']
         self.csf_sigma = parameters['csf_sigma']
         self.sensitivity_correction = parameters['sensitivity_correction'] # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
@@ -120,6 +119,8 @@ class cvvdp:
         self.mask_q_trans = parameters['mask_q_trans']
         self.filter_len = parameters['filter_len']
         self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
+        self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
+        self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.baseband_weight = parameters['baseband_weight']
         self.version = parameters['version']
 
@@ -196,8 +197,8 @@ class cvvdp:
             self.omega = [0]
         else:
             temp_ch = 2
-            self.filter_len = int(np.ceil( 250.0 / (1000.0/vid_source.get_frames_per_second()) ))
             self.F, self.omega = self.get_temporal_filters(vid_source.get_frames_per_second())
+            self.filter_len = torch.numel(self.F[0])
 
         all_ch = 2+temp_ch
 
@@ -574,31 +575,26 @@ class cvvdp:
     # F[2] - yv sustained
     # F[3] - Y transient
     def get_temporal_filters(self, frames_per_s):
-        t = torch.linspace(0.0, self.filter_len / frames_per_s, self.filter_len, device=self.device)
-        F = torch.zeros((4, t.shape[0]), device=self.device)
 
-        sigma = torch.tensor([self.sustained_sigma], device=self.device)
-        beta = torch.tensor([self.sustained_beta], device=self.device)
+        N = int(math.ceil(0.250 * frames_per_s/2)*2)+1 # The length of the filter, always odd number
+        N_omega = int(N/2)+1 # We need fewer freq coefficients as we use real FFT
+        omega = torch.linspace( 0, frames_per_s/2, N_omega, device=self.device ).view(1,N_omega)
 
-        F[0] = torch.exp(-torch.pow(torch.log(t + 1e-4) - torch.log(beta), 2.0) / (2.0 * (sigma ** 2.0)))
-        F[0] = F[0] / torch.sum(F[0])
+        R = torch.empty( (4, N_omega), device=self.device )
+        # Sustained channels 
+        R[0:3,:] = torch.exp( -omega ** self.beta_tf[0:3].view(3,1) / self.sigma_tf[0:3].view(3,1) )  # Freqency-space response
+        # Transient channel
+        omega_bands = torch.as_tensor( [0., 5.], device=self.device )
+        R[3:4,:] = torch.exp( -(omega ** self.beta_tf[3] - omega_bands[1] ** self.beta_tf[3])**2  / self.sigma_tf[3] )  # Freqency-space response
 
-        Fdiff = F[0, 1:] - F[0, :-1]
+        #r = torch.empty( (4, N), device=self.device )
+        r = torch.fft.fftshift( torch.real( torch.fft.irfft( R, dim=1, norm="backward", n=N ) ) )
 
-        # TODO: Implement sustained colour channels
-        F[1] = F[0]
-        F[2] = F[0]
+        F = []
+        for kk in range(4):
+            F.append( r[kk,:] )
 
-        k2 = 0.062170507756932
-        # This one seems to be slightly more accurate at low sampling rates
-        F[3] = k2*torch.cat([Fdiff/(t[1]-t[0]), torch.tensor([0.0], device=self.device)], 0) # transient
-
-        omega = torch.tensor([0,5], device=self.device, requires_grad=False)
-
-        F[0].requires_grad = False
-        F[3].requires_grad = False
-
-        return F, omega
+        return F, omega_bands
 
     def torch_scalar(self, val, dtype=torch.float32):
         return torch.tensor(val, dtype=dtype, device=self.device)
