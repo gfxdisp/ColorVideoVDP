@@ -50,3 +50,13 @@ class castleCSF:
         S = 10**interp1( self.log_L_bkg, logS_r, torch.log10(L_bkg) )        
 
         return S
+
+    def update_device( self, device ):
+        self.device = device
+        self.log_L_bkg = self.log_L_bkg.to(device)
+        self.log_rho = self.log_rho.to(device)
+
+        for oo in range(2): # For each temp frequency
+            ch_num = 3 if oo==0 else 1
+            for cc in range(ch_num):
+                self.logS[oo][cc] = self.logS[oo][cc].to(device)

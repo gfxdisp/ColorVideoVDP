@@ -4,19 +4,19 @@ with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
 setup(
-    name='pyfvvdp',
-    version='1.2.0',
-    description='PyTorch code for \'FovVideoVDP\': a full-reference' \
+    name='pycvvdp',
+    version='0.0.1',
+    description='PyTorch code for \'ColorVideoVDP\': a full-reference' \
                 'visual quality metric that predicts the perceptual' \
                 'difference between pairs of images or videos.',
     long_description=long_description,
-    url='https://github.com/gfxdisp/FovVideoVDP',
+    url='https://github.com/mantiuk/ColourVideoVDP',
     long_description_content_type='text/markdown',
     author='Rafał K. Mantiuk',
     author_email='mantiuk@gmail.com',
     license='Creative Commons Attribution-NonCommercial 4.0 International Public License',
-    packages=['pyfvvdp', 'pyfvvdp/third_party'],
-    package_data={'pyfvvdp': ['csf_cache/*.mat', 'fvvdp_data/*.json']},
+    packages=['pycvvdp', 'pycvvdp/third_party'],
+    package_data={'pycvvdp': ['csf_cache/*.mat', 'vvdp_data/*.json']},
     include_package_data=True,
     install_requires=['numpy>=1.17.3',
                       'scipy>=1.7.0',
@@ -34,9 +34,9 @@ setup(
         'Programming Language :: Python :: 3.10',
     ],
 
-    entry_points={
-        'console_scripts': [
-            'fvvdp=pyfvvdp.run_fvvdp:main'
-        ]
-    }
+    # entry_points={
+    #     'console_scripts': [
+    #         'fvvdp=pyfvvdp.run_fvvdp:main'
+    #     ]
+    # }
 )

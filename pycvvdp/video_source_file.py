@@ -35,7 +35,13 @@ def load_image_as_array(imgfile):
     else:
         # 16-bit PNG not supported by default
         lib = 'PNG-FI' if ext == '.png' else None
-        img = io.imread(imgfile, format=lib)
+        try:
+            img = io.imread(imgfile, format=lib)
+        except RuntimeError:
+            logging.warning('PNG-FI not found, downloading using imageio\'s script')
+            import imageio
+            imageio.plugins.freeimage.download()
+            img = io.imread(imgfile, format=lib)
     return img
 
 

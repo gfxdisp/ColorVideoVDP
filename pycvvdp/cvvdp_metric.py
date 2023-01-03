@@ -85,13 +85,16 @@ class cvvdp:
     def update_device( self, device ):
         self.device = device
         self.omega = torch.tensor([0,5], device=self.device, requires_grad=False)
-        for oo in self.omega:
-            self.preload_cache(oo, self.csf_sigma)
+        # for oo in self.omega:
+        #     self.preload_cache(oo, self.csf_sigma)
+        self.ch_weights = self.ch_weights.to(device)
 
         self.lpyr = None
         self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
         # self.quality_band_freq_log = self.quality_band_freq_log.to(device)
         # self.quality_band_w_log = self.quality_band_w_log.to(device)
+
+        self.csf.update_device(device)
 
     def load_config( self ):
 
@@ -314,9 +317,9 @@ class cvvdp:
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, heatmap, use_reentrant=False)
+                Q_per_ch_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
             else:
-                Q_per_ch_block = self.process_block_of_frames(R, vid_sz, temp_ch, heatmap)
+                Q_per_ch_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
@@ -378,32 +381,32 @@ class cvvdp:
         # Q_jod = sign(self.jod_a) * ((abs(self.jod_a)**(1.0/beta_jod))* Q)**beta_jod + 10.0 # This one can help with very large numbers
         # return Q_jod.squeeze()
 
-    def process_block_of_frames(self, R, vid_sz, temp_ch, heatmap):
+    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, heatmap):
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
 
         # Perform Laplacian pyramid decomposition
-        B_bands, L_bkg_pyr = self.lpyr.decompose(R[0,...])
+        B_bands, L_bkg_pyr = lpyr.decompose(R[0,...])
 
-        if self.debug: assert len(B_bands) == self.lpyr.get_band_count()
+        if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
         # if self.do_heatmap:
         #     Dmap_pyr_bands, Dmap_pyr_gbands = self.heatmap_pyr.decompose( torch.zeros([1,1,height,width], dtype=torch.float, device=self.device))
 
-        # L_bkg_bb = [None for i in range(self.lpyr.get_band_count()-1)]
+        # L_bkg_bb = [None for i in range(lpyr.get_band_count()-1)]
 
-        rho_band = self.lpyr.get_freqs()
+        rho_band = lpyr.get_freqs()
 
         Q_per_ch_block = None
         block_N_frames = R.shape[-3] 
 
-        for bb in range(self.lpyr.get_band_count()):  # For each spatial frequency band
+        for bb in range(lpyr.get_band_count()):  # For each spatial frequency band
 
-            is_baseband = (bb==(self.lpyr.get_band_count()-1))
+            is_baseband = (bb==(lpyr.get_band_count()-1))
 
-            T_f = self.lpyr.get_band(B_bands, bb)[0::2,...] # Test
-            R_f = self.lpyr.get_band(B_bands, bb)[1::2,...] # Reference
+            T_f = lpyr.get_band(B_bands, bb)[0::2,...] # Test
+            R_f = lpyr.get_band(B_bands, bb)[1::2,...] # Reference
 
             if is_baseband:
                 L_bkg = torch.mean(R_f[0:1,...], dim=(-2,-1), keepdim=True)  # Use the mean from the reference sustained as the background luminance
@@ -415,12 +418,12 @@ class cvvdp:
                 D = ((T_f-R_f) / L_bkg * S) * self.baseband_weight
             else:
                 if self.local_adapt=="gpyr":
-                    L_bkg = self.lpyr.get_gband(L_bkg_pyr, bb) 
+                    L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
                 else:
                     raise RuntimeError( "Not implemented")
                     # # 1:2 below is passing reference sustained
                     # L_bkg, R_f, T_f = self.compute_local_contrast(R_f, T_f, 
-                    #     self.lpyr.get_gband(L_bkg_pyr, bb+1)[1:2,...], L_adapt)
+                    #     lpyr.get_gband(L_bkg_pyr, bb+1)[1:2,...], L_adapt)
 
                 # Compute CSF
                 rho = rho_band[bb] # Spatial frequency in cpd
@@ -438,7 +441,7 @@ class cvvdp:
             #     else:       self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, self.heatmap_pyr.get_band(Dmap_pyr_bands, bb) + w_temp_ch[cc] * D)
 
             if Q_per_ch_block is None:
-                Q_per_ch_block = torch.empty((all_ch, block_N_frames, self.lpyr.get_band_count()), device=self.device)
+                Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
 
             Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
