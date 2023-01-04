@@ -13,8 +13,8 @@ display_name = 'standard_4k'
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
 
 media_folder = 'S:\\Datasets\\XR-DAVID'
-ref_file = os.path.join(media_folder, 'Dance_reference_Level001.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, 'Dance_Contrast_Level001.mp4'))
+ref_file = os.path.join(media_folder, 'Phone_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'Phone_DUC_Level003.mp4'))
 
 # media_folder = 'S:\\Datasets\\LIVEHDR\\train'
 # ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')

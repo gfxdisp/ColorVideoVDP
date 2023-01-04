@@ -413,9 +413,11 @@ class cvvdp:
                 rho = 0.1
                 S = torch.empty((all_ch,block_N_frames,1,1), device=self.device)
                 for cc in range(all_ch):
-                    S = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                    tch = 0 if cc<3 else 1  # Sustained or transient
+                    cch = cc if cc<3 else 0 # Y, rg, yv
+                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                D = ((T_f-R_f) / L_bkg * S) * self.baseband_weight
+                D = (torch.abs(T_f-R_f) / L_bkg * S) * self.baseband_weight
             else:
                 if self.local_adapt=="gpyr":
                     L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
