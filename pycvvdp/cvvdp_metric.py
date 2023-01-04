@@ -409,9 +409,10 @@ class cvvdp:
             R_f = lpyr.get_band(B_bands, bb)[1::2,...] # Reference
 
             if is_baseband:
-                L_bkg = torch.mean(R_f[0:1,...], dim=(-2,-1), keepdim=True)  # Use the mean from the reference sustained as the background luminance
+                #L_bkg = torch.mean(R_f[0:1,...], dim=(-2,-1), keepdim=True)  # Use the mean from the reference sustained as the background luminance
+                L_bkg = R_f[0:1,...]  # Use the reference sustained as the background luminance
                 rho = 0.1
-                S = torch.empty((all_ch,block_N_frames,1,1), device=self.device)
+                S = torch.empty((all_ch,block_N_frames,L_bkg.shape[-2],L_bkg.shape[-1]), device=self.device)
                 for cc in range(all_ch):
                     tch = 0 if cc<3 else 1  # Sustained or transient
                     cch = cc if cc<3 else 0 # Y, rg, yv

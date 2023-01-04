@@ -299,6 +299,11 @@ class video_source_video_file(video_source_dm):
             else:
                 color_space_name="sRGB"
 
+        if self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
+            logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
+            raise RuntimeError( "Inconsistent frame rates" )
+
+
         super().__init__(display_photometry=display_photometry, color_space_name=color_space_name)        
 
         if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry.EOTF!="PQ":
