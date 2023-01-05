@@ -178,6 +178,8 @@ class video_source_array( video_source_dm ):
 
         if from_array.dtype is torch.float32:
             frame = from_array[:,:,frame:(frame+1),:,:].to(device)
+        elif from_array.dtype is torch.float16:
+            frame = from_array[:,:,frame:(frame+1),:,:].to(device=device, dtype=torch.float32)
         elif from_array.dtype is torch.int16:
             # Use int16 to losslessly pack uint16 values
             # Unpack from int16 by bit masking as described in this thread:
@@ -192,7 +194,7 @@ class video_source_array( video_source_dm ):
         elif from_array.dtype is torch.uint8:
             frame = from_array[:,:,frame:(frame+1),:,:].to(device).to(torch.float32)/255
         else:
-            raise RuntimeError( "Only uint8, uint16 and float32 is currently supported" )
+            raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
 
         L_lin = self.dm_photometry.forward( frame )
 
