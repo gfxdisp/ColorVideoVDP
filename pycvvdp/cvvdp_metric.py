@@ -88,11 +88,11 @@ class cvvdp:
         # for oo in self.omega:
         #     self.preload_cache(oo, self.csf_sigma)
         self.ch_weights = self.ch_weights.to(device)
+        self.sigma_tf = self.sigma_tf.to(device)
+        self.beta_tf = self.beta_tf.to(device)
 
         self.lpyr = None
         self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
-        # self.quality_band_freq_log = self.quality_band_freq_log.to(device)
-        # self.quality_band_w_log = self.quality_band_w_log.to(device)
 
         self.csf.update_device(device)
 
@@ -234,7 +234,11 @@ class cvvdp:
                 self.mem_allocated_peak = 0
 
             #mem_per_frame = pix_cnt*4*3*2 + pix_cnt*4*all_ch*2 + int(pix_cnt*4*all_ch*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*1.33) 
-            mem_per_frame = pix_cnt*350   # Estimated memory required per frame
+            if self.use_checkpoints:           
+                # More memory required when training. TODO: better way to detect when running with require_grad
+                mem_per_frame = pix_cnt*2500   # Estimated memory required per frame
+            else:
+                mem_per_frame = pix_cnt*350   # Estimated memory required per frame
 
             max_frames = int((mem_avail-mem_const)/mem_per_frame) # how many frames can we fit into memory
 
