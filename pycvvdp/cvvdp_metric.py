@@ -189,7 +189,6 @@ class cvvdp:
             if self.do_heatmap:
                 self.heatmap_pyr = fvvdp_lpyr_dec(width, height, self.pix_per_deg, self.device)
 
-
         #assert self.W == R_vid.shape[-1] and self.H == R_vid.shape[-2]
         #assert len(R_vid.shape)==5
 
@@ -464,6 +463,9 @@ class cvvdp:
         return Q_per_ch_block
 
     def apply_masking_model(self, T, R, S):
+        # T - test contrast tensor
+        # R - reference contrast tensor
+        # S - sensitivity
         T = T*S
         R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
@@ -514,43 +516,6 @@ class cvvdp:
             R = torch.clamp(torch.div(R, L_bkg_clamped), max=1000.0)
 
         return L_bkg, R, T
-
-    # def get_cache_key(self, omega, sigma, k_cm):
-    #     return ("o%g_s%g_cm%f" % (omega, sigma, k_cm)).replace('-', 'n').replace('.', '_')
-
-    # def preload_cache(self, omega, sigma):
-    #     key = self.get_cache_key(omega, sigma, self.k_cm)
-    #     for csf_cache_dir in self.csf_cache_dirs:
-    #         #fname = os.path.join(csf_cache_dir, key + '_cpu.mat')
-    #         fname = os.path.join(csf_cache_dir, key + '_gpu0.mat')
-    #         if os.path.isfile(fname):
-    #             #lut = load_mat_dict(fname, "lut_cpu", self.device)
-    #             lut = utils.load_mat_dict(fname, "lut", self.device)
-    #             for k in lut:
-    #                 lut[k] = torch.tensor(lut[k], device=self.device, requires_grad=False)
-    #             self.csf_cache[key] = {"lut" : lut}
-    #             break
-    #     if key not in self.csf_cache:
-    #         raise RuntimeError("Error: cache file for %s not found" % key)
-
-    # def cached_sensitivity(self, rho, omega, L_bkg, ecc, sigma):
-    #     key = self.get_cache_key(omega, sigma, self.k_cm)
-
-    #     if key in self.csf_cache:
-    #         lut = self.csf_cache[key]["lut"]
-    #     else:
-    #         print("Error: Key %s not found in cache" % key)
-
-    #     # ASSUMPTION: rho_q and ecc_q are not scalars
-    #     rho_q = torch.log2(torch.clamp(rho,   lut["rho"][0], lut["rho"][-1]))
-    #     Y_q   = torch.log2(torch.clamp(L_bkg, lut["Y"][0],   lut["Y"][-1]))
-    #     ecc_q = torch.sqrt(torch.clamp(ecc,   lut["ecc"][0], lut["ecc"][-1]))
-
-    #     interpolated = interp3( lut["rho_log"], lut["Y_log"], lut["ecc_sqrt"], lut["S_log"], rho_q, Y_q, ecc_q)
-
-    #     S = torch.pow(2.0, interpolated)
-
-    #     return S
 
     def weber2log(self, W):
         # Convert Weber contrast 
