@@ -577,7 +577,11 @@ class cvvdp:
         else:
             N = 1.0
 
-        return torch.norm(x, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
+        if isinstance( p, torch.Tensor ): 
+            # p is a Tensor if it is being optimized. In that case, we need the formula for the norm
+            return torch.pow( torch.sum(x ** (p), dim=dim, keepdim=keepdim)/float(N), 1/p) 
+        else:
+            return torch.norm(x, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
 
     # Return temporal filters
     # F[0] - Y sustained
