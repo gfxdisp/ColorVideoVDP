@@ -361,6 +361,7 @@ class cvvdp:
         # Weights for the two temporal channels
         no_channels = Q_per_ch.shape[0]
         no_frames = Q_per_ch.shape[1]
+        no_bands = Q_per_ch.shape[2]
         if no_frames>1: # If video
             per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
             #torch.stack( (torch.ones(1, device=self.device), torch.as_tensor(self.w_transient, device=self.device)[None] ), dim=1)[:,:,None]
@@ -368,10 +369,12 @@ class cvvdp:
             per_ch_w = 1
 
         # Weights for the spatial bands
+        per_sband_w = torch.ones( (1,1,no_bands), device=self.device)
+        per_sband_w[0,0,-1] = self.baseband_weight
+
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
-        #Q_sc = self.lp_norm(Q_per_ch*per_tband_w*per_sband_w, self.beta_sch, 0, False)  # Sum across spatial channels
-        Q_sc = self.lp_norm(Q_per_ch*per_ch_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
+        Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
         Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
         Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
         Q = Q.squeeze()
@@ -421,7 +424,7 @@ class cvvdp:
                     cch = cc if cc<3 else 0 # Y, rg, yv
                     S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                D = (torch.abs(T_f-R_f) / L_bkg * S) * self.baseband_weight
+                D = (torch.abs(T_f-R_f) / L_bkg * S)
             else:
                 if self.local_adapt=="gpyr":
                     L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
@@ -567,11 +570,12 @@ class cvvdp:
         R[3:4,:] = torch.exp( -(omega ** self.beta_tf[3] - omega_bands[1] ** self.beta_tf[3])**2  / self.sigma_tf[3] )  # Freqency-space response
 
         #r = torch.empty( (4, N), device=self.device )
-        r = torch.fft.fftshift( torch.real( torch.fft.irfft( R, dim=1, norm="backward", n=N ) ) )
 
         F = []
         for kk in range(4):
-            F.append( r[kk,:] )
+            # Must be executed once per each channel. For some reason, gives wrong results when run on the entire array
+            r = torch.fft.fftshift( torch.real( torch.fft.irfft( R[kk,:], norm="backward", n=N ) ) ) 
+            F.append( r )
 
         return F, omega_bands
 

@@ -13,8 +13,11 @@ display_name = 'standard_4k'
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
 
 media_folder = 'S:\\Datasets\\XR-DAVID'
-ref_file = os.path.join(media_folder, 'Bonfire_reference_Level001.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_WGNU_Level003.mp4'))
+# ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
+# TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_WGNU_Level003.mp4'))
+
+ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_DUC_Level003.mp4'))
 
 # media_folder = 'S:\\Datasets\\LIVEHDR\\train'
 # ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')
@@ -28,7 +31,7 @@ cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=30 )    
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120 )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
