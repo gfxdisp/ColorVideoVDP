@@ -223,7 +223,7 @@ class cvvdp(vq_metric):
             #mem_per_frame = pix_cnt*4*3*2 + pix_cnt*4*all_ch*2 + int(pix_cnt*4*all_ch*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*1.33) 
             if self.use_checkpoints:           
                 # More memory required when training. TODO: better way to detect when running with require_grad
-                mem_per_frame = pix_cnt*500   # Estimated memory required per frame
+                mem_per_frame = pix_cnt*700   # Estimated memory required per frame
             else:
                 mem_per_frame = pix_cnt*350   # Estimated memory required per frame
 
