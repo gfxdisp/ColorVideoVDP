@@ -69,7 +69,7 @@ class e_itp(vq_metric):
         for cc in range(3):
             ITP[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
         return ITP
-    
+
     def eitp_fn(self, img1, img2):
         mse = torch.mean(torch.sum( (img1 - img2)**2 ))
         return 20*torch.log10( torch.sqrt(mse) )
