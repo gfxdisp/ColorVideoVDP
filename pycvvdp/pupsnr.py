@@ -59,7 +59,7 @@ class pu_psnr_y(vq_metric):
     def quality_unit(self):
         return "dB"
 
-class pu_psnr_rgb2020:
+class pu_psnr_rgb2020(pu_psnr_y):
     def __init__(self, device=None):
         super().__init__(device)
         self.colorspace = 'RGB2020'
