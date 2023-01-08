@@ -84,20 +84,6 @@ class cvvdp(vq_metric):
         self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
         self.heatmap_pyr = None
 
-    def update_device( self, device ):
-        self.device = device
-        self.omega = torch.tensor([0,5], device=self.device, requires_grad=False)
-        # for oo in self.omega:
-        #     self.preload_cache(oo, self.csf_sigma)
-        self.ch_weights = self.ch_weights.to(device)
-        self.sigma_tf = self.sigma_tf.to(device)
-        self.beta_tf = self.beta_tf.to(device)
-
-        self.lpyr = None
-        self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
-
-        self.csf.update_device(device)
-
     def load_config( self ):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
@@ -494,9 +480,9 @@ class cvvdp(vq_metric):
         # Masking on perceptually normalized quantities (as in Daly's VDP)        
         p = self.mask_p
         if G_mask.shape[0]==3: # image
-            q = torch.tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
+            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust] ).view(3,1,1,1)
         else: # video
-            q = torch.tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
+            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans] ).view(4,1,1,1)
         R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
@@ -582,7 +568,7 @@ class cvvdp(vq_metric):
         return F, omega_bands
 
     def torch_scalar(self, val, dtype=torch.float32):
-        return torch.tensor(val, dtype=dtype, device=self.device)
+        return torch.tensor(val, dtype=dtype, device=self.device) if not torch.is_tensor(val) else val.to(dtype)
 
     def short_name(self):
         return "cvvdp"
