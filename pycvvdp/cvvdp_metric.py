@@ -481,9 +481,9 @@ class cvvdp(vq_metric):
         # Masking on perceptually normalized quantities (as in Daly's VDP)        
         p = self.mask_p
         if G_mask.shape[0]==3: # image
-            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust] ).view(3,1,1,1)
+            q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
         else: # video
-            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans] ).view(4,1,1,1)
+            q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
         R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
