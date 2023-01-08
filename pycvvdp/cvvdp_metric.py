@@ -223,7 +223,7 @@ class cvvdp(vq_metric):
             #mem_per_frame = pix_cnt*4*3*2 + pix_cnt*4*all_ch*2 + int(pix_cnt*4*all_ch*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*2*1.33) + int(pix_cnt*4*1.33) 
             if self.use_checkpoints:           
                 # More memory required when training. TODO: better way to detect when running with require_grad
-                mem_per_frame = pix_cnt*700   # Estimated memory required per frame
+                mem_per_frame = pix_cnt*2000   # Estimated memory required per frame
             else:
                 mem_per_frame = pix_cnt*350   # Estimated memory required per frame
 
@@ -334,6 +334,7 @@ class cvvdp(vq_metric):
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             logging.debug( f"Allocated at start: {self.mem_allocated_start/1e9} GB" )
             logging.debug( f"Max allocated: {self.mem_allocated_peak/1e9} GB" )
+            logging.debug( f"Resolution: {width}x{height} = {width*height/1e6} Mpixels" )
             pix_cnt = width*height
             # sw_buf            
             mem_const = pix_cnt*4*3*2*(fl-1)
