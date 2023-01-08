@@ -19,6 +19,8 @@ import logging
 from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
+from pycvvdp.vq_metric import *
+
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
@@ -39,7 +41,7 @@ from pycvvdp.csf import castleCSF
 """
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
-class cvvdp:
+class cvvdp(vq_metric):
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", foveated=False, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False):
         self.quiet = quiet
         self.foveated = foveated
@@ -569,7 +571,7 @@ class cvvdp:
         return torch.tensor(val, dtype=dtype, device=self.device) if not torch.is_tensor(val) else val.to(dtype)
 
     def short_name(self):
-        return "FovVideoVDP"
+        return "cvvdp"
 
     def quality_unit(self):
         return "JOD"
@@ -581,7 +583,7 @@ class cvvdp:
         else:
             standard_str = ''
         fv_mode = 'foveated' if self.foveated else 'non-foveated'
-        return '"FovVideoVDP v{}, {:.4g} [pix/deg], Lpeak={:.5g}, Lblack={:.4g} [cd/m^2], {}{}"'.format(self.version, self.pix_per_deg, self.display_photometry.get_peak_luminance(), self.display_photometry.get_black_level(), fv_mode, standard_str)
+        return '"ColourVideoVDP v{}, {:.4g} [pix/deg], Lpeak={:.5g}, Lblack={:.4g} [cd/m^2], {}{}"'.format(self.version, self.pix_per_deg, self.display_photometry.get_peak_luminance(), self.display_photometry.get_black_level(), fv_mode, standard_str)
 
     def write_features_to_json(self, stats, dest_fname):
         Q_per_ch = stats['Q_per_ch'] # quality per channel [cc,ff,bb]
