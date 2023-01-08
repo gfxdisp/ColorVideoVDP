@@ -12,6 +12,11 @@ LMS2006_to_DKLd65 = (
   (1.000000000000000,  -2.311130179947035,                   0),
   (-1.000000000000000,  -1.000000000000000,  50.977571328718781) )
 
+XYZ_to_LMShpe = (
+  ( 0.4002,   0.7075,  -0.0807 ),
+  (-0.2280,   1.1500,   0.0612 ),
+  ( 0,  0,   0.9184 ) )
+  
 XYZ_to_RGB2020 = (  (1.716502508360628, -0.355584689096764,  -0.253375213570850), \
                     (-0.666625609145029,   1.616446566522207,   0.015775479726511), \
                     (0.017655211703087,  -0.042810696059636,   0.942089263920533) )
@@ -51,6 +56,8 @@ class ColorTransform:
                 rgb2abc = torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif colorspace=="DKLd65":
                 rgb2abc = torch.as_tensor( LMS2006_to_DKLd65, dtype=RGB_lin.dtype, device=RGB_lin.device) @ torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            elif colorspace=="LMShpe":
+                rgb2abc = torch.as_tensor( XYZ_to_LMShpe, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif colorspace=="RGB709":
                 rgb2abc = torch.as_tensor( XYZ_to_RGB709, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif colorspace=="RGB2020":
