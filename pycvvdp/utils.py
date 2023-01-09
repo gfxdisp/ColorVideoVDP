@@ -402,7 +402,7 @@ class SCIELAB_filter():
 
         return newim
         
-class CIE_DeltaE()
+class CIE_DeltaE():
 
     def deltaE00(self, Lab1, Lab2, paramFctr = [1,1,1]):
 

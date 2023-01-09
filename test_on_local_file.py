@@ -82,3 +82,17 @@ for tst_fname in TST_FILEs:
     end = time.time()
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
+
+
+print('DE2000 test')
+de00 = pycvvdp.de2000(display_name=display_name)
+de00.debug = False
+for tst_fname in TST_FILEs:
+
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=10 )
+
+    start = time.time()
+    Q_JOD_static, stats_static = de00.predict_video_source( vs )
+    end = time.time()
+
+    print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )

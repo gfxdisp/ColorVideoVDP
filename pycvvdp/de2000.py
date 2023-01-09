@@ -53,14 +53,14 @@ class de2000(vq_metric):
             e00 = e00 + self.e00_fn(T_lab, R_lab) / N_frames
         return e00, None
     
-    def xyz_to_lab(self, img, W)
+    def xyz_to_lab(self, img, W):
         Lab = torch.empty_like(img)
         Lab[...,0:,:,:] = 116*self.lab_fn(img[...,1,:,:,:]/W[1])-16
         Lab[...,1:,:,:] = 500*(self.lab_fn(img[...,0,:,:,:]/W[0]) - self.lab_fn(img[...,1,:,:,:]/W[1]))
         Lab[...,2:,:,:] = 200*(self.lab_fn(img[...,1,:,:,:]/W[1]) - self.lab_fn(img[...,2,:,:,:]/W[2]))
         return Lab
         
-    def lab_fn(self, x)
+    def lab_fn(self, x):
         y = torch.empty_like(x)
         sigma = (6/29)
         y_1 = x**(1/3)
@@ -70,11 +70,12 @@ class de2000(vq_metric):
         return y
         
     def e00_fn(self, img1, img2):
-        #sz = torch.numel(torch.squeeze(img[...,0,:,:,:]))
-        img1_row = torch.cat(torch.reshape(img1[...,0,:,:,:], (-1,)), torch.reshape(img1[...,1,:,:,:], (-1,)), torch.reshape(img1[...,2,:,:,:], (-1,)), 0)
-        img2_row = torch.cat(torch.reshape(img2[...,0,:,:,:], (-1,)), torch.reshape(img2[...,1,:,:,:], (-1,)), torch.reshape(img2[...,2,:,:,:], (-1,)), 0)
-        e00 = de.deltaE00(img1_row, img2_row)
-        e00_mean = torch.mean(e00)
+        sz = torch.numel(img1[...,0,:,:,:])
+        img1_row = torch.cat((torch.reshape(img1[...,0,:,:,:], (1,sz)), torch.reshape(img1[...,1,:,:,:], (1,sz)), torch.reshape(img1[...,2,:,:,:], (1,sz))), 0)
+        img2_row = torch.cat((torch.reshape(img2[...,0,:,:,:], (1,sz)), torch.reshape(img2[...,1,:,:,:], (1,sz)), torch.reshape(img2[...,2,:,:,:], (1,sz))), 0)
+        e00 = self.de.deltaE00(img1_row, img2_row)
+        e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
+        e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
         return 20*torch.log10( e00_mean )
 
     def short_name(self):
