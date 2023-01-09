@@ -23,7 +23,7 @@ class e_itp(vq_metric):
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
     '''
-    def predict_video_source(self, vid_source, fixation_point=None, frame_padding="replicate"):
+    def predict_video_source(self, vid_source, frame_padding="replicate"):
 
         # T_vid and R_vid are the tensors of the size (1,3,N,H,W)
         # where:
@@ -52,14 +52,14 @@ class e_itp(vq_metric):
             eitp = eitp + self.eitp_fn(T_itp, R_itp) / N_frames
         return eitp, None
     
-    def lmshpe_to_lmshpelin(img)
+    def lmshpe_to_lmshpelin(self, img):
         lms_lin_pos = img**0.43
-        lms_lin_neg = -(-img)**0.43
+        lms_lin_neg = -1*(-img)**0.43
         condition = torch.less(img, 0)
         lms_lin = torch.where(condition, lms_lin_neg, lms_lin_pos)
         return lms_lin
         
-    def lmshpelin_to_itp(img)
+    def lmshpelin_to_itp(self, img):
         LMShpelin_to_itp = (
             (0.4,   0.4,    0.2),
             (4.455, -4.851, 0.396),
@@ -69,7 +69,7 @@ class e_itp(vq_metric):
         for cc in range(3):
             ITP[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
         return ITP
-    
+
     def eitp_fn(self, img1, img2):
         mse = torch.mean(torch.sum( (img1 - img2)**2 ))
         return 20*torch.log10( torch.sqrt(mse) )
