@@ -401,3 +401,68 @@ class SCIELAB_filter():
             newim = np.concatenate((im1, newim, im2), axis=1)
 
         return newim
+        
+class CIE_DeltaE()
+
+    def deltaE00(self, Lab1, Lab2, paramFctr = [1,1,1]):
+
+        kL = paramFctr[0]; kC = paramFctr[1]; kH = paramFctr[2]
+
+        #a1 = np.power(Lab1[1,:],2)
+        #b1 = np.power(Lab1[2,:],2)
+        #c1 = a1 + b1
+        
+        # CIELAB Chroma
+        C1 = np.sqrt( np.power(Lab1[1,:],2) + np.power(Lab1[2,:],2) )
+        C2 = np.sqrt( np.power(Lab2[1,:],2) + np.power(Lab2[2,:],2) )
+
+        # Lab Prime
+        mC = np.add(C1,C2)/2
+        G = 0.5*( 1 - np.sqrt(  np.divide( np.power(mC,7) , np.power(mC,7)+25**7 ) ))
+        LabP1 = np.vstack( (Lab1[0,:], Lab1[1,:]*(1+G), Lab1[2,:]) )
+        LabP2 = np.vstack( (Lab2[0,:], Lab2[1,:]*(1+G), Lab2[2,:]) )
+
+        # Chroma
+        CP1 = np.sqrt( np.power(LabP1[1,:],2) + np.power(LabP1[2,:],2) )
+        CP2 = np.sqrt( np.power(LabP2[1,:],2) + np.power(LabP2[2,:],2) )
+
+        # Hue Angle
+        hP1 = np.arctan2( LabP1[2,:],LabP1[1,:] ) * 180/np.pi # varies from -180 to +180 degree
+        hP2 = np.arctan2( LabP2[2,:],LabP2[1,:] ) * 180/np.pi # varies from -180 to +180 degree
+        hP1[hP1<0] = hP1[hP1<0] + 360 # varies from 0 to +360 degree
+        hP2[hP2<0] = hP2[hP2<0] + 360 # varies from 0 to +360 degree
+
+
+        # Delta Values
+        DLP = LabP1[0,:] - LabP2[0,:]
+        DCP = CP1 - CP2
+        DhP = hP1 - hP2; DhP[DhP>180] = DhP[DhP>180]-360; DhP[DhP<-180] = DhP[DhP<-180]+360
+        DHP = np.multiply( 2*np.sqrt(np.multiply(CP1,CP2)), np.sin( DhP/2.*np.pi/180. ) )
+
+        # Arithmetic mean of LCh' values
+        mLP = ( LabP1[0,:]+LabP2[0,:] )/2
+        mCP = (CP1+CP2)/2
+        mhP = np.zeros_like(mCP)
+        for k in range(0,mhP.size):
+            if abs(hP1[k]-hP2[k])<=180:
+                mhP[k] = (hP1[k]+hP2[k])/2
+            elif abs(hP1[k]-hP2[k])>180 and hP1[k]+hP2[k]<360:
+                mhP[k] = (hP1[k]+hP2[k]+360)/2
+            elif abs(hP1[k]-hP2[k])>180 and hP1[k]+hP2[k]>=360:
+                mhP[k] = (hP1[k]+hP2[k]-360)/2
+
+        # Weighting Functions
+        SL = 1 + np.divide(  0.015*np.power(mLP-50,2), np.sqrt( 20+np.power(mLP-50,2) )  )
+        SC = 1+0.045*mCP
+        T = 1-0.17*np.cos((mhP-30)*np.pi/180.)+0.24*np.cos((2*mhP)*np.pi/180.)+0.32*np.cos((3*mhP+6)*np.pi/180.)-0.2*np.cos((4*mhP-63)*np.pi/180.)
+        SH = 1+0.015*np.multiply(mCP,T)
+
+        # Rotation function
+        RC = 2 * np.sqrt(np.divide(  np.power(mCP,7), np.power(mCP,7)+25**7  ))
+        # DTheta = 30.*exp(-((mhP-275)./25).^2)
+        DTheta = 30 * np.exp(-np.power(  (mhP-275)/25,2  ))
+        RT = np.multiply( -np.sin(2*DTheta*np.pi/180.), RC )
+
+        dE00 = np.sqrt(  np.power( np.divide(DLP,kL*SL) ,2) + np.power( np.divide(DCP,kC*SC) ,2) + np.power( np.divide(DHP,kH*SH) ,2)
+                         + np.multiply(RT, np.multiply( np.divide(DCP,kC*SC), np.divide(DHP,kH*SH) ) ))
+        return dE00

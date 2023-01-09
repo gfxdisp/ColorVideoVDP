@@ -7,7 +7,7 @@ from pycvvdp.vq_metric import *
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 
 """
-E-ITP metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
+E-SITP metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
 """
 class e_sitp(vq_metric):
     def __init__(self, device=None,display_name=None,display_geometry=None):
@@ -47,7 +47,7 @@ class e_sitp(vq_metric):
 
         _, _, N_frames = vid_source.get_video_size()
 
-        eitp = 0.0
+        esitp = 0.0
         for ff in range(N_frames):
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
@@ -64,8 +64,8 @@ class e_sitp(vq_metric):
             T_sitp = self.itp_to_sitp(T_itp, self.pix_per_deg)
             R_sitp = self.itp_to_sitp(R_itp, self.pix_per_deg)
             
-            eitp = eitp + self.eitp_fn(T_sitp, R_sitp) / N_frames
-        return eitp, None
+            esitp = esitp + self.eitp_fn(T_sitp, R_sitp) / N_frames
+        return esitp, None
     
     def lmshpe_to_lmshpelin(self, img):
         lms_lin_pos = img**0.43
@@ -98,7 +98,7 @@ class e_sitp(vq_metric):
         return 20*torch.log10( torch.sqrt(mse) )
 
     def short_name(self):
-        return "E-ITP"
+        return "E-SITP"
 
     def quality_unit(self):
         return "dB"
