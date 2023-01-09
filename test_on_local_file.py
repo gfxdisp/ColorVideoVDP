@@ -27,19 +27,20 @@ TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_Level003.mp4'))
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
 """
+"""
 print('CVVDP test')
 cvvdp = pycvvdp.cvvdp(display_name=display_name)
 cvvdp.debug = False
 for tst_fname in TST_FILEs:
     
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120 )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=10 )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
     end = time.time()
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
-"""
+
 
 print('PU PSNR test')
 psnr = pycvvdp.pu_psnr_y()
@@ -54,6 +55,7 @@ for tst_fname in TST_FILEs:
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
 
+
 print('E_ITP test')
 eitp = pycvvdp.e_itp()
 eitp.debug = False
@@ -63,6 +65,20 @@ for tst_fname in TST_FILEs:
 
     start = time.time()
     Q_JOD_static, stats_static = eitp.predict_video_source( vs )
+    end = time.time()
+
+    print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
+
+
+print('E_Spatial ITP test')
+esitp = pycvvdp.e_sitp(display_name=display_name)
+esitp.debug = False
+for tst_fname in TST_FILEs:
+
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=10 )
+
+    start = time.time()
+    Q_JOD_static, stats_static = esitp.predict_video_source( vs )
     end = time.time()
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
