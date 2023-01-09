@@ -27,7 +27,7 @@ TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_Level003.mp4'))
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
 """
-"""
+
 print('CVVDP test')
 cvvdp = pycvvdp.cvvdp(display_name=display_name)
 cvvdp.debug = False
@@ -96,3 +96,19 @@ for tst_fname in TST_FILEs:
     end = time.time()
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
+    
+    """
+    
+print('Spatial DE2000 test')
+s_de00 = pycvvdp.s_de2000(display_name=display_name)
+s_de00.debug = False
+for tst_fname in TST_FILEs:
+
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=10 )
+
+    start = time.time()
+    Q_JOD_static, stats_static = s_de00.predict_video_source( vs )
+    end = time.time()
+
+    print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
+    

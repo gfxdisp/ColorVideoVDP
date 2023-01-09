@@ -205,6 +205,25 @@ class PU():
 class SCIELAB_filter():
     # apply S-CIELAB filtering
     
+    XYZ_to_opp = (
+            (0.2787,0.7218,-0.1066),
+            (-0.4488,0.2898,0.0772),
+            (0.0860,-0.5900,0.5011) )
+            
+    def xyz_to_opp(self, img):
+        mat = torch.as_tensor( self.XYZ_to_opp, dtype=img.dtype, device=img.device)
+        OPP = torch.empty_like(img)
+        for cc in range(3):
+            OPP[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+        return OPP
+        
+    def opp_to_xyz(self, img):
+        mat = torch.as_tensor( np.linalg.inv(self.XYZ_to_opp), dtype=img.dtype, device=img.device)
+        XYZ = torch.empty_like(img)
+        for cc in range(3):
+            XYZ[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+        return XYZ
+    
     def gauss(self, halfWidth, width):
         # Returns a 1D Gaussian vector.  The gaussian sums to one.
         # The halfWidth must be greater than one.
