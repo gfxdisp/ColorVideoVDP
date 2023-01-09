@@ -73,18 +73,7 @@ class s_de2000(vq_metric):
             
             # Meancdm of Per-pixel DE2000            
             e_s00 = e_s00 + self.e00_fn(T_s_lab, R_s_lab) / N_frames
-        return e00, None
-    
-    def xyz_to_opp(self, img):
-        XYZ_to_opp = (
-            (0.2787,0.7218,-0.1066),
-            (-0.4488,0.2898,0.0772),
-            (0.0860,-0.5900,0.5011) )
-        mat = torch.as_tensor( XYZ_to_opp, dtype=img.dtype, device=img.device)
-        OPP = torch.empty_like(img)
-        for cc in range(3):
-            OPP[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
-        return OPP
+        return e_s00, None
     
     def opp_to_sopp(self, img, ppd):
         S_OPP = torch.empty_like(img)
