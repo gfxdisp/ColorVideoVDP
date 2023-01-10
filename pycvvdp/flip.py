@@ -47,6 +47,9 @@ class flip(vq_metric):
     def set_display_model(self, display_photometry, display_geometry):
         self.ppd = display_geometry.get_ppd()
 
+    def short_name(self):
+        return 'HDR-FLIP'
+
 
 """
 FLIP metric

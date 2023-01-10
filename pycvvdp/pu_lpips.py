@@ -49,3 +49,6 @@ class pu_lpips(vq_metric):
 
             quality += self.lpips(T_enc, R_enc) / N_frames
         return quality, None
+
+    def short_name(self):
+        return 'PU21-LPIPS'
