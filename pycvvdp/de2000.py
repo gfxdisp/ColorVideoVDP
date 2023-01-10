@@ -4,12 +4,13 @@ import numpy as np
 from pycvvdp.utils import CIE_DeltaE
 from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_photo_absolute, vvdp_display_photo_eotf
 
 """
 DE2000 metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
 """
 class de2000(vq_metric):
-    def __init__(self, device=None,display_name=None,display_geometry=None):
+    def __init__(self, device=None,display_name=None,display_geometry=None,display_photometry=None):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -23,6 +24,18 @@ class de2000(vq_metric):
         # D65 White point
         self.w = (0.9505, 1.0000, 1.0888)
         self.colorspace = 'XYZ'       
+        
+        if display_photometry is None:
+            self.display_photometry = vvdp_display_photo_absolute.load(display_name)
+        else:
+            self.display_photometry = display_photometry
+        
+        self.max_L = self.display_photometry.get_peak_luminance()
+       # print('Max lum')
+        #print(self.max_L)
+        self.max_L = np.where( self.max_L < 300, self.max_L, 300)
+        #print(self.max_L)
+        self.w = self.max_L*self.w
         
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
