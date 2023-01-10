@@ -106,13 +106,13 @@ class s_de2000(vq_metric):
         e00 = self.de.deltaE00(img1_row, img2_row)
         e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
         e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
-        return 20*torch.log10( e00_mean )
+        return  e00_mean
 
     def short_name(self):
         return "dE 2000"
 
     def quality_unit(self):
-        return "dB"
+        return "Delta E2000"
 
     def get_info_string(self):
         return None

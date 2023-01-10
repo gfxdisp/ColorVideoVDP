@@ -72,13 +72,13 @@ class e_itp(vq_metric):
 
     def eitp_fn(self, img1, img2):
         mse = torch.mean(torch.sum( (img1 - img2)**2 ))
-        return 20*torch.log10( torch.sqrt(mse) )
+        return torch.sqrt(mse)
 
     def short_name(self):
         return "E-ITP"
 
     def quality_unit(self):
-        return "dB"
+        return "RMSE"
 
     def get_info_string(self):
         return None
