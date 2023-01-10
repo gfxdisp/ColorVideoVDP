@@ -1,5 +1,4 @@
 import torch
-from lpips import LPIPS
 
 from pycvvdp.utils import PU
 from pycvvdp.vq_metric import vq_metric
@@ -10,6 +9,7 @@ First install LPIPS with "pip install lpips"
 """
 class pu_lpips(vq_metric):
     def __init__(self, device=None, net='vgg'):
+        from lpips import LPIPS
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -43,9 +43,9 @@ class pu_lpips(vq_metric):
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
 
             # Apply PU and reshape to (1,C,H,W)
-            # Input pixels shoulb lie in [0,1]
-            T_enc = self.pu.encode(T).squeeze(2) / 255.
-            R_enc = self.pu.encode(R).squeeze(2) / 255.
+            # Input pixels shoulb lie in [-1,1]
+            T_enc = self.pu.encode(T).squeeze(2) / 255. * 2 - 1
+            R_enc = self.pu.encode(R).squeeze(2) / 255. * 2 - 1
 
             quality += self.lpips(T_enc, R_enc) / N_frames
         return quality, None
