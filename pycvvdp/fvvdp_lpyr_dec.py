@@ -262,7 +262,7 @@ class fvvdp_contrast_pyr(fvvdp_lpyr_dec):
 
             # Order: test-sustained, ref-sustained, test-transient, ref-transient
             # L_bkg is set to ref-sustained 
-            L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.1)
+            L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
             contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
 
             lpyr.append(contrast)

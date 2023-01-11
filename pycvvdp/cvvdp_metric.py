@@ -225,7 +225,7 @@ class cvvdp(vq_metric):
                 # More memory required when training. TODO: better way to detect when running with require_grad
                 mem_per_frame = pix_cnt*2000   # Estimated memory required per frame
             else:
-                mem_per_frame = pix_cnt*450   # Estimated memory required per frame
+                mem_per_frame = pix_cnt*400   # Estimated memory required per frame
 
             max_frames = int((mem_avail-mem_const)/mem_per_frame) # how many frames can we fit into memory
 
@@ -432,7 +432,7 @@ class cvvdp(vq_metric):
                     cch = cc if cc<3 else 0 # Y, rg, yv
                     S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                D = self.apply_masking_model(T_f/L_bkg, R_f/L_bkg, S)
+                D = self.apply_masking_model(T_f, R_f, S)
 
             # if self.do_heatmap:
             #     if cc == 0: self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, D)
