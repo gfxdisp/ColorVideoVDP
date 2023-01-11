@@ -225,7 +225,7 @@ class cvvdp(vq_metric):
                 # More memory required when training. TODO: better way to detect when running with require_grad
                 mem_per_frame = pix_cnt*2000   # Estimated memory required per frame
             else:
-                mem_per_frame = pix_cnt*350   # Estimated memory required per frame
+                mem_per_frame = pix_cnt*450   # Estimated memory required per frame
 
             max_frames = int((mem_avail-mem_const)/mem_per_frame) # how many frames can we fit into memory
 
