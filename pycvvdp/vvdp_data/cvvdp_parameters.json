@@ -17,13 +17,13 @@
     "masking_model": "min_mutual_masking_perc_norm2",
     "local_adapt": "gpyr",
     "contrast": "weber", 
-    "jod_a": 0.128014, 
-    "jod_exp": 0.396704,
+    "jod_a": 0.122472, 
+    "jod_exp": 0.402973,
     "mask_q_sust": 2.43685,
     "mask_q_trans": 4.946,
     "filter_len": -1,
-    "ch_weights": [1, 0.860823, 1.05356, 1.05356],
+    "ch_weights": [1, 0.670641, 0.670641, 0.934749],
     "sigma_tf": [5.79336, 14.1255, 6.63661, 0.12314],
     "beta_tf": [1.3314, 1.1196, 0.947901, 0.1898],    
-    "baseband_weight": 12.7752
+    "baseband_weight": 30.6482	
 }
