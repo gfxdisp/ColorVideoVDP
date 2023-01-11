@@ -432,7 +432,7 @@ class cvvdp(vq_metric):
                     cch = cc if cc<3 else 0 # Y, rg, yv
                     S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                D = self.apply_masking_model(T_f, R_f, S)
+                D = self.apply_masking_model(T_f/L_bkg, R_f/L_bkg, S)
 
             # if self.do_heatmap:
             #     if cc == 0: self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, D)

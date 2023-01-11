@@ -6,7 +6,7 @@ import time
 import pycvvdp
 import logging
 
-display_name = 'standard_4k'
+display_name = 'eizo_CG3146'
 
 # media_folder = 'S:\\Datasets\\XR-DAVID\\cache'
 # ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
@@ -16,14 +16,18 @@ media_folder = 'S:\\Datasets\\XR-DAVID'
 # ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_WGNU_Level003.mp4'))
 
-ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_DUC_Level003.mp4'))
+# ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
+# TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_DUC_Level003.mp4'))
+
+ref_file = os.path.join(media_folder, 'Snow_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'Snow_Dither_Level003.mp4'))
 
 # media_folder = 'S:\\Datasets\\LIVEHDR\\train'
 # ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, '4k_3M_CenterPanorama.mp4'))
 
 
+pycvvdp.utils.config_files.set_config_dir(media_folder)
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
 cvvdp = pycvvdp.cvvdp(display_name=display_name)
