@@ -25,18 +25,6 @@ class de2000(vq_metric):
         self.w = (0.9505, 1.0000, 1.0888)
         self.colorspace = 'XYZ'       
         
-        if display_photometry is None:
-            self.display_photometry = vvdp_display_photo_absolute.load(display_name)
-        else:
-            self.display_photometry = display_photometry
-        
-        self.max_L = self.display_photometry.get_peak_luminance()
-       # print('Max lum')
-        #print(self.max_L)
-        self.max_L = np.where( self.max_L < 300, self.max_L, 300)
-        #print(self.max_L)
-        self.w = self.max_L*self.w
-        
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
     '''
@@ -59,8 +47,9 @@ class de2000(vq_metric):
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
             
             # XYZ to Lab
-            T_lab = self.xyz_to_lab(T, self.w)
-            R_lab = self.xyz_to_lab(R, self.w)
+            w = self.max_L*self.w
+            T_lab = self.xyz_to_lab(T, w)
+            R_lab = self.xyz_to_lab(R, w)
             
             # Meancdm of Per-pixel DE2000            
             e00 = e00 + self.e00_fn(T_lab, R_lab) / N_frames
@@ -87,15 +76,20 @@ class de2000(vq_metric):
         img1_row = torch.cat((torch.reshape(img1[...,0,:,:,:], (1,sz)), torch.reshape(img1[...,1,:,:,:], (1,sz)), torch.reshape(img1[...,2,:,:,:], (1,sz))), 0)
         img2_row = torch.cat((torch.reshape(img2[...,0,:,:,:], (1,sz)), torch.reshape(img2[...,1,:,:,:], (1,sz)), torch.reshape(img2[...,2,:,:,:], (1,sz))), 0)
         e00 = self.de.deltaE00(img1_row, img2_row)
-        e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
-        e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
+        # e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
+        # e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
+        e00_mean = torch.mean(e00)
         return e00_mean
 
     def short_name(self):
-        return "dE 2000"
+        return "DE-2000"
 
     def quality_unit(self):
         return "Delta E2000"
 
     def get_info_string(self):
         return None
+
+    def set_display_model(self, display_photometry, display_geometry):
+        self.max_L = display_photometry.get_peak_luminance()
+        self.max_L = np.where( self.max_L < 300, self.max_L, 300)

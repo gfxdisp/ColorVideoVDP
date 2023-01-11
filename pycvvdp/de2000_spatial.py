@@ -3,9 +3,7 @@ import numpy as np
 
 from pycvvdp.utils import CIE_DeltaE
 from pycvvdp.utils import SCIELAB_filter
-from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry, vvdp_display_photo_absolute
 
 """
 Spatial DE2000 metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
@@ -26,22 +24,6 @@ class s_de2000(vq_metric):
         # D65 White point
         self.w = (0.9505, 1.0000, 1.0888)
         self.colorspace = 'XYZ'       
-        
-        if display_geometry is None:
-            self.display_geometry = vvdp_display_geometry.load(display_name)
-        else:
-            self.display_geometry = display_geometry
-
-        self.pix_per_deg = self.display_geometry.get_ppd()
-        
-        if display_photometry is None:
-            self.display_photometry = vvdp_display_photo_absolute.load(display_name)
-        else:
-            self.display_photometry = display_photometry
-        
-        self.max_L = self.display_photometry.get_peak_luminance()
-        self.max_L = np.where( self.max_L < 300, self.max_L, 300)
-        self.w = self.max_L*self.w
         
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
@@ -69,16 +51,17 @@ class s_de2000(vq_metric):
             R_opp = self.slab.xyz_to_opp(R)
             
             # Spatially filtered opponent colour images
-            T_s_opp = self.opp_to_sopp(T_opp, self.pix_per_deg)
-            R_s_opp = self.opp_to_sopp(R_opp, self.pix_per_deg)
+            T_s_opp = self.opp_to_sopp(T_opp, self.ppd)
+            R_s_opp = self.opp_to_sopp(R_opp, self.ppd)
             
             # S-OPP to S-XYZ
             T_s_xyz = self.slab.opp_to_xyz(T_s_opp)
             R_s_xyz = self.slab.opp_to_xyz(R_s_opp)
             
             # S-XYZ to S-Lab
-            T_s_lab = self.xyz_to_lab(T_s_xyz, self.w)
-            R_s_lab = self.xyz_to_lab(R_s_xyz, self.w)
+            w = self.max_L*self.w
+            T_s_lab = self.xyz_to_lab(T_s_xyz, w)
+            R_s_lab = self.xyz_to_lab(R_s_xyz, w)
             
             # Meancdm of Per-pixel DE2000            
             e_s00 = e_s00 + self.e00_fn(T_s_lab, R_s_lab) / N_frames
@@ -86,10 +69,11 @@ class s_de2000(vq_metric):
     
     def opp_to_sopp(self, img, ppd):
         S_OPP = torch.empty_like(img)
+        img = img.cpu().numpy()
         [k1, k2, k3] = self.slab.separableFilters(ppd)
-        S_OPP[...,0:,:,:] = torch.from_numpy(self.slab.separableConv(torch.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))).to(S_OPP)
-        S_OPP[...,1:,:,:] = torch.from_numpy(self.slab.separableConv(torch.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))).to(S_OPP)
-        S_OPP[...,2:,:,:] = torch.from_numpy(self.slab.separableConv(torch.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))).to(S_OPP)
+        S_OPP[...,0:,:,:] = torch.from_numpy(self.slab.separableConv(np.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))).to(S_OPP)
+        S_OPP[...,1:,:,:] = torch.from_numpy(self.slab.separableConv(np.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))).to(S_OPP)
+        S_OPP[...,2:,:,:] = torch.from_numpy(self.slab.separableConv(np.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))).to(S_OPP)
         return S_OPP
         
     def xyz_to_lab(self, img, W):
@@ -113,15 +97,21 @@ class s_de2000(vq_metric):
         img1_row = torch.cat((torch.reshape(img1[...,0,:,:,:], (1,sz)), torch.reshape(img1[...,1,:,:,:], (1,sz)), torch.reshape(img1[...,2,:,:,:], (1,sz))), 0)
         img2_row = torch.cat((torch.reshape(img2[...,0,:,:,:], (1,sz)), torch.reshape(img2[...,1,:,:,:], (1,sz)), torch.reshape(img2[...,2,:,:,:], (1,sz))), 0)
         e00 = self.de.deltaE00(img1_row, img2_row)
-        e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
-        e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
-        return  e00_mean
+        # e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
+        # e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
+        e00_mean = torch.mean(e00)
+        return e00_mean
 
     def short_name(self):
-        return "dE 2000"
+        return "S-DE-2000"
 
     def quality_unit(self):
         return "Delta E2000"
 
     def get_info_string(self):
         return None
+
+    def set_display_model(self, display_photometry, display_geometry):
+        self.ppd = display_geometry.get_ppd()
+        self.max_L = display_photometry.get_peak_luminance()
+        self.max_L = np.where( self.max_L < 300, self.max_L, 300)

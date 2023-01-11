@@ -4,13 +4,12 @@ import numpy as np
 from pycvvdp.utils import SCIELAB_filter
 from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 
 """
 E-SITP metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
 """
 class e_sitp(vq_metric):
-    def __init__(self, device=None,display_name=None,display_geometry=None):
+    def __init__(self, device=None):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -22,14 +21,6 @@ class e_sitp(vq_metric):
         
         self.sitp = SCIELAB_filter()
         self.colorspace = 'LMShpe'
-        
-        if display_geometry is None:
-            self.display_geometry = vvdp_display_geometry.load(display_name)
-        else:
-            self.display_geometry = display_geometry
-
-        self.pix_per_deg = self.display_geometry.get_ppd()
-        #print('ppd: %d degrees' %self.pix_per_deg)
         
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
@@ -61,8 +52,8 @@ class e_sitp(vq_metric):
             R_itp = self.lmshpelin_to_itp(R_lms_lin)
             
             # ITP to Spatial ITP
-            T_sitp = self.itp_to_sitp(T_itp, self.pix_per_deg)
-            R_sitp = self.itp_to_sitp(R_itp, self.pix_per_deg)
+            T_sitp = self.itp_to_sitp(T_itp, self.ppd)
+            R_sitp = self.itp_to_sitp(R_itp, self.ppd)
             
             esitp = esitp + self.eitp_fn(T_sitp, R_sitp) / N_frames
         return esitp, None
@@ -87,10 +78,11 @@ class e_sitp(vq_metric):
 
     def itp_to_sitp(self, img, ppd):
         S_ITP = torch.empty_like(img)
+        img = img.cpu().numpy()
         [k1, k2, k3] = self.sitp.separableFilters(ppd)
-        S_ITP[...,0:,:,:] = torch.from_numpy(self.sitp.separableConv(torch.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))).to(S_ITP)
-        S_ITP[...,1:,:,:] = torch.from_numpy(self.sitp.separableConv(torch.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))).to(S_ITP)
-        S_ITP[...,2:,:,:] = torch.from_numpy(self.sitp.separableConv(torch.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))).to(S_ITP)
+        S_ITP[...,0:,:,:] = torch.from_numpy(self.sitp.separableConv(np.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))).to(S_ITP)
+        S_ITP[...,1:,:,:] = torch.from_numpy(self.sitp.separableConv(np.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))).to(S_ITP)
+        S_ITP[...,2:,:,:] = torch.from_numpy(self.sitp.separableConv(np.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))).to(S_ITP)
         return S_ITP
         
     def eitp_fn(self, img1, img2):
@@ -105,3 +97,6 @@ class e_sitp(vq_metric):
 
     def get_info_string(self):
         return None
+
+    def set_display_model(self, display_photometry, display_geometry):
+        self.ppd = display_geometry.get_ppd()
