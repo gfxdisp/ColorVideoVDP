@@ -225,7 +225,7 @@ class cvvdp(vq_metric):
                 # More memory required when training. TODO: better way to detect when running with require_grad
                 mem_per_frame = pix_cnt*2000   # Estimated memory required per frame
             else:
-                mem_per_frame = pix_cnt*400   # Estimated memory required per frame
+                mem_per_frame = pix_cnt*450   # Estimated memory required per frame
 
             max_frames = int((mem_avail-mem_const)/mem_per_frame) # how many frames can we fit into memory
 
@@ -418,10 +418,9 @@ class cvvdp(vq_metric):
                 if self.local_adapt=="gpyr":
                     L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
                 else:
-                    raise RuntimeError( "Not implemented")
+                    #raise RuntimeError( "Not implemented")
                     # # 1:2 below is passing reference sustained
-                    # L_bkg, R_f, T_f = self.compute_local_contrast(R_f, T_f, 
-                    #     lpyr.get_gband(L_bkg_pyr, bb+1)[1:2,...], L_adapt)
+                    L_bkg, T_f, R_f = self.compute_local_contrast(T_f, R_f, lpyr, L_bkg_pyr, bb)
 
                 # Compute CSF
                 rho = rho_band[bb] # Spatial frequency in cpd
@@ -462,7 +461,7 @@ class cvvdp(vq_metric):
         R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
         D = self.mask_func_perc_norm( torch.abs(T-R), M )
-        D = torch.clamp(D, max=1e4)
+        D = torch.clamp(D, max=1e8)
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
@@ -488,26 +487,15 @@ class cvvdp(vq_metric):
         return R
 
 
-    def compute_local_contrast(self, R, T, next_gauss_band, L_adapt):
-        if self.local_adapt=="simple":
-            L_bkg = Func.interpolate(L_adapt.unsqueeze(0).unsqueeze(0), R.shape, mode='bicubic', align_corners=True)
-            # L_bkg = torch.ones_like(R) * torch.mean(R)
-            # np2img(l2rgb(L_adapt.unsqueeze(-1).cpu().data.numpy())/200.0).show()
-            # np2img(l2rgb(L_bkg[0,0].unsqueeze(-1).cpu().data.numpy())/200.0).show()
-        elif self.local_adapt=="gpyr":
-            if self.contrast == "log":
-                next_gauss_band = torch.pow(10.0, next_gauss_band)
-            L_bkg = self.lpyr.gausspyr_expand(next_gauss_band, [R.shape[-2], R.shape[-1]])
+    def compute_local_contrast(self, T_f, R_f, lpyr, L_bkg_pyr, bb):
+        if self.local_adapt=="simple_ref":
+            L_bkg = lpyr.get_gband(L_bkg_pyr,bb)[1:2,:,:,:].clamp(min=0.01) # sustained, reference
+            T = T_f / L_bkg  
+            R = R_f / L_bkg
         else:
-            print("Error: local adaptation %s not supported" % self.local_adapt)
-            return
+            raise RuntimeError( f"Error: local adaptation {self.local_adapt} not supported" )
 
-        if self.contrast != "log":
-            L_bkg_clamped = torch.clamp(L_bkg, min=0.1)
-            T = torch.clamp(torch.div(T, L_bkg_clamped), max=1000.0)
-            R = torch.clamp(torch.div(R, L_bkg_clamped), max=1000.0)
-
-        return L_bkg, R, T
+        return L_bkg, T, R
 
     def weber2log(self, W):
         # Convert Weber contrast 
