@@ -113,7 +113,11 @@ class cvvdp(vq_metric):
         self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.baseband_weight = parameters['baseband_weight']
+        self.dclamp_type = parameters['dclamp_type']
+        self.dclamp_par = torch.as_tensor( parameters['dclamp_par'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
+
+        self.omega = [0, 5]
 
         # other parameters
         self.debug = False
@@ -184,10 +188,9 @@ class cvvdp(vq_metric):
 
         if is_image:
             temp_ch = 1  # How many temporal channels
-            self.omega = [0]
         else:
             temp_ch = 2
-            self.F, self.omega = self.get_temporal_filters(vid_source.get_frames_per_second())
+            self.F, omega_tmp = self.get_temporal_filters(vid_source.get_frames_per_second())
             self.filter_len = torch.numel(self.F[0])
 
         all_ch = 2+temp_ch
@@ -461,7 +464,14 @@ class cvvdp(vq_metric):
         R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
         D = self.mask_func_perc_norm( torch.abs(T-R), M )
-        D = torch.clamp(D, max=1e4)
+        if self.dclamp_type == "hard":
+            D = torch.clamp(D, max=self.dclamp_par)
+        elif self.dclamp_type == "soft":
+            n = self.dclamp_par[0]
+            off = self.dclamp_par[1]
+            D = (D**n)/(off + D**n)
+        else:
+            raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
