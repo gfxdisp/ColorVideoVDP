@@ -461,7 +461,7 @@ class cvvdp(vq_metric):
         R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
         D = self.mask_func_perc_norm( torch.abs(T-R), M )
-        D = torch.clamp(D, max=1e8)
+        D = torch.clamp(D, max=1e4)
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
