@@ -26,6 +26,6 @@
     "sigma_tf": [5.79336, 14.1255, 6.63661, 0.12314],
     "beta_tf": [1.3314, 1.1196, 0.947901, 0.1898],    
     "baseband_weight": 30.6482,
-    "dclamp_type": "soft", 
-    "dclamp_par": [1, 50]
+    "dclamp_type": "hard", 
+    "dclamp_par": 10000
 }
