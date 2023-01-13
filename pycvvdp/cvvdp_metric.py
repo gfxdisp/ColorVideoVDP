@@ -463,21 +463,26 @@ class cvvdp(vq_metric):
         T = T*S
         R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
-        D = self.mask_func_perc_norm( torch.abs(T-R), M )
-        if self.dclamp_type == "hard":
-            D = torch.clamp(D, max=self.dclamp_par)
-        elif self.dclamp_type == "soft":
-            n = self.dclamp_par[0]
-            off = self.dclamp_par[1]
-            D = (D**n)/(off + D**n)
-        else:
-            raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
+        D = self.clamp_diffs( self.mask_func_perc_norm( torch.abs(T-R), M ) )
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
             self.mem_allocated_peak = max( self.mem_allocated_peak, allocated )
 
         return D
+
+    def clamp_diffs(self,D):
+        if self.dclamp_type == "hard":
+            Dc = torch.clamp(D, max=self.dclamp_par)
+        elif self.dclamp_type == "soft":
+            n = self.dclamp_par[0]
+            off = self.dclamp_par[1]
+            Dc = (D**n)/(off**n + D**n)
+        else:
+            raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
+
+        return Dc
+
 
     def phase_uncertainty(self, M):
         if self.pu_dilate != 0:
