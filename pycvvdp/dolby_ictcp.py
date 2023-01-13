@@ -46,21 +46,12 @@ class ictcp(vq_metric):
             # TODO: Batched processing
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
-            
-            print('Y scale')
-            print(torch.max(T[...,0,:,:,:] ))
         
             T_lms_prime = self.invEOTF(self.colorspace_conversion(T, self.XYZ2LMS))
             R_lms_prime = self.invEOTF(self.colorspace_conversion(R, self.XYZ2LMS))
             
-            print('LMS lin scale')
-            print(torch.max(T_lms_prime[...,0,:,:,:] ))
-            
             T_ictcp = self.colorspace_conversion(T_lms_prime, self.LMS2ICTCP) 
             R_ictcp = self.colorspace_conversion(R_lms_prime, self.LMS2ICTCP) 
-            
-            print('I  scale')
-            print(torch.max(T_ictcp[...,0,:,:,:] ))
             
             quality += self.delta_itp(T_ictcp, R_ictcp) / N_frames
         return quality, None
@@ -80,8 +71,6 @@ class ictcp(vq_metric):
     Reference: https://kb.portrait.com/help/ictcp-color-difference-metric
     """
     def delta_itp(self, img1, img2):
-        print('I scale')
-        print(torch.max(img1[...,0,:,:,:] ))
         return 720 * torch.sqrt((img1[...,0,:,:,:] - img2[...,0,:,:,:])**2 +
                                 0.5 * (img1[...,1,:,:,:] - img2[...,1,:,:,:])**2 +
                                 (img1[...,2,:,:,:] - img2[...,2,:,:,:])**2).mean()

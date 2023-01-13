@@ -317,7 +317,7 @@ class SCIELAB_filter():
             align = [align, align]
 
         if len(orig.shape) == 1:  # 1D array
-            orig = orig.reshape(-1, 1)  # make it to (mx1) array
+            orig = torch.reshape(orig,(-1, 1))  # make it to (mx1) array
 
         [m1, n1] = orig.shape
         m2 = newSize[0]
@@ -325,7 +325,7 @@ class SCIELAB_filter():
         m = np.minimum(m1, m2)
         n = np.minimum(n1, n2)
 
-        result = np.ones((m2, n2)) * padding
+        result = torch.ones((m2, n2), dtype=torch.double) * padding
 
         start1 = np.array([np.floor((m1 - m) / 2 * (1 + align[0])), np.floor((n1 - n) / 2 * (1 + align[1]))]) + 1
         start2 = np.array([np.floor((m2 - m) / 2 * (1 + align[0])), np.floor((n2 - n) / 2 * (1 + align[1]))]) + 1
@@ -518,6 +518,33 @@ class SCIELAB_filter():
             result = result + p
         return result
     
+    def separableConv_torch(self, im, xkernels, ykernels):
+        # Two-dimensional convolution with X-Y separable kernels.
+        #
+        # im is the input matric. im is reflected on all sides before convolution.
+        # xkernels and ykernels are both row vectors.
+        # If xkernels and ykernels are matrices, each row is taken as
+        #   one convolution kernel and convolved with the image, and the
+        #   sum of the results is returned.
+
+        w1 = self.pad4conv_torch(im, xkernels.shape[1], 2)
+        
+        
+        result = torch.empty_like(im)
+        for j in range(xkernels.shape[0]):
+            # first convovle in the horizontal direction
+            p = self.conv2_torch(w1, xkernels[j,:].reshape(1,-1))
+            p = self.resize_torch(p, im.shape)
+
+            # then the vertical direction
+            w2 = self.pad4conv_torch(p, ykernels.shape[1], 1)
+            p = self.conv2_torch(w2, ykernels[j,:].reshape(-1,1))
+            p = self.resize_torch(p, im.shape)
+            
+            # result is sum of several separable convolutions
+            result = result + p
+        return result
+        
     def pad4conv(self, im, kernelsize, dim):
         # Pad the input image ready for convolution. The edges of the image are reflected on all sides.
         # kernelsize -- size of the convolution kernel in the format
@@ -553,6 +580,50 @@ class SCIELAB_filter():
             im1 = np.fliplr(newim[:, 0:w])
             im2 = np.fliplr(newim[:, n - w:n])
             newim = np.concatenate((im1, newim, im2), axis=1)
+
+        return newim
+        
+    def pad4conv_torch(self, im, kernelsize, dim):
+        # Pad the input image ready for convolution. The edges of the image are reflected on all sides.
+        # kernelsize -- size of the convolution kernel in the format
+        #   [numRows numCol]. If one number is given, assume numRows=numCols.
+        # dim -- when set at 1, pad extra rows, but leave number of columns unchanged;
+        #        when set at 2, pad extra columns, leave number of rows unchanged;
+
+        newim = torch.clone(im)
+        [m, n] = np.int_(im.shape)
+        #print('is list or not')
+        #print(isinstance(kernelsize, list))
+        #print('kernel type before')
+        #print(type(kernelsize))
+        if not isinstance(kernelsize, list):
+            kernelsize = [kernelsize, kernelsize]
+        #print('kernel type after')
+        #print(type(kernelsize))
+        
+        # If kernel is larger than image, than just pad all side with half
+        # the image size, otherwise pad with half the kernel size
+        if kernelsize[0] >= m:
+            h = int(np.floor(m / 2))
+        else:
+            h = int(np.floor(kernelsize[0] / 2))
+
+        if kernelsize[1] >= n:
+            w = int(np.floor(n / 2))
+        else:
+            w = int(np.floor(kernelsize[1] / 2))
+
+        # first reflect the upper and lower edges
+        if h != 0 and dim != 2:
+            im1 = torch.flipud(newim[0:h, :])
+            im2 = torch.flipud(newim[m - h:m, :])
+            newim = torch.concatenate((im1, newim, im2), axis=0)
+
+        # then reflect the left and right sides
+        if w != 0 and dim != 1:
+            im1 = torch.fliplr(newim[:, 0:w])
+            im2 = torch.fliplr(newim[:, n - w:n])
+            newim = torch.concatenate((im1, newim, im2), axis=1)
 
         return newim
         

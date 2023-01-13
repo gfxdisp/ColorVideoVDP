@@ -69,11 +69,11 @@ class s_de2000(vq_metric):
     
     def opp_to_sopp(self, img, ppd):
         S_OPP = torch.empty_like(img)
-        img = img.cpu().numpy()
-        [k1, k2, k3] = self.slab.separableFilters(ppd)
-        S_OPP[...,0:,:,:] = torch.from_numpy(self.slab.separableConv(np.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))).to(S_OPP)
-        S_OPP[...,1:,:,:] = torch.from_numpy(self.slab.separableConv(np.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))).to(S_OPP)
-        S_OPP[...,2:,:,:] = torch.from_numpy(self.slab.separableConv(np.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))).to(S_OPP)
+        #img = img.cpu().numpy()
+        [k1, k2, k3] = self.slab.separableFilters_torch(ppd)
+        S_OPP[...,0:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))
+        S_OPP[...,1:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))
+        S_OPP[...,2:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))
         return S_OPP
         
     def xyz_to_lab(self, img, W):
