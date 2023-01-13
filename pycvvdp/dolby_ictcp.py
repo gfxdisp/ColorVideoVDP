@@ -22,10 +22,10 @@ class ictcp(vq_metric):
         self.colorspace = 'XYZ'
         self.XYZ2LMS = torch.tensor(((0.3593, -0.1921, 0.0071),
                                      (0.6976, 1.1005, 0.0748),
-                                     (-0.0359, 0.0754, 0.8433)), device=self.device)
+                                     (-0.0359, 0.0754, 0.8433)), device=self.device).T
         self.LMS2ICTCP = torch.tensor(((2048, 2048, 0),
                                        (6610, -13613, 7003),
-                                       (17933, -17390, -543)), device=self.device).T/4096
+                                       (17933, -17390, -543)), device=self.device)/4096
         self.jnd_scaling = torch.tensor((720, 360, 720), device=self.device).view(1,3,1,1,1)
         # ICTCP = bsxfun(@times, invEOTF(XYZ * XYZ2LMSmat) * LMS2ICTCPmat, [720, 360, 720]);
 
@@ -46,13 +46,22 @@ class ictcp(vq_metric):
             # TODO: Batched processing
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
-
+            
+            print('Y scale')
+            print(torch.max(T[...,0,:,:,:] ))
+        
             T_lms_prime = self.invEOTF(self.colorspace_conversion(T, self.XYZ2LMS))
             R_lms_prime = self.invEOTF(self.colorspace_conversion(R, self.XYZ2LMS))
-
-            T_ictcp = self.colorspace_conversion(T_lms_prime, self.LMS2ICTCP) * self.jnd_scaling
-            R_ictcp = self.colorspace_conversion(R_lms_prime, self.LMS2ICTCP) * self.jnd_scaling
-
+            
+            print('LMS lin scale')
+            print(torch.max(T_lms_prime[...,0,:,:,:] ))
+            
+            T_ictcp = self.colorspace_conversion(T_lms_prime, self.LMS2ICTCP) 
+            R_ictcp = self.colorspace_conversion(R_lms_prime, self.LMS2ICTCP) 
+            
+            print('I  scale')
+            print(torch.max(T_ictcp[...,0,:,:,:] ))
+            
             quality += self.delta_itp(T_ictcp, R_ictcp) / N_frames
         return quality, None
 
@@ -71,8 +80,10 @@ class ictcp(vq_metric):
     Reference: https://kb.portrait.com/help/ictcp-color-difference-metric
     """
     def delta_itp(self, img1, img2):
+        print('I scale')
+        print(torch.max(img1[...,0,:,:,:] ))
         return 720 * torch.sqrt((img1[...,0,:,:,:] - img2[...,0,:,:,:])**2 +
-                                0.25 * (img1[...,1,:,:,:] - img2[...,1,:,:,:])**2 +
+                                0.5 * (img1[...,1,:,:,:] - img2[...,1,:,:,:])**2 +
                                 (img1[...,2,:,:,:] - img2[...,2,:,:,:])**2).mean()
 
     def short_name(self):
