@@ -1,10 +1,8 @@
 import torch
 import numpy as np
 
-from pycvvdp.utils import CIE_DeltaE
-from pycvvdp.video_source import *
-from pycvvdp.vq_metric import *
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_photo_absolute, vvdp_display_photo_eotf
+from pycvvdp.utils import deltaE00
+from pycvvdp.vq_metric import vq_metric
 
 """
 DE2000 metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
@@ -20,7 +18,6 @@ class de2000(vq_metric):
         else:
             self.device = device
         
-        self.de = CIE_DeltaE()
         # D65 White point
         self.w = (0.9505, 1.0000, 1.0888)
         self.colorspace = 'XYZ'       
@@ -75,7 +72,7 @@ class de2000(vq_metric):
         sz = torch.numel(img1[...,0,:,:,:])
         img1_row = torch.cat((torch.reshape(img1[...,0,:,:,:], (1,sz)), torch.reshape(img1[...,1,:,:,:], (1,sz)), torch.reshape(img1[...,2,:,:,:], (1,sz))), 0)
         img2_row = torch.cat((torch.reshape(img2[...,0,:,:,:], (1,sz)), torch.reshape(img2[...,1,:,:,:], (1,sz)), torch.reshape(img2[...,2,:,:,:], (1,sz))), 0)
-        e00 = self.de.deltaE00(img1_row, img2_row)
+        e00 = deltaE00(img1_row, img2_row)
         # e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
         # e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
         e00_mean = torch.mean(e00)

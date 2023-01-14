@@ -78,11 +78,11 @@ class e_sitp(vq_metric):
 
     def itp_to_sitp(self, img, ppd):
         S_ITP = torch.empty_like(img)
-        img = img.cpu().numpy()
-        [k1, k2, k3] = self.sitp.separableFilters(ppd)
-        S_ITP[...,0:,:,:] = torch.from_numpy(self.sitp.separableConv(np.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))).to(S_ITP)
-        S_ITP[...,1:,:,:] = torch.from_numpy(self.sitp.separableConv(np.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))).to(S_ITP)
-        S_ITP[...,2:,:,:] = torch.from_numpy(self.sitp.separableConv(np.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))).to(S_ITP)
+        # Filters are low-dimensional; construct using np
+        [k1, k2, k3] = [torch.as_tensor(filter).to(img) for filter in self.sitp.separableFilters(ppd)]
+        S_ITP[...,0:,:,:] = self.sitp.separableConv_torch(torch.squeeze(img[...,0,:,:,:]), k1, torch.abs(k1))
+        S_ITP[...,1:,:,:] = self.sitp.separableConv_torch(torch.squeeze(img[...,1,:,:,:]), k2, torch.abs(k2))
+        S_ITP[...,2:,:,:] = self.sitp.separableConv_torch(torch.squeeze(img[...,2,:,:,:]), k3, torch.abs(k3))
         return S_ITP
         
     def eitp_fn(self, img1, img2):

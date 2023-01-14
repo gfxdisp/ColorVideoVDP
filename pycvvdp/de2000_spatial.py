@@ -1,9 +1,8 @@
 import torch
 import numpy as np
 
-from pycvvdp.utils import CIE_DeltaE
-from pycvvdp.utils import SCIELAB_filter
-from pycvvdp.vq_metric import *
+from pycvvdp.utils import SCIELAB_filter, deltaE00
+from pycvvdp.vq_metric import vq_metric
 
 """
 Spatial DE2000 metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
@@ -19,8 +18,7 @@ class s_de2000(vq_metric):
         else:
             self.device = device
             
-        self.slab = SCIELAB_filter()
-        self.de = CIE_DeltaE()
+        self.slab = SCIELAB_filter(device=device)
         # D65 White point
         self.w = (0.9505, 1.0000, 1.0888)
         self.colorspace = 'XYZ'       
@@ -66,14 +64,14 @@ class s_de2000(vq_metric):
             # Meancdm of Per-pixel DE2000            
             e_s00 = e_s00 + self.e00_fn(T_s_lab, R_s_lab) / N_frames
         return e_s00, None
-    
+
     def opp_to_sopp(self, img, ppd):
         S_OPP = torch.empty_like(img)
-        #img = img.cpu().numpy()
-        [k1, k2, k3] = self.slab.separableFilters_torch(ppd)
-        S_OPP[...,0:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,0,:,:,:]), k1, np.abs(k1))
-        S_OPP[...,1:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,1,:,:,:]), k2, np.abs(k2))
-        S_OPP[...,2:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,2,:,:,:]), k3, np.abs(k3))
+        # Filters are low-dimensional; construct using np
+        [k1, k2, k3] = [torch.as_tensor(filter).to(img) for filter in self.slab.separableFilters(ppd)]
+        S_OPP[...,0:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,0,:,:,:]), k1, torch.abs(k1))
+        S_OPP[...,1:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,1,:,:,:]), k2, torch.abs(k2))
+        S_OPP[...,2:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,2,:,:,:]), k3, torch.abs(k3))
         return S_OPP
         
     def xyz_to_lab(self, img, W):
@@ -84,7 +82,7 @@ class s_de2000(vq_metric):
         return Lab
         
     def lab_fn(self, x):
-        y = torch.empty_like(x)
+        # y = torch.empty_like(x)
         sigma = (6/29)
         y_1 = x**(1/3)
         y_2 = (x/(3*(sigma**2)))+(4/29)
@@ -96,7 +94,7 @@ class s_de2000(vq_metric):
         sz = torch.numel(img1[...,0,:,:,:])
         img1_row = torch.cat((torch.reshape(img1[...,0,:,:,:], (1,sz)), torch.reshape(img1[...,1,:,:,:], (1,sz)), torch.reshape(img1[...,2,:,:,:], (1,sz))), 0)
         img2_row = torch.cat((torch.reshape(img2[...,0,:,:,:], (1,sz)), torch.reshape(img2[...,1,:,:,:], (1,sz)), torch.reshape(img2[...,2,:,:,:], (1,sz))), 0)
-        e00 = self.de.deltaE00(img1_row, img2_row)
+        e00 = deltaE00(img1_row, img2_row)
         # e00_mean = torch.empty_like(torch.reshape(img1[...,0,:,:,:], (1,sz)))
         # e00_mean = torch.mean(torch.from_numpy(e00).to(e00_mean))
         e00_mean = torch.mean(e00)

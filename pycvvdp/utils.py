@@ -202,26 +202,30 @@ class PU():
         Y = ((V_p - self.p[0]).clip(min=0)/(self.p[1] - self.p[2]*V_p))**(1/self.p[3])
         return Y
 
-class SCIELAB_filter():
+class SCIELAB_filter:
     # apply S-CIELAB filtering
     
-    XYZ_to_opp = (
+    XYZ_to_opp_mat = (
             (0.2787,0.7218,-0.1066),
             (-0.4488,0.2898,0.0772),
             (0.0860,-0.5900,0.5011) )
-            
+
+    def __init__(self, device):
+        # Since the matrices are needed for multiple calls, move it to device only once
+        self.XYZ_to_opp_mat = torch.as_tensor(self.XYZ_to_opp_mat, device=device)
+        self.opp_to_XYZ_mat = torch.inverse(self.XYZ_to_opp_mat)
+        self.device = device
+
     def xyz_to_opp(self, img):
-        mat = torch.as_tensor( self.XYZ_to_opp, dtype=img.dtype, device=img.device)
         OPP = torch.empty_like(img)
         for cc in range(3):
-            OPP[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+            OPP[...,cc,:,:,:] = torch.sum(img*(self.XYZ_to_opp_mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
         return OPP
         
     def opp_to_xyz(self, img):
-        mat = torch.as_tensor( np.linalg.inv(self.XYZ_to_opp), dtype=img.dtype, device=img.device)
         XYZ = torch.empty_like(img)
         for cc in range(3):
-            XYZ[...,cc,:,:,:] = torch.sum(img*(mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+            XYZ[...,cc,:,:,:] = torch.sum(img*(self.opp_to_XYZ_mat[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
         return XYZ
     
     def gauss(self, halfWidth, width):
@@ -325,7 +329,7 @@ class SCIELAB_filter():
         m = np.minimum(m1, m2)
         n = np.minimum(n1, n2)
 
-        result = torch.ones((m2, n2), dtype=torch.double) * padding
+        result = torch.ones((m2, n2), device=orig.device) * padding
 
         start1 = np.array([np.floor((m1 - m) / 2 * (1 + align[0])), np.floor((n1 - n) / 2 * (1 + align[1]))]) + 1
         start2 = np.array([np.floor((m2 - m) / 2 * (1 + align[0])), np.floor((n2 - n) / 2 * (1 + align[1]))]) + 1
@@ -354,8 +358,15 @@ class SCIELAB_filter():
     def conv2_torch(self, x, y, mode='full'):
         # While Matlab's conv2 results in artifacts on the bottom and right of an image,
         # scipy.signal.convolve2d has the same artifacts on the top and left of an image.
-        # Tried tensor.nn.conv2d: Doesn't support the "full"  discrete linear convolution mode
-        return torch.rot90(torch.as_tensor(convolve2d(torch.rot90(x, 2), torch.rot90(y, 2), mode=mode)), 2)
+        # Ignore these differences, they are much smaller than inaccuracy between torch and scipy
+
+        # torch.nn.functional.conv2d actually computes cross-correlation
+        # flip the kernel to get convolution
+        # Order of errors (w.r.t scipy) is ~5e-7 when the input values are in range(0, 170).
+        # TODO: Investigate further if precision is important
+        x = x.view(1,1,*x.shape)
+        y = y.flip(dims=(0,1)).view(1,1,*y.shape)
+        return torch.nn.functional.conv2d(x, y, padding=[dim-1 for dim in y.shape[-2:]]).squeeze()
     
     def separableFilters(self, sampPerDeg):
         # not full implementation but correct for S-CIELAB usage.
@@ -529,8 +540,7 @@ class SCIELAB_filter():
 
         w1 = self.pad4conv_torch(im, xkernels.shape[1], 2)
         
-        
-        result = torch.empty_like(im)
+        result = torch.zeros_like(im)
         for j in range(xkernels.shape[0]):
             # first convovle in the horizontal direction
             p = self.conv2_torch(w1, xkernels[j,:].reshape(1,-1))
@@ -627,72 +637,70 @@ class SCIELAB_filter():
 
         return newim
         
-class CIE_DeltaE():
+def deltaE00(Lab1, Lab2, paramFctr = [1,1,1]):
 
-    def deltaE00(self, Lab1, Lab2, paramFctr = [1,1,1]):
+    kL = paramFctr[0]; kC = paramFctr[1]; kH = paramFctr[2]
 
-        kL = paramFctr[0]; kC = paramFctr[1]; kH = paramFctr[2]
+    #a1 = np.power(Lab1[1,:],2)
+    #b1 = np.power(Lab1[2,:],2)
+    #c1 = a1 + b1
+    
+    # CIELAB Chroma
+    C1 = torch.sqrt( torch.pow(Lab1[1,:],2) + torch.pow(Lab1[2,:],2) )
+    C2 = torch.sqrt( torch.pow(Lab2[1,:],2) + torch.pow(Lab2[2,:],2) )
 
-        #a1 = np.power(Lab1[1,:],2)
-        #b1 = np.power(Lab1[2,:],2)
-        #c1 = a1 + b1
-        
-        # CIELAB Chroma
-        C1 = torch.sqrt( torch.pow(Lab1[1,:],2) + torch.pow(Lab1[2,:],2) )
-        C2 = torch.sqrt( torch.pow(Lab2[1,:],2) + torch.pow(Lab2[2,:],2) )
+    # Lab Prime
+    mC = torch.add(C1,C2)/2
+    G = 0.5*( 1 - torch.sqrt(  torch.divide( torch.pow(mC,7) , torch.pow(mC,7)+25**7 ) ))
+    LabP1 = torch.vstack( (Lab1[0,:], Lab1[1,:]*(1+G), Lab1[2,:]) )
+    LabP2 = torch.vstack( (Lab2[0,:], Lab2[1,:]*(1+G), Lab2[2,:]) )
 
-        # Lab Prime
-        mC = torch.add(C1,C2)/2
-        G = 0.5*( 1 - torch.sqrt(  torch.divide( torch.pow(mC,7) , torch.pow(mC,7)+25**7 ) ))
-        LabP1 = torch.vstack( (Lab1[0,:], Lab1[1,:]*(1+G), Lab1[2,:]) )
-        LabP2 = torch.vstack( (Lab2[0,:], Lab2[1,:]*(1+G), Lab2[2,:]) )
+    # Chroma
+    CP1 = torch.sqrt( torch.pow(LabP1[1,:],2) + torch.pow(LabP1[2,:],2) )
+    CP2 = torch.sqrt( torch.pow(LabP2[1,:],2) + torch.pow(LabP2[2,:],2) )
 
-        # Chroma
-        CP1 = torch.sqrt( torch.pow(LabP1[1,:],2) + torch.pow(LabP1[2,:],2) )
-        CP2 = torch.sqrt( torch.pow(LabP2[1,:],2) + torch.pow(LabP2[2,:],2) )
-
-        # Hue Angle
-        hP1 = torch.arctan2( LabP1[2,:],LabP1[1,:] ) * 180/torch.pi # varies from -180 to +180 degree
-        hP2 = torch.arctan2( LabP2[2,:],LabP2[1,:] ) * 180/torch.pi # varies from -180 to +180 degree
-        hP1[hP1<0] = hP1[hP1<0] + 360 # varies from 0 to +360 degree
-        hP2[hP2<0] = hP2[hP2<0] + 360 # varies from 0 to +360 degree
+    # Hue Angle
+    hP1 = torch.arctan2( LabP1[2,:],LabP1[1,:] ) * 180/torch.pi # varies from -180 to +180 degree
+    hP2 = torch.arctan2( LabP2[2,:],LabP2[1,:] ) * 180/torch.pi # varies from -180 to +180 degree
+    hP1[hP1<0] = hP1[hP1<0] + 360 # varies from 0 to +360 degree
+    hP2[hP2<0] = hP2[hP2<0] + 360 # varies from 0 to +360 degree
 
 
-        # Delta Values
-        DLP = LabP1[0,:] - LabP2[0,:]
-        DCP = CP1 - CP2
-        DhP = hP1 - hP2; DhP[DhP>180] = DhP[DhP>180]-360; DhP[DhP<-180] = DhP[DhP<-180]+360
-        DHP = torch.multiply( 2*torch.sqrt(torch.multiply(CP1,CP2)), torch.sin( DhP/2.*torch.pi/180. ) )
+    # Delta Values
+    DLP = LabP1[0,:] - LabP2[0,:]
+    DCP = CP1 - CP2
+    DhP = hP1 - hP2; DhP[DhP>180] = DhP[DhP>180]-360; DhP[DhP<-180] = DhP[DhP<-180]+360
+    DHP = torch.multiply( 2*torch.sqrt(torch.multiply(CP1,CP2)), torch.sin( DhP/2.*torch.pi/180. ) )
 
-        # Arithmetic mean of LCh' values
-        mLP = ( LabP1[0,:]+LabP2[0,:] )/2
-        mCP = (CP1+CP2)/2
-        mhP = torch.zeros_like(mCP)
-        # for k in range(0,mhP.numel()):
-        #     if abs(hP1[k]-hP2[k])<=180:
-        #         mhP[k] = (hP1[k]+hP2[k])/2
-        #     elif abs(hP1[k]-hP2[k])>180 and hP1[k]+hP2[k]<360:
-        #         mhP[k] = (hP1[k]+hP2[k]+360)/2
-        #     elif abs(hP1[k]-hP2[k])>180 and hP1[k]+hP2[k]>=360:
-        #         mhP[k] = (hP1[k]+hP2[k]-360)/2
-        mask1 = torch.abs(hP1-hP2) <= 180
-        mhP[mask1] = (hP1+hP2)[mask1]/2
-        mask2 = (hP1+hP2) < 360
-        mhP[torch.logical_and(torch.logical_not(mask1), mask2)] = ((hP1+hP2)[torch.logical_and(torch.logical_not(mask1), mask2)]+360)/2
-        mhP[torch.logical_and(torch.logical_not(mask1), torch.logical_not(mask2))] = ((hP1+hP2)[torch.logical_and(torch.logical_not(mask1), torch.logical_not(mask2))]-360)/2
+    # Arithmetic mean of LCh' values
+    mLP = ( LabP1[0,:]+LabP2[0,:] )/2
+    mCP = (CP1+CP2)/2
+    mhP = torch.zeros_like(mCP)
+    # for k in range(0,mhP.numel()):
+    #     if abs(hP1[k]-hP2[k])<=180:
+    #         mhP[k] = (hP1[k]+hP2[k])/2
+    #     elif abs(hP1[k]-hP2[k])>180 and hP1[k]+hP2[k]<360:
+    #         mhP[k] = (hP1[k]+hP2[k]+360)/2
+    #     elif abs(hP1[k]-hP2[k])>180 and hP1[k]+hP2[k]>=360:
+    #         mhP[k] = (hP1[k]+hP2[k]-360)/2
+    mask1 = torch.abs(hP1-hP2) <= 180
+    mhP[mask1] = (hP1+hP2)[mask1]/2
+    mask2 = (hP1+hP2) < 360
+    mhP[torch.logical_and(torch.logical_not(mask1), mask2)] = ((hP1+hP2)[torch.logical_and(torch.logical_not(mask1), mask2)]+360)/2
+    mhP[torch.logical_and(torch.logical_not(mask1), torch.logical_not(mask2))] = ((hP1+hP2)[torch.logical_and(torch.logical_not(mask1), torch.logical_not(mask2))]-360)/2
 
-        # Weighting Functions
-        SL = 1 + torch.divide(  0.015*torch.pow(mLP-50,2), torch.sqrt( 20+torch.pow(mLP-50,2) )  )
-        SC = 1+0.045*mCP
-        T = 1-0.17*torch.cos((mhP-30)*torch.pi/180.)+0.24*torch.cos((2*mhP)*torch.pi/180.)+0.32*torch.cos((3*mhP+6)*torch.pi/180.)-0.2*torch.cos((4*mhP-63)*torch.pi/180.)
-        SH = 1+0.015*torch.multiply(mCP,T)
+    # Weighting Functions
+    SL = 1 + torch.divide(  0.015*torch.pow(mLP-50,2), torch.sqrt( 20+torch.pow(mLP-50,2) )  )
+    SC = 1+0.045*mCP
+    T = 1-0.17*torch.cos((mhP-30)*torch.pi/180.)+0.24*torch.cos((2*mhP)*torch.pi/180.)+0.32*torch.cos((3*mhP+6)*torch.pi/180.)-0.2*torch.cos((4*mhP-63)*torch.pi/180.)
+    SH = 1+0.015*torch.multiply(mCP,T)
 
-        # Rotation function
-        RC = 2 * torch.sqrt(torch.divide(  torch.pow(mCP,7), torch.pow(mCP,7)+25**7  ))
-        # DTheta = 30.*exp(-((mhP-275)./25).^2)
-        DTheta = 30 * torch.exp(-torch.pow(  (mhP-275)/25,2  ))
-        RT = torch.multiply( -torch.sin(2*DTheta*torch.pi/180.), RC )
+    # Rotation function
+    RC = 2 * torch.sqrt(torch.divide(  torch.pow(mCP,7), torch.pow(mCP,7)+25**7  ))
+    # DTheta = 30.*exp(-((mhP-275)./25).^2)
+    DTheta = 30 * torch.exp(-torch.pow(  (mhP-275)/25,2  ))
+    RT = torch.multiply( -torch.sin(2*DTheta*torch.pi/180.), RC )
 
-        dE00 = torch.sqrt(  torch.pow( torch.divide(DLP,kL*SL) ,2) + torch.pow( torch.divide(DCP,kC*SC) ,2) + torch.pow( torch.divide(DHP,kH*SH) ,2)
-                         + torch.multiply(RT, torch.multiply( torch.divide(DCP,kC*SC), torch.divide(DHP,kH*SH) ) ))
-        return dE00
+    dE00 = torch.sqrt(  torch.pow( torch.divide(DLP,kL*SL) ,2) + torch.pow( torch.divide(DCP,kC*SC) ,2) + torch.pow( torch.divide(DHP,kH*SH) ,2)
+                        + torch.multiply(RT, torch.multiply( torch.divide(DCP,kC*SC), torch.divide(DHP,kH*SH) ) ))
+    return dE00
