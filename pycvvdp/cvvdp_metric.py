@@ -473,7 +473,7 @@ class cvvdp(vq_metric):
 
     def clamp_diffs(self,D):
         if self.dclamp_type == "hard":
-            Dc = torch.clamp(D, max=self.dclamp_par)
+            Dc = torch.clamp(D, max=(10**self.dclamp_par))
         elif self.dclamp_type == "soft":
             n = self.dclamp_par[0]
             off = self.dclamp_par[1]

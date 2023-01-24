@@ -27,5 +27,5 @@
     "beta_tf": [1.3314, 1.1196, 0.947901, 0.1898],    
     "baseband_weight": 30.6482,
     "dclamp_type": "hard", 
-    "dclamp_par": 10000
+    "dclamp_par": 4
 }
