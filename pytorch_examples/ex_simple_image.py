@@ -5,6 +5,12 @@ import torch
 import ex_utils as utils
 import pycvvdp
 
+'''
+Results of current version (for reference):
+Noise - Quality: 9.051 JOD
+Blur - Quality: 7.951 JOD
+'''
+
 debug = False
 
 
@@ -24,17 +30,17 @@ else:
     sigma = 2
     I_test_blur = utils.imgaussblur(I_ref, sigma)
 
-fv = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
 
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.
 # Channels can be in any order, but the order must be specified as a dim_order parameter. 
 # Here the dimensions are (Height,Width,Colour)
-Q_JOD_noise, stats_noise = fv.predict( I_test_noise, I_ref, dim_order="HWC" )
+Q_JOD_noise, stats_noise = metric.predict( I_test_noise, I_ref, dim_order="HWC" )
 noise_str = f'Noise - Quality: {Q_JOD_noise:.3f} JOD'
 print( noise_str )
 
-Q_JOD_blur, stats_blur = fv.predict( I_test_blur, I_ref, dim_order="HWC" )
+Q_JOD_blur, stats_blur = metric.predict( I_test_blur, I_ref, dim_order="HWC" )
 blur_str = f'Blur - Quality: {Q_JOD_blur:.3f} JOD'
 print( blur_str )
 

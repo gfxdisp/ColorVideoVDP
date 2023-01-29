@@ -3,9 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import ex_utils as utils
 
-import pyfvvdp
+import pycvvdp
 
-I_ref = pyfvvdp.load_image_as_array(os.path.join('example_media', 'nancy_church.hdr'))
+'''
+Results of current version (for reference):
+Noise - Quality: 9.201 JOD
+Blur - Quality: 8.449 JOD
+'''
+
+I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'nancy_church.hdr'))
 
 noise_fname = os.path.join('example_media', 'wavy_facade_noise.png')
 L_peak = 4000   # Peak luminance of an HDR display
@@ -26,30 +32,30 @@ I_test_blur = utils.imgaussblur(I_ref, 2)
 # properties and instead tell that we pass absolute colorimetric values. 
 # Note that many HDR images are in rec709 color space, so no need to
 # specify rec2020. 
-disp_photo = pyfvvdp.fvvdp_display_photo_absolute(L_peak)
-fv = pyfvvdp.fvvdp(display_name='standard_hdr', display_photometry=disp_photo, heatmap='threshold')
+disp_photo = pycvvdp.vvdp_display_photo_absolute(L_peak)
+metric = pycvvdp.cvvdp(display_name='standard_hdr_linear', display_photometry=disp_photo, heatmap='threshold')
 
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.
 # Channels can be in any order, but the order must be specified as a dim_order parameter. 
 # Here the dimensions are (Height,Width,Colour)
-Q_JOD_noise, stats_noise = fv.predict( I_test_noise, I_ref, dim_order="HWC" )
+Q_JOD_noise, stats_noise = metric.predict( I_test_noise, I_ref, dim_order="HWC" )
 noise_str = f'Noise - Quality: {Q_JOD_noise:.3f} JOD'
 print( noise_str )
 
-Q_JOD_blur, stats_blur = fv.predict( I_test_blur, I_ref, dim_order="HWC" )
+Q_JOD_blur, stats_blur = metric.predict( I_test_blur, I_ref, dim_order="HWC" )
 blur_str = f'Blur - Quality: {Q_JOD_blur:.3f} JOD'
 print( blur_str )
 
-f, axs = plt.subplots(1, 2)
-axs[0].imshow( stats_noise['heatmap'][0,:,0,:,:].permute([1,2,0]).cpu().numpy() )
-axs[0].set_xticks([])
-axs[0].set_yticks([])
-axs[0].set_title(noise_str)
-axs[1].imshow( stats_blur['heatmap'][0,:,0,:,:].permute([1,2,0]).cpu().numpy() )
-axs[1].set_xticks([])
-axs[1].set_yticks([])
-axs[1].set_title(blur_str)
+# f, axs = plt.subplots(1, 2)
+# axs[0].imshow( stats_noise['heatmap'][0,:,0,:,:].permute([1,2,0]).cpu().numpy() )
+# axs[0].set_xticks([])
+# axs[0].set_yticks([])
+# axs[0].set_title(noise_str)
+# axs[1].imshow( stats_blur['heatmap'][0,:,0,:,:].permute([1,2,0]).cpu().numpy() )
+# axs[1].set_xticks([])
+# axs[1].set_yticks([])
+# axs[1].set_title(blur_str)
 
-f.show()
-plt.waitforbuttonpress()
+# f.show()
+# plt.waitforbuttonpress()

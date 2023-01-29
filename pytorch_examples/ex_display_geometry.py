@@ -12,13 +12,15 @@ I_test_noise = utils.imnoise(I_ref, std)
 # Measure quality at several viewing distances
 distances = np.linspace(0.5, 2, 5)
 
+metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+
 Q_JOD = []
 for dd, dist in enumerate(distances):
     # 4K, 30 inch display, seen at different viewing distances
     disp_geo = pycvvdp.vvdp_display_geometry((3840, 2160), diagonal_size_inches=30, distance_m=dist)
-    fv = pycvvdp.cvvdp(display_name='standard_4k', display_geometry=disp_geo, heatmap='threshold')
-    
-    q, stats = fv.predict(I_test_noise, I_ref, dim_order="HWC")
+    metric.set_display_model(display_geometry=disp_geo)
+
+    q, stats = metric.predict(I_test_noise, I_ref, dim_order="HWC")
     Q_JOD.append(q.cpu())
 
 plt.plot(distances, Q_JOD, '-o')
@@ -27,4 +29,5 @@ plt.grid(which='minor', linestyle='--')
 plt.xlabel('Viewing distance [m]')
 plt.ylabel('Quality [JOD]')
 
+# plt.savefig('results.png')
 plt.show()

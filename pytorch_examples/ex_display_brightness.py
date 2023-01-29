@@ -18,12 +18,14 @@ gamma = 2.2       # Standard gamma-encoding
 E_ambient = 100   # Ambient light = 100 lux
 k_refl = 0.005    # Reflectivity of the display
 
+metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+
 Q_JOD = []
 for dd, Y_peak in enumerate(disp_peaks):
     disp_photo = pycvvdp.vvdp_display_photo_eotf(Y_peak=Y_peak, contrast=contrast, EOTF='sRGB', gamma=gamma, E_ambient=E_ambient, k_refl=k_refl)
-    cv = pycvvdp.cvvdp(display_name='standard_4k', display_photometry=disp_photo, heatmap='threshold')
-    
-    q, stats = cv.predict(I_test_noise, I_ref, dim_order="HWC")
+    metric.set_display_model(display_photometry=disp_photo)
+
+    q, stats = metric.predict(I_test_noise, I_ref, dim_order="HWC")
     Q_JOD.append(q.cpu())
 
 plt.plot(disp_peaks, Q_JOD, '-o')
@@ -33,4 +35,5 @@ plt.xscale('log')
 plt.xlabel('Display peak luminance [cd/m^2]')
 plt.ylabel('Quality [JOD]')
 
+# plt.savefig('results.png')
 plt.show()

@@ -42,15 +42,12 @@ from pycvvdp.csf import castleCSF
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", foveated=False, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False):
         self.quiet = quiet
-        self.foveated = foveated
         self.heatmap = heatmap
         self.color_space = color_space
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
-
-        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
 
         self.do_heatmap = (not self.heatmap is None) and (self.heatmap != "none")
 
@@ -63,6 +60,8 @@ class cvvdp(vq_metric):
         else:
             self.device = device
         
+        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
+
         self.load_config()
 
         # if self.mask_s > 0.0:
@@ -80,8 +79,6 @@ class cvvdp(vq_metric):
         # for oo in self.omega:
         #     self.preload_cache(oo, self.csf_sigma)
 
-        self.lpyr = None
-        self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
         self.heatmap_pyr = None
 
     def load_config( self ):
@@ -136,6 +133,8 @@ class cvvdp(vq_metric):
             self.display_geometry = display_geometry
 
         self.pix_per_deg = self.display_geometry.get_ppd()
+        self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
+        self.lpyr = None
 
     '''
     Predict image/video quality using FovVideoVDP.
@@ -583,11 +582,12 @@ class cvvdp(vq_metric):
     def get_info_string(self):
         if self.display_name.startswith('standard_'):
             #append this if are using one of the standard displays
-            standard_str = ', (' + self.display_name + ')'
+            standard_str = self.display_name
         else:
-            standard_str = ''
-        fv_mode = 'foveated' if self.foveated else 'non-foveated'
-        return '"ColourVideoVDP v{}, {:.4g} [pix/deg], Lpeak={:.5g}, Lblack={:.4g} [cd/m^2], {}{}"'.format(self.version, self.pix_per_deg, self.display_photometry.get_peak_luminance(), self.display_photometry.get_black_level(), fv_mode, standard_str)
+            standard_str = f'custom-display: {self.display_name}'
+        return f'"ColourVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
+               f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
+               f'Lblack={self.display_photometry.get_black_level():.4g} [cd/m^2], ({standard_str})"'
 
     def write_features_to_json(self, stats, dest_fname):
         Q_per_ch = stats['Q_per_ch'] # quality per channel [cc,ff,bb]
