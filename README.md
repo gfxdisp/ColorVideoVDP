@@ -97,7 +97,7 @@ cvvdp --test example_media/aliasing/ferris-*-*.mp4 --ref example_media/aliasing/
 |Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-ref.gif) | Quality | **TODO:** Difference map |
 | :---: | :---: | :---: | :---: |
 | Bicubic &#8595;<br />Bicubic &#8593;<br />(4x4) | ![bicubic-bicubic](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-bicubic-bicubic.gif) | 7.0957 | |
-| Bicubic &#8595;<br />Nearest &#8593;<br />(4x4) | ![bicubic-nearest](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-bicubic-nearest.gif) | 6.4803 | |
+| Bicubic &#8595;<br />Nearest &#8593;<br />(4x4) | ![bicubic-nearest](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-bicubic-nearest.gif) | 6.9652 | |
 | Nearest &#8595;<br />Bicubic &#8593;<br />(4x4) | ![nearest-bicubic](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-nearest-bicubic.gif) | 7.0256 | |
 | Nearest &#8595;<br />Nearest &#8593;<br />(4x4) | ![nearest-nearest](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-nearest-nearest.gif) | 6.9634 | |
 
