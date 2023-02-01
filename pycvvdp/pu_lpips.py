@@ -44,11 +44,15 @@ class pu_lpips(vq_metric):
 
             # Apply PU and reshape to (1,C,H,W)
             # Input pixels shoulb lie in [-1,1]
-            T_enc = self.pu.encode(T).squeeze(2) / 255. * 2 - 1
-            R_enc = self.pu.encode(R).squeeze(2) / 255. * 2 - 1
+            T_enc = self.pu.encode(T.clip(0, self.max_L)).squeeze(2) / 255. * 2 - 1
+            R_enc = self.pu.encode(R.clip(0, self.max_L)).squeeze(2) / 255. * 2 - 1
 
             quality += self.lpips(T_enc, R_enc) / N_frames
         return quality, None
 
     def short_name(self):
         return 'PU21-LPIPS'
+
+    def set_display_model(self, display_photometry, display_geometry):
+        self.max_L = display_photometry.get_peak_luminance()
+        self.max_L = min(self.max_L, 300)

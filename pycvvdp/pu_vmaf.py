@@ -1,5 +1,6 @@
 import json
 import os, os.path as osp
+from tqdm import trange
 import torch
 
 from pycvvdp.utils import PU
@@ -22,13 +23,13 @@ class pu_vmaf(vq_metric):
             self.device = device
 
         self.pu = PU()
-        assert osp.isdir(cache_ref_loc), f'Please create the directory to cache: {cache_ref_loc}'
+        if not osp.isdir(cache_ref_loc):
+            os.makedirs(cache_ref_loc)
+
         self.T_enc_path = osp.join(cache_ref_loc, 'temp_test.yuv')
         self.R_enc_path = osp.join(cache_ref_loc, 'temp_ref.yuv')
         self.output_file = osp.join(cache_ref_loc, 'vmaf_output.json')
 
-        self.T_enc_file = open(self.T_enc_path,'w')
-        self.R_enc_file = open(self.R_enc_path,'w')
         self.colorspace = 'RGB709'
         self.ffmpeg_bin = ffmpeg_bin
 
@@ -48,14 +49,17 @@ class pu_vmaf(vq_metric):
 
         h, w, N_frames = vid_source.get_video_size()
 
-        for ff in range(N_frames):
+        self.T_enc_file = open(self.T_enc_path,'w')
+        self.R_enc_file = open(self.R_enc_path,'w')
+
+        for ff in trange(N_frames, leave=False):
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
 
             # Apply PU
-            T_enc = self.pu.encode(T) / self.pu.encode(self.max_L)
+            T_enc = self.pu.encode(T.clip(0, self.max_L))
             T_enc_np = T_enc.squeeze().permute(1,2,0).cpu().numpy()
-            R_enc = self.pu.encode(R) / self.pu.encode(self.max_L)
+            R_enc = self.pu.encode(R.clip(0, self.max_L))
             R_enc_np = R_enc.squeeze().permute(1,2,0).cpu().numpy()
 
             # Save the output as yuv file
@@ -77,7 +81,7 @@ class pu_vmaf(vq_metric):
             quality = results['pooled_metrics']['vmaf']['mean']
 
         os.remove(self.T_enc_path)
-        os.remove(self.T_enc_path)
+        os.remove(self.R_enc_path)
         os.remove(self.output_file)
         return torch.tensor(quality), None
 
@@ -86,7 +90,7 @@ class pu_vmaf(vq_metric):
 
     def set_display_model(self, display_photometry, display_geometry):
         self.max_L = display_photometry.get_peak_luminance()
-        self.max_L = np.where( self.max_L < 300, self.max_L, 300)
+        self.max_L = min(self.max_L, 300)
 
     # This function takes into input an encoded RGB709 frame and saves it as a yuv file (it operates only on numpy arrays)
     def write_yuv_frame( self, RGB ,bit_depth=10,type = 'T'):
