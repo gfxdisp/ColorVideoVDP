@@ -1,4 +1,5 @@
 from pycvvdp.cvvdp_metric import cvvdp
+from pycvvdp.cvvdp_rnn_metric import cvvdp_rnn
 from pycvvdp.pupsnr import pu_psnr_y, pu_psnr_rgb2020
 from pycvvdp.e_itp import e_itp
 from pycvvdp.e_sitp import e_sitp
