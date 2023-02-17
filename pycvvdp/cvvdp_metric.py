@@ -100,7 +100,7 @@ class cvvdp(vq_metric):
         self.sensitivity_correction = parameters['sensitivity_correction'] # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
-        self.contrast = parameters['contrast']  # Either 'weber' or 'log'
+        self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1'
         self.jod_a = parameters['jod_a']
         self.jod_exp = parameters['jod_exp']
         self.mask_q_sust = parameters['mask_q_sust']
@@ -173,7 +173,7 @@ class cvvdp(vq_metric):
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.local_adapt=="gpyr":
-                self.lpyr = fvvdp_contrast_pyr(width, height, self.pix_per_deg, self.device)
+                self.lpyr = fvvdp_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
             else:
                 self.lpyr = fvvdp_lpyr_dec(width, height, self.pix_per_deg, self.device)
 
@@ -402,20 +402,28 @@ class cvvdp(vq_metric):
 
             is_baseband = (bb==(lpyr.get_band_count()-1))
 
-            T_f = lpyr.get_band(B_bands, bb)[0::2,...] # Test
-            R_f = lpyr.get_band(B_bands, bb)[1::2,...] # Reference
+            B_bb = lpyr.get_band(B_bands, bb) 
+            T_f = B_bb[0::2,...] # Test
+            R_f = B_bb[1::2,...] # Reference
 
             if is_baseband:
                 #L_bkg = torch.mean(R_f[0:1,...], dim=(-2,-1), keepdim=True)  # Use the mean from the reference sustained as the background luminance
-                L_bkg = R_f[0:1,...]  # Use the reference sustained as the background luminance
+                if self.contrast.endswith('ref'): # Always use reference as the background lumimance
+                    L_bkg = R_f[0:1,...]  # Use the reference sustained as the background luminance
+                else:
+                    L_bkg = B_bb[0:2,...]  # Use the test AND reference sustained as the background luminance
                 rho = 0.1
                 S = torch.empty((all_ch,block_N_frames,L_bkg.shape[-2],L_bkg.shape[-1]), device=self.device)
                 for cc in range(all_ch):
                     tch = 0 if cc<3 else 1  # Sustained or transient
                     cch = cc if cc<3 else 0 # Y, rg, yv
-                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                    tr = cc % L_bkg.shape[-4] # Use L_bkg for the test or reference frame
+                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
-                D = (torch.abs(T_f-R_f) / L_bkg * S)
+                if self.contrast.endswith('ref'):
+                    D = (torch.abs(T_f-R_f) / L_bkg * S)
+                else:
+                    D = (torch.abs(T_f/L_bkg[...,0,:,:,:] - R_f/L_bkg[...,1,:,:,:]) * S)
             else:
                 if self.local_adapt=="gpyr":
                     L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
@@ -431,7 +439,8 @@ class cvvdp(vq_metric):
                 for cc in range(all_ch):
                     tch = 0 if cc<3 else 1  # Sustained or transient
                     cch = cc if cc<3 else 0 # Y, rg, yv
-                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg, cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                    tr = cc % L_bkg.shape[-4] # Use L_bkg for the test or reference frame
+                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
                 D = self.apply_masking_model(T_f, R_f, S)
 

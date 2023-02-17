@@ -245,6 +245,11 @@ class fvvdp_lpyr_dec():
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
 class fvvdp_contrast_pyr(fvvdp_lpyr_dec):
 
+    def __init__(self, W, H, ppd, device, contrast):
+        super().__init__(W, H, ppd, device)
+        self.contrast = contrast
+
+
     def decompose(self, image):
         levels = self.height+1
         kernel_a = 0.4
@@ -260,10 +265,23 @@ class fvvdp_contrast_pyr(fvvdp_lpyr_dec):
             glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
             layer = gpyr[i] - glayer_ex 
 
-            # Order: test-sustained, ref-sustained, test-transient, ref-transient
+            # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
             # L_bkg is set to ref-sustained 
-            L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
-            contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
+            if self.contrast == 'weber_g1_ref':
+                L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
+            elif self.contrast == 'weber_g1':
+                L_bkg = torch.clamp(glayer_ex[...,0:2,:,:,:], min=0.01)
+            elif self.contrast == 'weber_g0_ref':
+                L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
+            else:
+                raise RuntimeError( f"Contrast {self.contrast} not supported")
+
+            if L_bkg.shape[-4]>1: # If L_bkg NOT identical for the test and reference images
+                contrast = torch.empty_like(layer)
+                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0,:,:,:]), max=1000.0)    
+                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1,:,:,:]), max=1000.0)    
+            else:
+                contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
 
             lpyr.append(contrast)
             L_bkg_pyr.append(L_bkg)
