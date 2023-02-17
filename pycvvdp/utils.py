@@ -627,13 +627,13 @@ class SCIELAB_filter:
         if h != 0 and dim != 2:
             im1 = torch.flipud(newim[0:h, :])
             im2 = torch.flipud(newim[m - h:m, :])
-            newim = torch.concatenate((im1, newim, im2), axis=0)
+            newim = torch.cat((im1, newim, im2), axis=0)
 
         # then reflect the left and right sides
         if w != 0 and dim != 1:
             im1 = torch.fliplr(newim[:, 0:w])
             im2 = torch.fliplr(newim[:, n - w:n])
-            newim = torch.concatenate((im1, newim, im2), axis=1)
+            newim = torch.cat((im1, newim, im2), axis=1)
 
         return newim
         

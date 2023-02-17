@@ -19,7 +19,7 @@ class e_sitp(vq_metric):
         else:
             self.device = device
         
-        self.sitp = SCIELAB_filter()
+        self.sitp = SCIELAB_filter(device=device)
         self.colorspace = 'LMShpe'
         
     '''

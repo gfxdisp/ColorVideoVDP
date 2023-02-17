@@ -32,6 +32,10 @@ class pu_vmaf(vq_metric):
 
         self.colorspace = 'RGB709'
         self.ffmpeg_bin = ffmpeg_bin
+    
+    # Empty constructor to retrieve name
+    def __init__(self):
+        pass
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
