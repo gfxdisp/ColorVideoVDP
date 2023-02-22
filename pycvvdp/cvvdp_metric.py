@@ -20,6 +20,7 @@ from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
 from pycvvdp.vq_metric import *
+from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
@@ -27,7 +28,7 @@ from pycvvdp.vq_metric import *
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from third_party.cpuinfo import cpuinfo
-from pycvvdp.fvvdp_lpyr_dec import fvvdp_lpyr_dec, fvvdp_contrast_pyr
+from pycvvdp.lpyr_dec import lpyr_dec, weber_contrast_pyr, log_contrast_pyr
 from interp import interp1, interp3
 
 import pycvvdp.utils as utils
@@ -67,8 +68,6 @@ class cvvdp(vq_metric):
         # if self.mask_s > 0.0:
         #     self.mask_p = self.mask_q + self.mask_s
 
-        self.csf = castleCSF(device=self.device)
-
         # self.csf_cache              = {}
         # self.csf_cache_dirs         = [
         #                                 "csf_cache",
@@ -100,7 +99,7 @@ class cvvdp(vq_metric):
         self.sensitivity_correction = parameters['sensitivity_correction'] # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
-        self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1'
+        self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = parameters['jod_a']
         self.jod_exp = parameters['jod_exp']
         self.mask_q_sust = parameters['mask_q_sust']
@@ -115,6 +114,8 @@ class cvvdp(vq_metric):
         self.version = parameters['version']
 
         self.omega = [0, 5]
+
+        self.csf = castleCSF(contrast=self.contrast, device=self.device)
 
         # other parameters
         self.debug = False
@@ -172,13 +173,15 @@ class cvvdp(vq_metric):
         height, width, N_frames = vid_sz
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
-            if self.local_adapt=="gpyr":
-                self.lpyr = fvvdp_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+            if self.contrast.startswith("weber"):
+                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+            elif self.contrast.startswith("log"):
+                self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
             else:
-                self.lpyr = fvvdp_lpyr_dec(width, height, self.pix_per_deg, self.device)
+                raise RuntimeError( f"Unknown contrast {self.contrast}" )
 
             if self.do_heatmap:
-                self.heatmap_pyr = fvvdp_lpyr_dec(width, height, self.pix_per_deg, self.device)
+                self.heatmap_pyr = lpyr_dec(width, height, self.pix_per_deg, self.device)
 
         #assert self.W == R_vid.shape[-1] and self.H == R_vid.shape[-2]
         #assert len(R_vid.shape)==5
@@ -236,7 +239,10 @@ class cvvdp(vq_metric):
         else:
             block_N_frames = 1
 
-        met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+        if self.contrast=="log":
+            met_colorspace='LMS2006'
+        else:
+            met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
 
         for ff in range(0, N_frames, block_N_frames):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
@@ -383,6 +389,9 @@ class cvvdp(vq_metric):
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
 
+        if self.contrast=="log":
+            R = lms2006_to_dkld65( torch.log10(R.clip(min=1e-5)) )
+
         # Perform Laplacian pyramid decomposition
         B_bands, L_bkg_pyr = lpyr.decompose(R[0,...])
 
@@ -394,6 +403,7 @@ class cvvdp(vq_metric):
         # L_bkg_bb = [None for i in range(lpyr.get_band_count()-1)]
 
         rho_band = lpyr.get_freqs()
+        rho_band[lpyr.get_band_count()-1] = 0.1 # Baseband
 
         Q_per_ch_block = None
         block_N_frames = R.shape[-3] 
@@ -406,42 +416,21 @@ class cvvdp(vq_metric):
             T_f = B_bb[0::2,...] # Test
             R_f = B_bb[1::2,...] # Reference
 
+            L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
+
+            # Compute CSF
+            rho = rho_band[bb] # Spatial frequency in cpd
+            ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
+            S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+            for cc in range(all_ch):
+                tch = 0 if cc<3 else 1  # Sustained or transient
+                cch = cc if cc<3 else 0 # Y, rg, yv
+                tr = cc % L_bkg.shape[-4] # Use L_bkg for the test or reference frame
+                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+
             if is_baseband:
-                #L_bkg = torch.mean(R_f[0:1,...], dim=(-2,-1), keepdim=True)  # Use the mean from the reference sustained as the background luminance
-                if self.contrast.endswith('ref'): # Always use reference as the background lumimance
-                    L_bkg = R_f[0:1,...]  # Use the reference sustained as the background luminance
-                else:
-                    L_bkg = B_bb[0:2,...]  # Use the test AND reference sustained as the background luminance
-                rho = 0.1
-                S = torch.empty((all_ch,block_N_frames,L_bkg.shape[-2],L_bkg.shape[-1]), device=self.device)
-                for cc in range(all_ch):
-                    tch = 0 if cc<3 else 1  # Sustained or transient
-                    cch = cc if cc<3 else 0 # Y, rg, yv
-                    tr = cc % L_bkg.shape[-4] # Use L_bkg for the test or reference frame
-                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
-
-                if self.contrast.endswith('ref'):
-                    D = (torch.abs(T_f-R_f) / L_bkg * S)
-                else:
-                    D = (torch.abs(T_f/L_bkg[...,0,:,:,:] - R_f/L_bkg[...,1,:,:,:]) * S)
+                D = (torch.abs(T_f-R_f) * S)
             else:
-                if self.local_adapt=="gpyr":
-                    L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
-                else:
-                    #raise RuntimeError( "Not implemented")
-                    # # 1:2 below is passing reference sustained
-                    L_bkg, T_f, R_f = self.compute_local_contrast(T_f, R_f, lpyr, L_bkg_pyr, bb)
-
-                # Compute CSF
-                rho = rho_band[bb] # Spatial frequency in cpd
-                ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
-                S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-                for cc in range(all_ch):
-                    tch = 0 if cc<3 else 1  # Sustained or transient
-                    cch = cc if cc<3 else 0 # Y, rg, yv
-                    tr = cc % L_bkg.shape[-4] # Use L_bkg for the test or reference frame
-                    S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
-
                 D = self.apply_masking_model(T_f, R_f, S)
 
             # if self.do_heatmap:

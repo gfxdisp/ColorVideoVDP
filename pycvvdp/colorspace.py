@@ -22,6 +22,17 @@ XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986), \
 
 
 
+def lms2006_to_dkld65( img ):
+    M = torch.as_tensor( LMS2006_to_DKLd65, dtype=img.dtype, device=img.device)
+
+    ABC = torch.empty_like(img)  # ABC represents any linear colour space
+    # To avoid permute (slow), perform separate dot products
+    for cc in range(3):
+        ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+    return ABC
+
+
+
 class ColorTransform:
 
     def __init__( self, color_space_name='sRGB' ):

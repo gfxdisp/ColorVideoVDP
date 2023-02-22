@@ -3,14 +3,16 @@ import torch
 import torch.nn.functional as Func
 import numpy as np 
 #import scipy.io as spio
-import os
-import sys
+#import os
+#import sys
+import math
 #import torch.autograd.profiler as profiler
 
 def ceildiv(a, b):
     return -(-a // b)
 
-class fvvdp_lpyr_dec():
+# Decimated Laplacian pyramid
+class lpyr_dec():
 
     def __init__(self, W, H, ppd, device):
         self.device = device
@@ -243,12 +245,75 @@ class fvvdp_lpyr_dec():
 
 
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
-class fvvdp_contrast_pyr(fvvdp_lpyr_dec):
+class weber_contrast_pyr(lpyr_dec):
 
     def __init__(self, W, H, ppd, device, contrast):
         super().__init__(W, H, ppd, device)
         self.contrast = contrast
 
+    def decompose(self, image):
+        levels = self.height+1
+        kernel_a = 0.4
+        gpyr = self.gaussian_pyramid_dec(image, levels, kernel_a)
+
+        height = len(gpyr)
+        if height == 0:
+            return []
+
+        lpyr = []
+        L_bkg_pyr = []
+        for i in range(height):
+            is_baseband = (i==(height-1))
+
+            if is_baseband:
+                layer = gpyr[i]
+                if self.contrast.endswith('ref'):
+                    L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
+                else:
+                    L_bkg = torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01)
+            else:
+                glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
+                layer = gpyr[i] - glayer_ex 
+
+                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
+                # L_bkg is set to ref-sustained 
+                if self.contrast == 'weber_g1_ref':
+                    L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
+                elif self.contrast == 'weber_g1':
+                    L_bkg = torch.clamp(glayer_ex[...,0:2,:,:,:], min=0.01)
+                elif self.contrast == 'weber_g0_ref':
+                    L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
+                else:
+                    raise RuntimeError( f"Contrast {self.contrast} not supported")
+
+            if L_bkg.shape[-4]>1: # If L_bkg NOT identical for the test and reference images
+                contrast = torch.empty_like(layer)
+                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0,:,:,:]), max=1000.0)    
+                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1,:,:,:]), max=1000.0)    
+            else:
+                contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
+
+            lpyr.append(contrast)
+            L_bkg_pyr.append(L_bkg)
+
+        # L_bkg_bb = gpyr[height-1][...,0:2,:,:,:]
+        # lpyr.append(gpyr[height-1]) # Base band
+        # L_bkg_pyr.append(L_bkg_bb) # Base band
+
+        return lpyr, L_bkg_pyr
+
+
+# This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
+class log_contrast_pyr(lpyr_dec):
+
+    def __init__(self, W, H, ppd, device, contrast):
+        super().__init__(W, H, ppd, device)
+        self.contrast = contrast
+
+        # Assuming D65, there is a linear mapping from log10(L)+log10(M) to log10-luminance
+        lms_d65 = [0.7347, 0.3163, 0.0208]
+        self.a = 0.5
+        self.b = math.log10(lms_d65[0]) - math.log10(lms_d65[1]) + math.log10(lms_d65[0]+lms_d65[1])
 
     def decompose(self, image):
         levels = self.height+1
@@ -263,33 +328,21 @@ class fvvdp_contrast_pyr(fvvdp_lpyr_dec):
         L_bkg_pyr = []
         for i in range(height-1):
             glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
-            layer = gpyr[i] - glayer_ex 
+            contrast = gpyr[i] - glayer_ex 
 
             # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
             # L_bkg is set to ref-sustained 
-            if self.contrast == 'weber_g1_ref':
-                L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
-            elif self.contrast == 'weber_g1':
-                L_bkg = torch.clamp(glayer_ex[...,0:2,:,:,:], min=0.01)
-            elif self.contrast == 'weber_g0_ref':
-                L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
-            else:
-                raise RuntimeError( f"Contrast {self.contrast} not supported")
 
-            if L_bkg.shape[-4]>1: # If L_bkg NOT identical for the test and reference images
-                contrast = torch.empty_like(layer)
-                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0,:,:,:]), max=1000.0)    
-                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1,:,:,:]), max=1000.0)    
-            else:
-                contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
+            # Mapping from log10(L) + log10(M) to log10(L+M)
+            L_bkg = self.a * (glayer_ex[...,0:2,:,:,:] - self.b)
 
             lpyr.append(contrast)
             L_bkg_pyr.append(L_bkg)
 
-        lpyr.append(gpyr[height-1]) # Base band
+        #lpyr.append(gpyr[height-1]) # Base band
+        L_bkg_pyr.append(gpyr[height-1]) # Base band
         
         return lpyr, L_bkg_pyr
-
 
 
     # def gausspyr_expand(self, x, sz = None, kernel_a = 0.4):

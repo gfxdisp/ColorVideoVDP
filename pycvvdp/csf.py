@@ -5,9 +5,11 @@ from interp import interp1
 
 class castleCSF:
 
-    def __init__(self, device):
+    def __init__(self, contrast, device):
         self.device = device
-        csf_lut_file = utils.config_files.find( "csf_lut.json" )
+        if contrast.startswith("weber"):
+            contrast = "weber"
+        csf_lut_file = utils.config_files.find( f"csf_lut_{contrast}.json" )
         csf_lut = utils.json2dict(csf_lut_file)
 
         self.log_L_bkg = torch.log10( torch.as_tensor(csf_lut["L_bkg"], device=device) )
