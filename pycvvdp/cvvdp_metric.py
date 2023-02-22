@@ -240,7 +240,7 @@ class cvvdp(vq_metric):
             block_N_frames = 1
 
         if self.contrast=="log":
-            met_colorspace='LMS2006'
+            met_colorspace='logLMS_DKLd65'
         else:
             met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
 
@@ -389,8 +389,8 @@ class cvvdp(vq_metric):
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
 
-        if self.contrast=="log":
-            R = lms2006_to_dkld65( torch.log10(R.clip(min=1e-5)) )
+        # if self.contrast=="log":
+        #     R = lms2006_to_dkld65( torch.log10(R.clip(min=1e-5)) )
 
         # Perform Laplacian pyramid decomposition
         B_bands, L_bkg_pyr = lpyr.decompose(R[0,...])
@@ -416,17 +416,17 @@ class cvvdp(vq_metric):
             T_f = B_bb[0::2,...] # Test
             R_f = B_bb[1::2,...] # Reference
 
-            L_bkg = lpyr.get_gband(L_bkg_pyr, bb)
+            logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
 
             # Compute CSF
             rho = rho_band[bb] # Spatial frequency in cpd
-            ch_height, ch_width = L_bkg.shape[-2], L_bkg.shape[-1]
+            ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
             S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
             for cc in range(all_ch):
                 tch = 0 if cc<3 else 1  # Sustained or transient
                 cch = cc if cc<3 else 0 # Y, rg, yv
-                tr = cc % L_bkg.shape[-4] # Use L_bkg for the test or reference frame
-                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], L_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                tr = cc % logL_bkg.shape[-4] # Use L_bkg for the test or reference frame
+                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
             if is_baseband:
                 D = (torch.abs(T_f-R_f) * S)

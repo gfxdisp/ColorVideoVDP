@@ -66,6 +66,8 @@ class ColorTransform:
                 rgb2abc = torch.as_tensor( XYZ_to_RGB709, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif colorspace=="RGB2020":
                 rgb2abc = torch.as_tensor( XYZ_to_RGB2020, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            elif colorspace=="logLMS_DKLd65":
+                rgb2abc = torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             else:
                 raise RuntimeError( f"Unknown colorspace '{colorspace}'" )
 
@@ -73,6 +75,10 @@ class ColorTransform:
             # To avoid permute (slow), perform separate dot products
             for cc in range(3):
                 ABC[...,cc,:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+
+            if colorspace=="logLMS_DKLd65":
+                ABC = lms2006_to_dkld65( torch.log10(ABC) )
+
             return ABC
 
 

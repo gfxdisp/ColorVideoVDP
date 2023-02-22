@@ -27,7 +27,7 @@ class castleCSF:
         self.logS_rho = {}
 
 
-    def sensitivity(self, rho, omega, L_bkg, cc, sigma):
+    def sensitivity(self, rho, omega, logL_bkg, cc, sigma):
         # rho - spatial frequency
         # omega - temporal frequency
         # L_bkg - background luminance
@@ -49,7 +49,7 @@ class castleCSF:
             self.logS_rho[rho_str] = logS_r
 
         # Then, interpolate across luminance levels    
-        S = 10**interp1( self.log_L_bkg, logS_r, torch.log10(L_bkg) )        
+        S = 10**interp1( self.log_L_bkg, logS_r, logL_bkg )        
 
         return S
 

@@ -294,7 +294,7 @@ class weber_contrast_pyr(lpyr_dec):
                 contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
 
             lpyr.append(contrast)
-            L_bkg_pyr.append(L_bkg)
+            L_bkg_pyr.append(torch.log10(L_bkg))
 
         # L_bkg_bb = gpyr[height-1][...,0:2,:,:,:]
         # lpyr.append(gpyr[height-1]) # Base band
@@ -326,21 +326,23 @@ class log_contrast_pyr(lpyr_dec):
 
         lpyr = []
         L_bkg_pyr = []
-        for i in range(height-1):
-            glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
-            contrast = gpyr[i] - glayer_ex 
+        for i in range(height):
+            is_baseband = (i==(height-1))
 
-            # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
-            # L_bkg is set to ref-sustained 
+            if is_baseband:
+                contrast = gpyr[i]
+                L_bkg = self.a * (gpyr[i][...,0:2,:,:,:] - self.b)
+            else:
+                glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
+                contrast = gpyr[i] - glayer_ex 
 
-            # Mapping from log10(L) + log10(M) to log10(L+M)
-            L_bkg = self.a * (glayer_ex[...,0:2,:,:,:] - self.b)
+                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y                
+                # Mapping from log10(L) + log10(M) to log10(L+M)
+                L_bkg = self.a * (glayer_ex[...,0:2,:,:,:] - self.b)
 
             lpyr.append(contrast)
             L_bkg_pyr.append(L_bkg)
 
-        #lpyr.append(gpyr[height-1]) # Base band
-        L_bkg_pyr.append(gpyr[height-1]) # Base band
         
         return lpyr, L_bkg_pyr
 
