@@ -18,17 +18,14 @@ class cvvdp_nn(cvvdp):
     rho_dims = 1                # Condition on base rho band
 
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False,
-                 hidden_dims=8, num_layers=2, dropout=0.2, masking='base', masking_ckpt=None, pooling='base', pooling_ckpt=None):
-        super().__init__(display_name, display_photometry, display_geometry, color_space, heatmap, quiet, device, temp_padding, use_checkpoints)
-
+                 hidden_dims=8, num_layers=2, dropout=0.2, masking='base', pooling='base', ckpt=None):
         assert masking in ('base', 'mlp')
         self.masking = masking
         if masking == 'mlp':
             # Separate args (hidden_dims, dropout, num_layers, etc) for masking net
+            hidden_dims = 64
+            num_layers = 4
             self.masking_net = MLP(self.input_dims_masking, [hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout)
-            self.masking_net = load_ckpt(masking_ckpt, self.masking_net)
-            self.masking_net.to(self.device)
-            self.masking_net.eval()
 
         assert pooling in ('base', 'lstm', 'gru')
         self.pooling = pooling
@@ -40,10 +37,27 @@ class cvvdp_nn(cvvdp):
                 torch.nn.Sigmoid()
             )
             self.pooling_net = torch.nn.Sequential(recurrent_net, linear)
-            self.pooling_net = load_ckpt(pooling_ckpt, self.pooling_net)
 
+        super().__init__(display_name, display_photometry, display_geometry, color_space, heatmap, quiet, device, temp_padding, use_checkpoints, ckpt)
+
+        if masking == 'mlp':
+            self.masking_net.to(self.device)
+            self.masking_net.eval()
+
+        if pooling in ('lstm', 'gru'):
             self.pooling_net.to(self.device)
             self.pooling_net.eval()
+
+    def update_from_checkpoint(self, ckpt):
+        super().update_from_checkpoint(ckpt)
+        if self.masking == 'mlp':
+            prefix = 'masking_net.'
+            state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt)['state_dict'].items() if key.startswith(prefix)}
+            self.masking_net.load_state_dict(state_dict)
+        if self.pooling in ('lstm', 'gru'):
+            prefix = 'pooling_net.'
+            state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt)['state_dict'].items() if key.startswith(prefix)}
+            self.pooling_net.load_state_dict(state_dict)
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
@@ -81,7 +95,7 @@ class cvvdp_nn(cvvdp):
         return Q
 
     def short_name(self):
-        return "cvvdp_rnn"
+        return f"cvvdp_mask-{self.masking}_pool-{self.pooling}"
 
     def quality_unit(self):
         return "JOD"
