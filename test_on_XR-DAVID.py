@@ -22,8 +22,8 @@ media_folder = '../datasets/XR-DAVID'
 # ref_file = os.path.join(media_folder, 'Snow_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Snow_Dither_Level003.mp4'))
 
-ref_file = os.path.join(media_folder, 'Wiki_reference_Level001.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, 'Wiki_DUC_Level003.mp4'))
+ref_file = os.path.join(media_folder, 'Emojis_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'Emojis_DUC_Level003.mp4'))
 
 # media_folder = 'S:\\Datasets\\LIVEHDR\\train'
 # ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')
