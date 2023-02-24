@@ -271,6 +271,10 @@ class weber_contrast_pyr(lpyr_dec):
                     L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
                 else:
                     L_bkg = torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01)
+                    # The sustained channels use the mean over the image as the background. Otherwise, they would be divided by itself and the contrast would be 1.
+                    L_bkg_mean = torch.mean(L_bkg, dim=[-1, -2], keepdim=True)
+                    L_bkg = L_bkg.repeat([4, 1, 1, 1])
+                    L_bkg[0:2,:,:,:] = L_bkg_mean
             else:
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
                 layer = gpyr[i] - glayer_ex 
@@ -286,7 +290,7 @@ class weber_contrast_pyr(lpyr_dec):
                 else:
                     raise RuntimeError( f"Contrast {self.contrast} not supported")
 
-            if L_bkg.shape[-4]>1: # If L_bkg NOT identical for the test and reference images
+            if L_bkg.shape[-4]==2: # If L_bkg NOT identical for the test and reference images
                 contrast = torch.empty_like(layer)
                 contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0,:,:,:]), max=1000.0)    
                 contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1,:,:,:]), max=1000.0)    

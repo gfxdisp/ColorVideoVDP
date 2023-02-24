@@ -20,7 +20,7 @@ def json2dict(file):
         with open(file, "r") as json_file:
             data=json.load(json_file)
     else:
-        raise RuntimeError( "Error: Cannot find file {file}" )
+        raise RuntimeError( f"Error: Cannot find file {file}" )
     return data
 
 def linear2srgb_torch(lin):
