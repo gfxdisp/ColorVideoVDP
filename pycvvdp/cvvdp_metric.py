@@ -43,7 +43,7 @@ from pycvvdp.csf import castleCSF
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.color_space = color_space
@@ -64,6 +64,8 @@ class cvvdp(vq_metric):
         self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
 
         self.load_config()
+        if calibrated_ckpt is not None:
+            self.update_from_checkpoint(calibrated_ckpt)
 
         # if self.mask_s > 0.0:
         #     self.mask_p = self.mask_q + self.mask_s
@@ -119,6 +121,14 @@ class cvvdp(vq_metric):
 
         # other parameters
         self.debug = False
+
+    def update_from_checkpoint(self, ckpt):
+        assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
+        # Read relevant parameters from state_dict
+        prefix = 'params.'
+        for key, value in torch.load(ckpt)['state_dict'].items():
+            if key.startswith(prefix):
+                setattr(self, key[len(prefix):], value.to(self.device))
 
     def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
         if display_photometry is None:
