@@ -273,7 +273,7 @@ class weber_contrast_pyr(lpyr_dec):
                     L_bkg = torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01)
                     # The sustained channels use the mean over the image as the background. Otherwise, they would be divided by itself and the contrast would be 1.
                     L_bkg_mean = torch.mean(L_bkg, dim=[-1, -2], keepdim=True)
-                    L_bkg = L_bkg.repeat([4, 1, 1, 1])
+                    L_bkg = L_bkg.repeat([int(image.shape[-4]/2), 1, 1, 1])
                     L_bkg[0:2,:,:,:] = L_bkg_mean
             else:
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
