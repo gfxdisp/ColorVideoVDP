@@ -90,28 +90,28 @@ class cvvdp(vq_metric):
         parameters = utils.json2dict(self.parameters_file)
 
         #all common parameters between Matlab and Pytorch, loaded from the .json file
-        self.mask_p = parameters['mask_p']
-        self.mask_c = parameters['mask_c'] # content masking adjustment
-        self.pu_dilate = parameters['pu_dilate']
-        self.beta = parameters['beta'] # The exponent of the spatial summation (p-norm)
-        self.beta_t = parameters['beta_t'] # The exponent of the summation over time (p-norm)
-        self.beta_tch = parameters['beta_tch'] # The exponent of the summation over temporal channels (p-norm)
-        self.beta_sch = parameters['beta_sch'] # The exponent of the summation over spatial channels (p-norm)
-        self.csf_sigma = parameters['csf_sigma']
-        self.sensitivity_correction = parameters['sensitivity_correction'] # Correct CSF values in dB. Negative values make the metric less sensitive.
-        self.masking_model = parameters['masking_model']
+        self.mask_p = torch.as_tensor( parameters['mask_p'], device=self.device )
+        self.mask_c = torch.as_tensor( parameters['mask_c'], device=self.device ) # content masking adjustment
+        self.pu_dilate = torch.as_tensor( parameters['pu_dilate'], device=self.device )
+        self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
+        self.beta_t = torch.as_tensor( parameters['beta_t'], device=self.device ) # The exponent of the summation over time (p-norm)
+        self.beta_tch = torch.as_tensor( parameters['beta_tch'], device=self.device ) # The exponent of the summation over temporal channels (p-norm)
+        self.beta_sch = torch.as_tensor( parameters['beta_sch'], device=self.device ) # The exponent of the summation over spatial channels (p-norm)
+        self.csf_sigma = torch.as_tensor( parameters['csf_sigma'], device=self.device )
+        self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
+        #self.masking_model = parameters['masking_model']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
-        self.jod_a = parameters['jod_a']
-        self.jod_exp = parameters['jod_exp']
-        self.mask_q_sust = parameters['mask_q_sust']
-        self.mask_q_trans = parameters['mask_q_trans']
-        self.filter_len = parameters['filter_len']
+        self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
+        self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
+        self.mask_q_sust = torch.as_tensor( parameters['mask_q_sust'], device=self.device )
+        self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
+        self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
         self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
         self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
-        self.baseband_weight = parameters['baseband_weight']
-        self.dclamp_type = parameters['dclamp_type']
+        self.baseband_weight = torch.as_tensor( parameters['baseband_weight'], device=self.device )
+        self.dclamp_type = parameters['dclamp_type']  # clamping mode: soft or hard
         self.dclamp_par = torch.as_tensor( parameters['dclamp_par'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
 
@@ -495,16 +495,18 @@ class cvvdp(vq_metric):
         if self.pu_dilate != 0:
             M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
         else:
-            M_pu = M * torch.pow(self.torch_scalar(10.0), self.torch_scalar(self.mask_c))
+            M_pu = M * (10**self.mask_c)
         return M_pu
 
     def mask_func_perc_norm(self, G, G_mask ):
         # Masking on perceptually normalized quantities (as in Daly's VDP)        
         p = self.mask_p
         if G_mask.shape[0]==3: # image
-            q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
+            #q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
+            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], dim=0 ).view(3,1,1,1)
         else: # video
-            q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
+            #q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
+            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], dim=0 ).view(4,1,1,1)
         R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
@@ -578,8 +580,8 @@ class cvvdp(vq_metric):
 
         return F, omega_bands
 
-    def torch_scalar(self, val, dtype=torch.float32):
-        return torch.tensor(val, dtype=dtype, device=self.device) if not torch.is_tensor(val) else val.to(dtype)
+#    def torch_scalar(self, val, dtype=torch.float32):
+#        return torch.tensor(val, dtype=dtype, device=self.device) if not torch.is_tensor(val) else val.to(dtype)
 
     def short_name(self):
         return "cvvdp"
