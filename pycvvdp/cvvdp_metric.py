@@ -482,9 +482,8 @@ class cvvdp(vq_metric):
         if self.dclamp_type == "hard":
             Dc = torch.clamp(D, max=(10**self.dclamp_par))
         elif self.dclamp_type == "soft":
-            n = self.dclamp_par[0]
-            off = self.dclamp_par[1]
-            Dc = (D**n)/(off**n + D**n)
+            max_v = 10**self.dclamp_par
+            Dc = max_v * D / (max_v + D)
         else:
             raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
 
