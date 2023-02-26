@@ -450,8 +450,8 @@ class cvvdp(vq_metric):
             for cc in range(all_ch):
                 tch = 0 if cc<3 else 1  # Sustained or transient
                 cch = cc if cc<3 else 0 # Y, rg, yv
-                tr = cc % logL_bkg.shape[-4] # Use L_bkg for the test or reference frame
-                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,tr,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                # The sensitivity is always extracted for the reference frame
+                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
             if is_baseband:
                 D = (torch.abs(T_f-R_f) * S)
