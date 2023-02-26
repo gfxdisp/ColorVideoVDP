@@ -385,14 +385,29 @@ class cvvdp(vq_metric):
         Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
         Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
         Q = Q.squeeze()
-            
-        Q_JOD = 10. - self.jod_a * Q**self.jod_exp
+
+        Q_JOD = self.met2jod(Q)            
         return Q_JOD
 
         # sign = lambda x: (1, -1)[x<0]
         # beta_jod = 10.0**self.log_jod_exp
         # Q_jod = sign(self.jod_a) * ((abs(self.jod_a)**(1.0/beta_jod))* Q)**beta_jod + 10.0 # This one can help with very large numbers
         # return Q_jod.squeeze()
+
+    # Convert contrast differences to JODs
+    def met2jod(self, Q):
+
+        # We could use 
+        # Q_JOD = 10. - self.jod_a * Q**self.jod_exp
+        # but it does not differentiate well near Q=0
+
+        Q_t = 0.1
+        jod_a_p = self.jod_a * (Q_t**(self.jod_exp-1.))
+
+        Q_JOD = torch.empty_like(Q)
+        Q_JOD[Q<=Q_t] = 10. - jod_a_p * Q[Q<=Q_t];
+        Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
+        return Q_JOD
 
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, heatmap):
         # R[channels,frames,width,height]
