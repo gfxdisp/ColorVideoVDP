@@ -12,7 +12,11 @@ PU21-VMAF metric. Usage is same as the FovVideoVDP metric (see pytorch_examples)
 Required: ffmpeg compiled with libvmaf (https://github.com/Netflix/vmaf/blob/master/resource/doc/ffmpeg.md)
 """
 class pu_vmaf(vq_metric):
-    def __init__(self, ffmpeg_bin, cache_ref_loc='.', device=None):
+    def __init__(self, ffmpeg_bin=None, cache_ref_loc='.', device=None):
+        if ffmpeg_bin is None:
+            # Empty constructor to retrieve name
+            pass
+
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -32,10 +36,6 @@ class pu_vmaf(vq_metric):
 
         self.colorspace = 'RGB709'
         self.ffmpeg_bin = ffmpeg_bin
-    
-    # Empty constructor to retrieve name
-    def __init__(self):
-        pass
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.

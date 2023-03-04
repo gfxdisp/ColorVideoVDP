@@ -20,6 +20,7 @@ class pu_lpips(vq_metric):
             self.device = device
 
         self.pu = PU()
+        # Default versions uses VGG net
         self.lpips = LPIPS(net=net)
         self.lpips.to(self.device)
         self.colorspace = 'RGB2020'
