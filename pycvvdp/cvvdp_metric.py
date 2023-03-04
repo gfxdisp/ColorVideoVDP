@@ -336,7 +336,7 @@ class cvvdp(vq_metric):
             Q_per_ch[:,ff:(ff+Q_per_ch_block.shape[1]),:] = Q_per_ch_block  
 
         rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[0:-1])
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
@@ -362,7 +362,7 @@ class cvvdp(vq_metric):
         return (Q_jod.squeeze(), stats)
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch, rho_band):
+    def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
         # Q_per_ch[channel,frame,sp_band]
 
         # Weights for the two temporal channels

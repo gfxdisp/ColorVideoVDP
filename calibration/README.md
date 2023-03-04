@@ -1,5 +1,11 @@
 # Calibrate ColourVideoVDP on a new dataset
 
+## Prerequisites
+Install additional python libraries:
+```bash
+pip install torchmetrics
+```
+
 ## Step 1: Prepare quality CSV
 Create a `.csv` file with the following mandatory columns:
 1. `test` - test filename
@@ -15,3 +21,7 @@ A few optional columns may also be included:
 Run the script `extract_features.py` with a single mandatory argument - the `.csv` file from the previous step. Additional arguments may be passed directly or included in the **Header** of the `.csv` file. Run `-h/--help` to obtain descriptions for all arguments.
 
 ## Step 3: Run training
+Run the script `train.py`, again with a single mandatory argument - the same `.csv` file used to extract features. Training logs may be viewed by running a [tensorboard server](https://www.tensorflow.org/tensorboard) as follows:
+```bash
+tensorboard --logdir logs
+```

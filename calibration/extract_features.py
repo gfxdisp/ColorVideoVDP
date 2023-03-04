@@ -8,6 +8,31 @@ import sys
 import torch
 from tqdm import trange
 
+def read_args_from_file(args):
+    assert os.path.isfile(args.quality_file), f'Quality file not found at: {args.quality_file}'
+    with open(args.quality_file) as f:
+        lines = f.readlines()
+    n = 0
+    for line in lines:
+        line = line.strip('\n ')
+        if line == '' or line.startswith('#'):  # comments
+            n += 1
+            continue
+        if ':' not in line:                     # stop
+            break
+
+        key, val = map(str.strip, line.split(':'))
+        if key in vars(args).keys():
+            if val.lower() == 'true':
+                sys.argv.append(f'--{key.replace("_", "-")}')
+            else:
+                sys.argv.extend([f'--{key.replace("_", "-")}', val])
+            logging.info(f'Updating {key} to {val}')
+        else:
+            logging.warning(f'{key} not found in argparse namespace, skipping')
+        n += 1
+    return n
+
 def get_args():
     parser = argparse.ArgumentParser('Extract features for cvvdp calibration')
     parser.add_argument('quality_file', help='Path to .csv file containinf quality scores.')
@@ -27,33 +52,15 @@ def get_args():
     parser.add_argument('-d', '--display', default=None, help='Display name to create photometric and geometric models.')
     parser.add_argument('--gpu', type=int,  default=0, help='Select which GPU to use (e.g. 0), default is GPU 0. Pass -1 to run on the CPU.')
     parser.add_argument('--resume', action='store_true', default=False, help='Resume running the metric (skip the conditions that have been already processed).')
-    parser.add_argument("--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
+    parser.add_argument('--full-screen-resize', choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
 
     args = parser.parse_args()
 
     # Update config from file
-    assert os.path.isfile(args.quality_file), f'Quality file not found at: {args.quality_file}'
-    with open(args.quality_file) as f:
-        lines = f.readlines()
-    n = 0
-    for line in lines:
-        line = line.strip('\n ')
-        if line == '' or line.startswith('#'):  # comments
-            n += 1
-            continue
-        if ':' not in line:                     # stop
-            break
-        key, val = map(str.strip, line.split(':'))
-        if val.lower() == 'true':
-            sys.argv.append(f'--{key.replace("_", "-")}')
-        else:
-            sys.argv.extend([f'--{key.replace("_", "-")}', val])
-        logging.info(f'Updating {key} to {val}')
-        n += 1
-
+    num_skip = read_args_from_file(args)
     args = parser.parse_args()
-    quality_table = pd.read_csv(args.quality_file, skiprows=n)
+    quality_table = pd.read_csv(args.quality_file, skiprows=num_skip)
 
     level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=level)
