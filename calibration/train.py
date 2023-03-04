@@ -32,11 +32,11 @@ def get_args():
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
 
     # Training args
-    parser.add_argument('-b', '--batch', default=4, help='Batch-size during training.')
-    parser.add_argument('-n', '--num-workers', default=1, help='Number of CPU workers for data loading.')
+    parser.add_argument('-b', '--batch', type=int, default=4, help='Batch-size during training.')
+    parser.add_argument('-n', '--num-workers', type=int, default=1, help='Number of CPU workers for data loading.')
     parser.add_argument('-o', '--optimizer', default='adam', choices=optimizers.keys(), help='Optimizer for training.')
-    parser.add_argument('-lr', '--learning-rate', default=1e-3, help='Optimizer learning rate.')
-    parser.add_argument('-e', '--num-epochs', default=50, help='Total number of training epochs.')
+    parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3, help='Optimizer learning rate.')
+    parser.add_argument('-e', '--num-epochs', type=int, default=50, help='Total number of training epochs.')
     parser.add_argument('-l', '--log-dir', default='logs', help='Directory to log intermediate loss and metrics.')
     parser.add_argument('--val-epoch', type=int, default=1, help='Number of epochs between validation steps.')
 

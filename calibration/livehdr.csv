@@ -7,6 +7,8 @@ extension: mp4
 display_dir: /anfs/gfxdisp/quality_datasets/LIVEHDR
 display: samsung_q90t_qled_livehdr_dark
 full_screen_resize: bilinear
+log_dir: logs/livehdr
+
 # TODO: compute JOD
 
 test,ref,content,fps,w,h,sureal_bright_mos
