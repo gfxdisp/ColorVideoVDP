@@ -1,10 +1,10 @@
-path_prefix: /anfs/bigdisc/pmh64/XR-DAVID
-split_column: distortion
-train_ratio: 80
+path-prefix: /anfs/bigdisc/pmh64/XR-DAVID
+split-column: distortion
+train-ratio: 80
 seed: 0
 resume: true
 extension: mp4
-display_dir: /anfs/bigdisc/pmh64/XR-DAVID
+display-dir: /anfs/bigdisc/pmh64/XR-DAVID
 display: eizo_CG3146
 log_dir: logs/xr-david
 

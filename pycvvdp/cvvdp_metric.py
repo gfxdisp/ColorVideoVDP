@@ -15,6 +15,7 @@ import json
 #import math
 import torch.utils.benchmark as torchbench
 import logging
+from datetime import date
 
 from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
@@ -630,4 +631,24 @@ class cvvdp(vq_metric):
         with open(dest_fname, 'w', encoding='utf-8') as f:
             json.dump(fmap, f, ensure_ascii=False, indent=4)
 
+    def save_to_config(self, fname, comment):
+        # Save the current parameters to the given file
+        assert fname.endswith('.json'), 'Please provide a .json file'
+        parameters = utils.json2dict(self.parameters_file)
+        for key in parameters:
+            if isinstance(parameters[key], str):
+                # strings remain the same
+                continue
+            elif isinstance(parameters[key], int):
+                parameters[key] = getattr(self, key).item()
+            elif isinstance(parameters[key], float):
+                # np.float32 is not serializable
+                parameters[key] = np.float64(getattr(self, key).item())
+            elif isinstance(parameters[key], list):
+                parameters[key] = list(getattr(self, 'ch_weights').detach().cpu().numpy().astype(np.float64))
 
+        parameters['__comment'] = comment
+        parameters['calibration_date'] = date.today().strftime('%d/%m/%Y')
+
+        with open(fname, 'w') as f:
+            json.dump(parameters, f, indent=4)

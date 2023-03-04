@@ -22,6 +22,7 @@ def read_args_from_file(args):
             break
 
         key, val = map(str.strip, line.split(':'))
+        key = key.replace('-', '_')
         if key in vars(args).keys():
             if val.lower() == 'true':
                 sys.argv.append(f'--{key.replace("_", "-")}')

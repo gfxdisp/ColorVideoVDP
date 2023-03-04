@@ -21,7 +21,9 @@ A few optional columns may also be included:
 Run the script `extract_features.py` with a single mandatory argument - the `.csv` file from the previous step. Additional arguments may be passed directly or included in the **Header** of the `.csv` file. Run `-h/--help` to obtain descriptions for all arguments.
 
 ## Step 3: Run training
-Run the script `train.py`, again with a single mandatory argument - the same `.csv` file used to extract features. Training logs may be viewed by running a [tensorboard server](https://www.tensorflow.org/tensorboard) as follows:
+Run the script `train.py`, again with a single mandatory argument - the same `.csv` file used to extract features. The result of calibration is a new configuration JSON file provided by argument `--output_file` (default value is "new_parameters.json"). Replace the [original file](pycvvdp/vvdp_data/cvvdp_parameters.json) with this file to use the calibrated parameters.
+
+Intermediate losses and validation metrics are stored at "logs/" by default, update this location by passing `--log-dir`. All logs may be viewed by running a [tensorboard server](https://www.tensorflow.org/tensorboard) as follows:
 ```bash
 tensorboard --logdir logs
 ```
