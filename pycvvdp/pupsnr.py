@@ -45,10 +45,19 @@ class pu_psnr_y(vq_metric):
             # Apply PU
             T_enc = self.pu.encode(T)
             R_enc = self.pu.encode(R)
-
-            psnr = psnr + self.psnr_fn(T_enc, R_enc) / N_frames
+            
+            if torch.sum(T_enc != R_enc): 
+                psnr = psnr + self.psnr_fn(T_enc, R_enc) / N_frames
+            else: # If T_enc and R_enc are the same, psnr value is set to zero
+                psnr = psnr + 0   
+                
+            #psnr = psnr + self.psnr_fn(T_enc, R_enc) / N_frames
         return psnr, None
-
+        
+    def psnr_fn(self, img1, img2):
+        mse = torch.mean( (img1 - img2)**2 )
+        return 20*torch.log10( self.pu.peak/torch.sqrt(mse) )
+        
     def short_name(self):
         return "PU21-PSNR-Y"
 
@@ -104,4 +113,10 @@ class pu_psnr_mse_y(pu_psnr_y):
     def short_name(self):
         return "PU21-PSNR-MSE-Y"
     
-
+class pu_psnr_mse_rgb2020(pu_psnr_mse_y):
+    def __init__(self, device=None):
+        super().__init__(device)
+        self.colorspace = 'RGB2020'
+    
+    def short_name(self):
+        return "PU21-PSNR-MSE-RGB2020"
