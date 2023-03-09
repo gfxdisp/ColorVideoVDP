@@ -4,11 +4,11 @@ train-ratio: 80
 seed: 0
 resume: true
 extension: mp4
-display-dir: /anfs/bigdisc/pmh64/XR-DAVID
+config-dir: /anfs/bigdisc/pmh64/XR-DAVID
 display: eizo_CG3146
 log_dir: logs/xr-david
 
-scene,condition,jod,jod_low,jod_high,distortion,level,test,ref
+scene,condition,jod,jod_low,jod_high,distortion,level,test,reference
 Bonfire,Blur_Level001,8.85431001918027,-0.362659750180902,0.308376857396273,Blur,Level001,Bonfire_Blur_Level001,Bonfire_reference_Level001
 Bonfire,Blur_Level002,7.33533156775589,-2.10694398890718,-1.07819938232923,Blur,Level002,Bonfire_Blur_Level002,Bonfire_reference_Level001
 Bonfire,Blur_Level003,6.65934735788486,-2.85482470249509,-1.76235272293187,Blur,Level003,Bonfire_Blur_Level003,Bonfire_reference_Level001

@@ -39,17 +39,15 @@ def get_args():
     parser.add_argument('quality_file', help='Path to .csv file containinf quality scores.')
     parser.add_argument('-p', '--path-prefix', default='', help='Prefix for each test and reference file')
     parser.add_argument('-e', '--extension', default='mp4', help='Extension to file name')
-    parser.add_argument('-s', '--split-column', default='ref', help='Column name for train-test split.')
-    parser.add_argument('-r', '--train-ratio', type=int, choices=range(100), default=80, help='Ratio of training split.')
-    parser.add_argument('-i', '--id-column', default=None, help='Column name for unique per-row ID.')
+    parser.add_argument('-s', '--split-column', default='reference', help='Select the column name for train-test split. Must correspond to an existing column. See calibration/README.md for more details.')
+    parser.add_argument('-r', '--train-ratio', type=int, choices=range(100), default=80, help='Percentage of data used for training. E.g., "80" refers to a 80-20 train-test split.')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducible splits.')
     parser.add_argument('--masking', default='base', choices=['base', 'mlp'], help='Per-frame masking model.')
     parser.add_argument('--pooling', default='base', choices=['base', 'lstm', 'gru'], help='Reduction method used to pool per-frame features.')
     parser.add_argument('--ckpt', default=None, help='PyTorch checkpoint to retrieve weights/parameters.')
     parser.add_argument('-w', '--worker', default=None, type=str, help='WorkerID and the humber of workers in the format k/N, where N is the total number of workers and k=1..N.')
     parser.add_argument('-f', '--features-suffix', default=None, help='suffix to add add to the features diretory name.')
-    parser.add_argument('-c', '--config-dir', default=None, help='Metric config dir.')
-    parser.add_argument('--display-dir', default=None, help='Display model config dir.')
+    parser.add_argument('-c', '--config-dir', default=None, help="A path to cvvdp configuration files: display_models.json, cvvdp_parameters.json and others.")
     parser.add_argument('-d', '--display', default=None, help='Display name to create photometric and geometric models.')
     parser.add_argument('--gpu', type=int,  default=0, help='Select which GPU to use (e.g. 0), default is GPU 0. Pass -1 to run on the CPU.')
     parser.add_argument('--resume', action='store_true', default=False, help='Resume running the metric (skip the conditions that have been already processed).')
@@ -68,16 +66,9 @@ def get_args():
 
     if not args.config_dir is None:
         pycvvdp.utils.config_files.set_config_dir(args.config_dir)
-        pfile = os.path.join(args.config_dir, "cvvdp_parameters.json")
-        if os.path.isfile( pfile ):
-            logging.info( f"Using metric parameter file {pfile}")
-        else:
-            logging.error( f"Cannot find the parameter file {pfile}")
-            sys.exit(-1)
 
     # Display model checks
-    assert args.display is not None, 'Please select a display name. You may select a single name or include a column titled "display" and pass "--display per-row".'
-    pycvvdp.utils.config_files.set_config_dir(args.display_dir)
+    assert args.display is not None, 'Please select a display name. You may select a single display from "pycvvdp/vvdp_data/display_models" or include a column titled "display" and pass "--display per-row".'
     if args.display == 'per-row':
         assert 'display' in quality_table.columns, 'Per-row display selected but cannot find column "display".'
 
@@ -124,9 +115,9 @@ def main():
         rng_step = 1
 
     for kk in trange(rng_start, len(quality_table), rng_step):
-        test, ref, cond = quality_table.loc[kk][['test', 'ref', args.split_column]]
+        test, ref, cond = quality_table.loc[kk][['test', 'reference', args.split_column]]
 
-        id = os.path.splitext(test)[0].replace('/', '_') if args.id_column is None else args.id_column
+        id = os.path.splitext(test)[0].replace('/', '_')
         split = 'train' if cond in train_cond else 'test'
         dest_name = os.path.join(ft_path, split, id + '_fmap.json')
         if args.resume and os.path.isfile(dest_name):

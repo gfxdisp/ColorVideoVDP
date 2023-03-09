@@ -4,14 +4,14 @@ train-ratio: 80
 seed: 0
 resume: true
 extension: mp4
-display_dir: /anfs/gfxdisp/quality_datasets/LIVEHDR
+config_dir: /anfs/gfxdisp/quality_datasets/LIVEHDR
 display: samsung_q90t_qled_livehdr_dark
 full-screen-resize: bilinear
 log-dir: logs/livehdr
 
 # TODO: compute JOD
 
-test,ref,content,fps,w,h,sureal_bright_mos
+test,reference,content,fps,w,h,sureal_bright_mos
 1080p_1M_CenterPanorama,4k_ref_CenterPanorama,CenterPanorama,60.0,1920,1080,47.14721712903105
 1080p_1M_CourtYard,4k_ref_CourtYard,CourtYard,60.0,1920,1080,37.70075199018007
 1080p_1M_firework,4k_ref_firework,firework,60.0,1920,1080,17.169701144248116

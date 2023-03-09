@@ -26,7 +26,7 @@ class VideoDataset(D.Dataset):
         """
         Returns:
             qpc:            quality per channel (cxfxb)
-            base_rho_band:  float
+            base_rho_band:  spatial frequency of the base band (smallest frequency)
             quality:        subjective quality (in JOD)
         """
         assert index in range(self.__len__()), f'{index} is out of range, len={self.__len__()}'
