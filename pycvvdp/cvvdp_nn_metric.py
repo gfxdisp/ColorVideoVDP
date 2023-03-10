@@ -23,7 +23,7 @@ class cvvdp_nn(cvvdp):
         self.masking = masking
         if masking == 'mlp':
             # Separate args (hidden_dims, dropout, num_layers, etc) for masking net
-            hidden_dims = 64
+            hidden_dims = 16
             num_layers = 4
             self.masking_net = MLP(self.input_dims_masking, [hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout)
 
@@ -72,16 +72,19 @@ class cvvdp_nn(cvvdp):
             return (Q_jod.squeeze(), stats)
 
     def apply_masking_model(self, T, R, S):
-        if self.masking == 'base':
-            return super().apply_masking_model(T, R, S)
-        else:
-            c, _, h, w = T.shape
+        D = super().apply_masking_model(T, R, S)
+        if self.masking == 'mlp':
+            c, n, h, w = T.shape
             if S.dim() == 0:
                 S = torch.full_like(T, S)
             T, R, S = T.flatten(), R.flatten(), S.flatten()
             feat_in = torch.stack((T, R, S, T*S, R*S, torch.abs(T - R)*S), dim=-1)
-            D = self.masking_net(feat_in).reshape(c, 1, h, w)
-            return D
+            # D = ((S*(T - R)**self.mask_p) / (1 + self.masking_net(feat_in))).reshape(c, n, h, w)
+            D_prime = self.masking_net(feat_in).reshape(c, n, h, w)
+            D = D * D_prime
+            # batch_size = 5_000_000     # Dependent on available GPU memory
+            # D = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).reshape(c, n, h, w)
+        return D
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
