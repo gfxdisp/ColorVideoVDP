@@ -14,8 +14,9 @@ Create a `.csv` file with the following mandatory columns:
 
 A few optional columns may also be included:
 - `display` - per-condition display model; use this if each row requires a separate display model (photometric or geometric). The display name should be listed in "display_models.json" located either at the [default](pycvvdp/vvdp_data) location or at a custom location (supplied by option `--config-dir`).
+- `path-prefix` - path to the folder which contains all test and reference videos. If this argument is passed, each row of the quality file should contain relative paths (w.r.t to the provided prefix)
 
-**[Header]**: The file may include an optional header containing argparse options. These options will be parsed by our python scripts and **will supersede** default as well as CLI arguments. See [this example file](calibration/xr-david.csv) for more details.
+**[Header]**: The file may include an optional header containing argparse options. These options will be parsed by our python scripts and **will supersede** default as well as CLI arguments. See [this example file](calibration/xr-david.csv) for more details. Note that short forms are not allowed here, please use full argument names.
 
 ## Step 2: Extract features
 Run the script `extract_features.py` with a single mandatory argument - the `.csv` file from the previous step. Additional arguments may be passed directly or included in the **Header** of the `.csv` file. Run `-h/--help` to obtain descriptions for all arguments.

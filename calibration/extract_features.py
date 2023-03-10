@@ -38,7 +38,6 @@ def get_args():
     parser = argparse.ArgumentParser('Extract features for cvvdp calibration')
     parser.add_argument('quality_file', help='Path to .csv file containinf quality scores.')
     parser.add_argument('-p', '--path-prefix', default='', help='Prefix for each test and reference file')
-    parser.add_argument('-e', '--extension', default='mp4', help='Extension to file name')
     parser.add_argument('-s', '--split-column', default='reference', help='Select the column name for train-test split. Must correspond to an existing column. See calibration/README.md for more details.')
     parser.add_argument('-r', '--train-ratio', type=int, choices=range(100), default=80, help='Percentage of data used for training. E.g., "80" refers to a 80-20 train-test split.')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducible splits.')
@@ -117,7 +116,7 @@ def main():
     for kk in trange(rng_start, len(quality_table), rng_step):
         test, ref, cond = quality_table.loc[kk][['test', 'reference', args.split_column]]
 
-        id = os.path.splitext(test)[0].replace('/', '_')
+        id = os.path.splitext(test)[0].replace('/', '_')    # Unique ID for each row: test filename without extension
         split = 'train' if cond in train_cond else 'test'
         dest_name = os.path.join(ft_path, split, id + '_fmap.json')
         if args.resume and os.path.isfile(dest_name):
@@ -132,8 +131,8 @@ def main():
 
         # Create the video source and run the metric
         try:
-            vs = pycvvdp.video_source_file(os.path.join(args.path_prefix, f'{test}.{args.extension}'),
-                                        os.path.join(args.path_prefix, f'{ref}.{args.extension}'),
+            vs = pycvvdp.video_source_file(os.path.join(args.path_prefix, test),
+                                        os.path.join(args.path_prefix, ref),
                                         display_photometry=disp_photo,
                                         full_screen_resize=args.full_screen_resize,
                                         resize_resolution=disp_geom.resolution,

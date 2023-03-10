@@ -33,11 +33,12 @@ class VideoDataset(D.Dataset):
 
         row = self.quality_table.iloc[index]
         test_fname, quality = row[['test', 'jod']]
+        id = osp.splitext[0].replace('/', '_')      # Unique ID for each row
 
         if test_fname in self.Q_per_ch:
-            qpc, base_rho_band = self.Q_per_ch[test_fname], self.base_rho_band[test_fname]
+            qpc, base_rho_band = self.Q_per_ch[id], self.base_rho_band[id]
         else:
-            feat_fname = osp.join( self.feature_dir, self.split, f'{test_fname}_fmap.json' )
+            feat_fname = osp.join( self.feature_dir, self.split, f'{id}_fmap.json' )
             assert osp.isfile(feat_fname), f'Features missing for "{test_fname}"'
             with open(feat_fname, "r") as json_file:
                 features = json.load(json_file)
@@ -69,8 +70,8 @@ class VideoDataset(D.Dataset):
                 qpc = torch.tensor(resampled_qpc)
 
             base_rho_band = np.float32(rho_band[-1])
-            self.Q_per_ch[test_fname] = qpc
-            self.base_rho_band[test_fname] = base_rho_band
+            self.Q_per_ch[id] = qpc
+            self.base_rho_band[id] = base_rho_band
 
         return qpc, base_rho_band, quality
 
@@ -79,7 +80,7 @@ class VideoDataset(D.Dataset):
 
 
 def collate(batch):
-    # Custom collate is needed for unequal batches
+    # Custom collate is needed for unequal samples, since number of frames can vary between videos.
     qpc, rho_band, q = [], [], []
     for item in batch:
         qpc.append(torch.tensor(item[0]))
