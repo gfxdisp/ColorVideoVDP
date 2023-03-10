@@ -79,11 +79,9 @@ class cvvdp_nn(cvvdp):
                 S = torch.full_like(T, S)
             T, R, S = T.flatten(), R.flatten(), S.flatten()
             feat_in = torch.stack((T, R, S, T*S, R*S, torch.abs(T - R)*S), dim=-1)
-            # D = ((S*(T - R)**self.mask_p) / (1 + self.masking_net(feat_in))).reshape(c, n, h, w)
-            D_prime = self.masking_net(feat_in).reshape(c, n, h, w)
+            batch_size = 2560*1440     # Split larger than 2k into multiple batches
+            D_prime = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).reshape(c, n, h, w)
             D = D * D_prime
-            # batch_size = 5_000_000     # Dependent on available GPU memory
-            # D = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).reshape(c, n, h, w)
         return D
 
     # Perform pooling with per-band weights and map to JODs
