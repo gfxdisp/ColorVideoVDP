@@ -15,6 +15,7 @@ import json
 #import math
 import torch.utils.benchmark as torchbench
 import logging
+from datetime import date
 
 from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
@@ -346,7 +347,7 @@ class cvvdp(vq_metric):
                     heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap).detach().type(torch.float16).cpu()
 
         rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[0:-1])
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
@@ -372,7 +373,7 @@ class cvvdp(vq_metric):
         return (Q_jod.squeeze(), stats)
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch, rho_band):
+    def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
         # Q_per_ch[channel,frame,sp_band]
 
         no_channels = Q_per_ch.shape[0]
@@ -644,4 +645,24 @@ class cvvdp(vq_metric):
         with open(dest_fname, 'w', encoding='utf-8') as f:
             json.dump(fmap, f, ensure_ascii=False, indent=4)
 
+    def save_to_config(self, fname, comment):
+        # Save the current parameters to the given file
+        assert fname.endswith('.json'), 'Please provide a .json file'
+        parameters = utils.json2dict(self.parameters_file)
+        for key in parameters:
+            if isinstance(parameters[key], str):
+                # strings remain the same
+                continue
+            elif isinstance(parameters[key], int):
+                parameters[key] = getattr(self, key).item()
+            elif isinstance(parameters[key], float):
+                # np.float32 is not serializable
+                parameters[key] = np.float64(getattr(self, key).item())
+            elif isinstance(parameters[key], list):
+                parameters[key] = list(getattr(self, 'ch_weights').detach().cpu().numpy().astype(np.float64))
 
+        parameters['__comment'] = comment
+        parameters['calibration_date'] = date.today().strftime('%d/%m/%Y')
+
+        with open(fname, 'w') as f:
+            json.dump(parameters, f, indent=4)

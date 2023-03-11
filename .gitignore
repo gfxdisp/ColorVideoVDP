@@ -5,3 +5,7 @@ dist/
 build/
 
 .vscode/
+
+# Calibration files
+features*/
+logs/
