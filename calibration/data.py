@@ -33,7 +33,7 @@ class VideoDataset(D.Dataset):
 
         row = self.quality_table.iloc[index]
         test_fname, quality = row[['test', 'jod']]
-        id = osp.splitext[0].replace('/', '_')      # Unique ID for each row
+        id = osp.splitext(test_fname)[0].replace('/', '_')      # Unique ID for each row
 
         if test_fname in self.Q_per_ch:
             qpc, base_rho_band = self.Q_per_ch[id], self.base_rho_band[id]

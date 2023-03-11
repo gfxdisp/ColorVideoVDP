@@ -24,7 +24,7 @@ Run the script `extract_features.py` with a single mandatory argument - the `.cs
 Extracted features will be stored as `features/*.json` files by default. If `-f/--features-suffix` is passed (either through CLI or in the `.csv` file), the files will be named `features_{suffix}/*.json`.
 
 ## Step 3: Run training
-Run the script `train.py`, again with a single mandatory argument - the same `.csv` file used to extract features. The result of calibration is a new configuration JSON file stored at "new_config/cvvdp_parameters.json". The output directory can be changed by passing a custom location using the argument `-o/--output_file`. To use calibrated parameters, pass this directory to `run_cvvdp.py` (or the `cvvdp` executable) using `--config_dir`.
+Run the script `train.py`, again with a single mandatory argument - the same `.csv` file used to extract features. The result of calibration is a new configuration JSON file stored at "new_config/cvvdp_parameters.json". The output directory can be changed by passing a custom location using the argument `-o/--output-file`. To use calibrated parameters, pass this directory to `run_cvvdp.py` (or the `cvvdp` executable) using `--config-dir`.
 
 Intermediate losses and validation metrics are stored at "logs/" by default, update this location by passing `--log-dir`. All logs may be viewed by running a [tensorboard server](https://www.tensorflow.org/tensorboard) as follows:
 ```bash

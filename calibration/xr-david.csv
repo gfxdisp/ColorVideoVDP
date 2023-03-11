@@ -1,4 +1,5 @@
 path-prefix: /anfs/bigdisc/pmh64/XR-DAVID
+features-suffix: xr-david
 split-column: distortion
 train-ratio: 80
 seed: 0
@@ -6,6 +7,7 @@ resume: true
 config-dir: /anfs/bigdisc/pmh64/XR-DAVID
 display: eizo_CG3146
 log_dir: logs/xr-david
+num_epochs: 200
 
 scene,condition,jod,jod_low,jod_high,distortion,level,test,reference
 Bonfire,Blur_Level001,8.85431001918027,-0.362659750180902,0.308376857396273,Blur,Level001,Bonfire_Blur_Level001.mp4,Bonfire_reference_Level001.mp4
