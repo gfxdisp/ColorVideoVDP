@@ -244,6 +244,113 @@ class lpyr_dec():
             return torch.cat([x.permute(0,1,3,2),z.permute(0,1,3,2)],dim=3).view(x.shape[0], x.shape[1], 2*x.shape[3],x.shape[2]).permute(0,1,3,2)
 
 
+
+# Decimated Laplacian pyramid with a bit better interface - stores all bands within the object
+class lpyr_dec_2(lpyr_dec):
+
+    def __init__(self, W, H, ppd, device, keep_gaussian=False):
+        self.device = device
+        self.ppd = ppd
+        self.min_freq = 0.2
+        self.W = W
+        self.H = H
+        self.keep_gaussian=keep_gaussian
+
+        max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
+
+        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
+
+        # print(max_levels)
+        # print(bands)
+        # sys.exit(0)
+
+        invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
+
+        if invalid_bands.shape[-2] == 0:
+            max_band = max_levels
+        else:
+            max_band = invalid_bands[0][0]
+
+        # max_band+1 below converts index into count
+        self.height = np.clip(max_band+1, 0, max_levels) # int(np.clip(max(np.ceil(np.log2(ppd)), 1.0)))
+        self.band_freqs = np.array([1.0] + [0.3228 * 2.0 **(-f) for f in range(self.height)]) * self.ppd/2.0
+
+        self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
+        self.pyr_ind = self.height * [None]   # index to the elements at each level
+
+        cH = H
+        cW = W
+        for ll in range(self.height):
+            self.pyr_shape[ll] = (cH, cW)
+            cH = ceildiv(H,2)
+            cW = ceildiv(W,2)
+
+        self.lbands = [None] * (self.height+1) # Laplacian pyramid bands
+        if self.keep_gaussian:
+            self.gbands = [None] * (self.height+1) # Gaussian pyramid bands
+
+    def get_freqs(self):
+        return self.band_freqs
+
+    def get_band_count(self):
+        return self.height+1
+
+    def get_lband(self, band):
+        if band == 0 or band == (len(bands)-1):
+            band_mul = 1.0
+        else:
+            band_mul = 2.0
+
+        return self.lbands[band] * band_mul
+
+    def set_lband(self, band, data):
+        if band == 0 or band == (len(self.lbands)-1):
+            band_mul = 1.0
+        else:
+            band_mul = 2.0
+
+        self.lbands[band] = data / band_mul
+
+    def get_gband(self, band):
+        return self.gbands[band]
+
+    # def clear(self):
+    #     for pyramid in self.P:
+    #         for level in pyramid:
+    #             # print ("deleting " + str(level))
+    #             del level
+
+    def decompose(self, image): 
+        return self.laplacian_pyramid_dec(image, self.height+1)
+
+    def reconstruct(self):
+        img = self.lbands[-1]
+
+        for i in reversed(range(0, len(self.lbands)-1)):
+            img = self.gausspyr_expand(img, [self.lbands[i].shape[-2], self.lbands[i].shape[-1]])
+            img += self.lbands[i]
+
+        return img
+
+    def laplacian_pyramid_dec(self, image, levels = -1, kernel_a = 0.4):
+        gpyr = self.gaussian_pyramid_dec(image, levels, kernel_a)
+
+        height = len(gpyr)
+        if height == 0:
+            return
+
+        lpyr = []
+        for i in range(height-1):
+            layer = gpyr[i] - self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
+            lpyr.append(layer)
+
+        lpyr.append(gpyr[height-1])
+        self.lbands = lpyr
+
+        if self.keep_gaussian:
+            self.gbands = gpyr        
+
+
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
 class weber_contrast_pyr(lpyr_dec):
 

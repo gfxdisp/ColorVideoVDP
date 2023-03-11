@@ -33,7 +33,7 @@ TST_FILEs = glob.glob(os.path.join(media_folder, 'Emojis_DUC_Level003.mp4'))
 pycvvdp.utils.config_files.set_config_dir(media_folder)
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
-cvvdp = pycvvdp.cvvdp(display_name=display_name)
+cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw")
 cvvdp.debug = True
 
 for tst_fname in TST_FILEs:

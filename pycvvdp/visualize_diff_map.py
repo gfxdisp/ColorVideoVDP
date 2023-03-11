@@ -47,13 +47,8 @@ def vis_tonemap(b, dr):
 
     return tmo_img
 
-# ported from hdrvdp_visualize.m
-# returns sRGB image
-# modes supported
-#   - pmap only
-#   - screen target only
-#   - trichromatic, dichromatic, monochromatic
-def visualize_diff_map(diff_map, context_image=None, type="pmap" , colormap_type="supra-threshold"):
+# returns sRGB image/frames
+def visualize_diff_map(diff_map, context_image=None, colormap_type="supra-threshold"):
     diff_map = torch.clamp(diff_map, 0.0, 1.0)
 
     if context_image is None:
@@ -62,6 +57,7 @@ def visualize_diff_map(diff_map, context_image=None, type="pmap" , colormap_type
         tmo_img = vis_tonemap(log_luminance(context_image), 0.6)
 
     if colormap_type == 'threshold':
+        # Visualize up to 1 JOD (>=1 JOD will be all red)
 
         color_map = torch.tensor([
             [0.2, 0.2, 1.0],
@@ -70,16 +66,17 @@ def visualize_diff_map(diff_map, context_image=None, type="pmap" , colormap_type
             [1.0, 1.0, 0.2],
             [1.0, 0.2, 0.2],
         ], device=diff_map.device)
-        color_map_in = torch.tensor([0.00, 0.25, 0.50, 0.75, 1.00], device=diff_map.device)
+        color_map_in = torch.tensor([0.00, 0.25, 0.50, 0.75, 1.00], device=diff_map.device)*0.1
 
     elif colormap_type == 'supra-threshold':
+        # Visualize up to 3 JOD (>=3 JOD will be all yellow)
 
         color_map = torch.tensor([
             [0.2, 1.0, 1.0],
             [1.0, 1.0, 1.0],
             [1.0, 1.0, 0.2],
         ], device=diff_map.device)
-        color_map_in = torch.tensor([0.0, 0.5, 1.0], device=diff_map.device)
+        color_map_in = torch.tensor([0.0, 0.5, 1.0], device=diff_map.device)*0.3
 
     elif colormap_type == 'monochromatic':
         
@@ -92,17 +89,19 @@ def visualize_diff_map(diff_map, context_image=None, type="pmap" , colormap_type
     else:
         print("Unknown colormap: %s" % colormap_type)
 
-    cmap = torch.zeros_like(diff_map)
-    if cmap.shape[1] == 1:
-        cmap = torch.cat([cmap]*3, 1)
+    # cmap = torch.zeros_like(diff_map)
+    # if cmap.shape[1] == 1:
+    #     cmap = torch.cat([cmap]*3, 1)
+    frame_count, h, w = diff_map.shape[-3], diff_map.shape[-2], diff_map.shape[-1]
+    cmap = torch.empty( [3, frame_count, h, w], device=diff_map.device, dtype=torch.float16)
 
     color_map_l = color_map[:,0:1] * 0.212656 + color_map[:,1:2] * 0.715158 + color_map[:,2:3] * 0.072186
     color_map_ch = color_map / (torch.cat([color_map_l] * 3, 1) + 0.0001)
 
-    cmap[:,0:1,...] = interp1(color_map_in, color_map_ch[:,0], diff_map)
-    cmap[:,1:2,...] = interp1(color_map_in, color_map_ch[:,1], diff_map)
-    cmap[:,2:3,...] = interp1(color_map_in, color_map_ch[:,2], diff_map)
+    cmap[0:1,...] = interp1(color_map_in, color_map_ch[:,0], diff_map).type(torch.float16)
+    cmap[1:2,...] = interp1(color_map_in, color_map_ch[:,1], diff_map).type(torch.float16)
+    cmap[2:3,...] = interp1(color_map_in, color_map_ch[:,2], diff_map).type(torch.float16)
 
-    cmap = (cmap * torch.cat([tmo_img]*3, dim=1)).clip(0.,1.)
+    cmap = (cmap * tmo_img).clip(0.,1.)
 
     return cmap

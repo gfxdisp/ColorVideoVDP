@@ -28,7 +28,7 @@ from pycvvdp.colorspace import lms2006_to_dkld65
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from third_party.cpuinfo import cpuinfo
-from pycvvdp.lpyr_dec import lpyr_dec, weber_contrast_pyr, log_contrast_pyr
+from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
 from interp import interp1, interp3
 
 import pycvvdp.utils as utils
@@ -49,6 +49,8 @@ class cvvdp(vq_metric):
         self.color_space = color_space
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
+
+        assert heatmap in ["threshold", "supra-threshold", "raw", None], "Unknown heatmap type"            
 
         self.do_heatmap = (not self.heatmap is None) and (self.heatmap != "none")
 
@@ -191,7 +193,7 @@ class cvvdp(vq_metric):
                 raise RuntimeError( f"Unknown contrast {self.contrast}" )
 
             if self.do_heatmap:
-                self.heatmap_pyr = lpyr_dec(width, height, self.pix_per_deg, self.device)
+                self.heatmap_pyr = lpyr_dec_2(width, height, self.pix_per_deg, self.device)
 
         #assert self.W == R_vid.shape[-1] and self.H == R_vid.shape[-2]
         #assert len(R_vid.shape)==5
@@ -326,14 +328,22 @@ class cvvdp(vq_metric):
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
+                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
             else:
-                Q_per_ch_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
+                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
             
-            Q_per_ch[:,ff:(ff+Q_per_ch_block.shape[1]),:] = Q_per_ch_block  
+            ff_end = ff+Q_per_ch_block.shape[1]
+            Q_per_ch[:,ff:ff_end,:] = Q_per_ch_block  
+
+            if self.do_heatmap:
+                if self.heatmap == "raw":
+                    heatmap[:,:,ff:ff_end,...] = heatmap_block.detach().type(torch.float16).cpu()
+                else:
+                    ref_frame = R[:,0, :, :, :]
+                    heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap).detach().type(torch.float16).cpu()
 
         rho_band = self.lpyr.get_freqs()
         Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[0:-1])
@@ -365,15 +375,18 @@ class cvvdp(vq_metric):
     def do_pooling_and_jods(self, Q_per_ch, rho_band):
         # Q_per_ch[channel,frame,sp_band]
 
-        # Weights for the two temporal channels
         no_channels = Q_per_ch.shape[0]
         no_frames = Q_per_ch.shape[1]
         no_bands = Q_per_ch.shape[2]
-        if no_frames>1: # If video
-            per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
-            #torch.stack( (torch.ones(1, device=self.device), torch.as_tensor(self.w_transient, device=self.device)[None] ), dim=1)[:,:,None]
-        else: # If image
-            per_ch_w = 1
+
+        # Weights for the channels: sustained, RG, YV, [transient]
+        per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
+
+        # if no_frames>1: # If video
+        #     per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
+        #     #torch.stack( (torch.ones(1, device=self.device), torch.as_tensor(self.w_transient, device=self.device)[None] ), dim=1)[:,:,None]
+        # else: # If image
+        #     per_ch_w = 1
 
         # Weights for the spatial bands
         per_sband_w = torch.ones( (1,1,no_bands), device=self.device)
@@ -456,27 +469,28 @@ class cvvdp(vq_metric):
             if is_baseband:
                 D = (torch.abs(T_f-R_f) * S)
             else:
+                # dimensions: [channel,frame,height,width]
                 D = self.apply_masking_model(T_f, R_f, S)
-
-            # if self.do_heatmap:
-            #     if cc == 0: self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, D)
-            #     else:       self.heatmap_pyr.set_band(Dmap_pyr_bands, bb, self.heatmap_pyr.get_band(Dmap_pyr_bands, bb) + w_temp_ch[cc] * D)
 
             if Q_per_ch_block is None:
                 Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
 
             Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
-        # if self.do_heatmap:
-        #     beta_jod = np.power(10.0, self.log_jod_exp)
-        #     dmap = torch.pow(self.heatmap_pyr.reconstruct(Dmap_pyr_bands), beta_jod) * abs(self.jod_a)         
-        #     if self.heatmap == "raw":
-        #         heatmap[:,:,ff,...] = dmap.detach().type(torch.float16).cpu()
-        #     else:
-        #         ref_frame = R[:,0, :, :, :]
-        #         heatmap[:,:,ff,...] = visualize_diff_map(dmap, context_image=ref_frame, colormap_type=self.heatmap).detach().type(torch.float16).cpu()
-        
-        return Q_per_ch_block
+            if self.do_heatmap:
+
+                # We need to reduce the differences across the channels using the right weights
+                # Weights for the channels: sustained, RG, YV, [transient]
+                per_ch_w = self.ch_weights[0:all_ch].view(-1,1,1,1)
+                D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
+                self.heatmap_pyr.set_lband(bb, D_chr)
+
+        if self.do_heatmap:
+            heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
+        else:
+            heatmap_block = None
+
+        return Q_per_ch_block, heatmap_block
 
     def apply_masking_model(self, T, R, S):
         # T - test contrast tensor
