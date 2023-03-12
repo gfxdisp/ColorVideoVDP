@@ -8,6 +8,7 @@ config_dir: /anfs/gfxdisp/pmh64/nerf
 display: eizo_color_edge
 log-dir: logs/nerf
 num_epochs: 250
+save: best-pearson
 
 scene,method,jod,jod_low,jod_high,reference,test
 bears,directvoxgo,5.4370541380020505,-2.00144978450058,-0.89056259747022,"scene=bears,method=reference.mp4","scene=bears,method=directvoxgo.mp4"
