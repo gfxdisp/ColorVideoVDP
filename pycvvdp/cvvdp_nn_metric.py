@@ -72,7 +72,6 @@ class cvvdp_nn(cvvdp):
             return (Q_jod.squeeze(), stats)
 
     def apply_masking_model(self, T, R, S):
-        D = super().apply_masking_model(T, R, S)
         if self.masking == 'mlp':
             c, n, h, w = T.shape
             if S.dim() == 0:
@@ -80,8 +79,14 @@ class cvvdp_nn(cvvdp):
             T, R, S = T.flatten(), R.flatten(), S.flatten()
             feat_in = torch.stack((T, R, S, T*S, R*S, torch.abs(T - R)*S), dim=-1)
             batch_size = 2560*1440     # Split larger than 2k into multiple batches
-            D_prime = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).reshape(c, n, h, w)
-            D = D * D_prime
+            mlp_out = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).sqeeze(-1)
+            # D = mlp_out.reshape(c, n, h, w)     # v1
+            # D_base = super().apply_masking_model(T, R, S)   # v2
+            # D = D_base * mlp_out.reshape(c, n, h, w)        # v2
+            D = ((S*torch.abs(T - R)**self.mask_p) /                                # v3
+                 (1 + torch.nn.functional.softplus(mlp_out))).reshape(c, n, h, w)   # v3
+        else:
+            D = super().apply_masking_model(T, R, S)
         return D
 
     # Perform pooling with per-band weights and map to JODs
