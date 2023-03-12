@@ -92,6 +92,28 @@ def main():
     metric_spearman = torchmetrics.SpearmanCorrCoef().to(device)
     writer = SummaryWriter(args.log_dir)
 
+    def validate(epoch):
+        for batch in tqdm.tqdm(val_loader, leave=False):
+            jod_hat = []
+            for qpc, bb, _ in zip(*batch):
+                jod_hat.append(metric.do_pooling_and_jods(qpc.to(device), bb.to(device)))
+            jod_hat = torch.stack(jod_hat)
+
+            jod = batch[-1].to(device)
+            metric_mse.update(jod_hat, jod)
+            metric_pearson.update(jod_hat, jod)
+            metric_spearman.update(jod_hat, jod)
+
+        rmse = torch.sqrt(metric_mse.compute()); metric_mse.reset()
+        pearson_rho = metric_pearson.compute(); metric_pearson.reset()
+        spearman_rho = metric_spearman.compute(); metric_spearman.reset()
+        writer.add_scalar('val/rmse', rmse, epoch)
+        writer.add_scalar('val/pearson', pearson_rho, epoch)
+        writer.add_scalar('val/spearman', spearman_rho, epoch)
+
+    # See validation metrics before any training
+    validate(-1)
+
     # Main training loop
     for epoch in tqdm.trange(args.num_epochs):
         prog_bar = tqdm.tqdm(train_loader, leave=False)
@@ -111,26 +133,11 @@ def main():
             global_step = epoch * len(train_loader) + i
             writer.add_scalar('train/loss', loss, global_step)
             prog_bar.set_description(f'loss={loss.item():.3f}')
+
         
         # Validation
         if epoch % args.val_epoch == 0:
-            for i, batch in enumerate(tqdm.tqdm(val_loader, leave=False)):
-                jod_hat = []
-                for qpc, bb, _ in zip(*batch):
-                    jod_hat.append(metric.do_pooling_and_jods(qpc.to(device), bb.to(device)))
-                jod_hat = torch.stack(jod_hat)
-
-                jod = batch[-1].to(device)
-                metric_mse.update(jod_hat, jod)
-                metric_pearson.update(jod_hat, jod)
-                metric_spearman.update(jod_hat, jod)
-
-            rmse = torch.sqrt(metric_mse.compute()); metric_mse.reset()
-            pearson_rho = metric_pearson.compute(); metric_pearson.reset()
-            spearman_rho = metric_spearman.compute(); metric_spearman.reset()
-            writer.add_scalar('val/rmse', rmse, epoch)
-            writer.add_scalar('val/pearson', pearson_rho, epoch)
-            writer.add_scalar('val/spearman', spearman_rho, epoch)
+            validate(epoch)
 
     writer.flush()
     writer.close()

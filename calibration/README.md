@@ -31,6 +31,8 @@ Intermediate losses and validation metrics are stored at "logs/" by default, upd
 tensorboard --logdir logs
 ```
 
+**Important:** It is recommended to monitor the training logs to determine number of epochs needed (specific to each dataset). Training should be stopped when the validation metrics saturate/decrease in performance.
+
 ## Detailed explanations for some arguments
 - `-s/--split-column`: The dataset needs to be divided into train and test splits. To test generalization capabilities of the metric, it is preferable to use different scenes or different distortions in the train and test splits. This argument controls how to split the existing dataset, i.e, along which column of the quality file. E.g., if a dataset contains 5 distortions (A, B, C, D, E) and `-s distortion -r 80` is passed, 80% of the distortions (chosen at random) are selected for training (A, B, C, E) and the remaining 20% for testing. Thus, all rows in the quality file with distortions (A, B, C, E) become train images/videos, while rows with distortion C become test images/videos.
 - `--seed`: When given "split_column" and "train_ratio", the seed controls the exact split of train and test images/videos. This is useful for reproducable pseudo-random generation of splits.
