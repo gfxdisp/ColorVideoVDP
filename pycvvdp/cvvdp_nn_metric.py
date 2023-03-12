@@ -76,12 +76,12 @@ class cvvdp_nn(cvvdp):
             c, n, h, w = T.shape
             if S.dim() == 0:
                 S = torch.full_like(T, S)
+            # D_base = super().apply_masking_model(T, R, S)   # v2
             T, R, S = T.flatten(), R.flatten(), S.flatten()
             feat_in = torch.stack((T, R, S, T*S, R*S, torch.abs(T - R)*S), dim=-1)
             batch_size = 2560*1440     # Split larger than 2k into multiple batches
-            mlp_out = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).sqeeze(-1)
+            mlp_out = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).squeeze(-1)
             # D = mlp_out.reshape(c, n, h, w)     # v1
-            # D_base = super().apply_masking_model(T, R, S)   # v2
             # D = D_base * mlp_out.reshape(c, n, h, w)        # v2
             D = ((S*torch.abs(T - R)**self.mask_p) /                                # v3
                  (1 + torch.nn.functional.softplus(mlp_out))).reshape(c, n, h, w)   # v3
