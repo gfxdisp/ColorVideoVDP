@@ -129,10 +129,17 @@ class cvvdp(vq_metric):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
         # Read relevant parameters from state_dict
         prefix = 'params.'
-        for key, value in torch.load(ckpt)['state_dict'].items():
-            if key.startswith(prefix):
-                setattr(self, key[len(prefix):], value.to(self.device))
-
+        
+        if torch.cuda.is_available():
+            for key, value in torch.load(ckpt)['state_dict'].items():
+                if key.startswith(prefix):
+                    setattr(self, key[len(prefix):], value.to(self.device))
+        else:
+            for key, value in torch.load(ckpt, map_location=torch.device('cpu'))['state_dict'].items():
+                if key.startswith(prefix):
+                    setattr(self, key[len(prefix):], value.to(self.device))
+        
+        
     def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
         if display_photometry is None:
             self.display_photometry = vvdp_display_photometry.load(display_name)
