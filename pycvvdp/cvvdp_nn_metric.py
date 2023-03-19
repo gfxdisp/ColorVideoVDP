@@ -52,11 +52,17 @@ class cvvdp_nn(cvvdp):
         super().update_from_checkpoint(ckpt)
         if self.masking == 'mlp':
             prefix = 'masking_net.'
-            state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt)['state_dict'].items() if key.startswith(prefix)}
+            if torch.cuda.is_available():
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt)['state_dict'].items() if key.startswith(prefix)}
+            else:
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
             self.masking_net.load_state_dict(state_dict)
         if self.pooling in ('lstm', 'gru'):
             prefix = 'pooling_net.'
-            state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt)['state_dict'].items() if key.startswith(prefix)}
+            if torch.cuda.is_available:
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt)['state_dict'].items() if key.startswith(prefix)}
+            else:
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
             self.pooling_net.load_state_dict(state_dict)
 
     '''
@@ -72,16 +78,21 @@ class cvvdp_nn(cvvdp):
             return (Q_jod.squeeze(), stats)
 
     def apply_masking_model(self, T, R, S):
-        D = super().apply_masking_model(T, R, S)
         if self.masking == 'mlp':
             c, n, h, w = T.shape
             if S.dim() == 0:
                 S = torch.full_like(T, S)
+            #D_base = super().apply_masking_model(T, R, S)   # v2
             T, R, S = T.flatten(), R.flatten(), S.flatten()
             feat_in = torch.stack((T, R, S, T*S, R*S, torch.abs(T - R)*S), dim=-1)
             batch_size = 2560*1440     # Split larger than 2k into multiple batches
-            D_prime = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).reshape(c, n, h, w)
-            D = D * D_prime
+            mlp_out = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).squeeze(-1)
+            D = mlp_out.reshape(c, n, h, w)     # v1
+            #D = D_base * mlp_out.reshape(c, n, h, w)        # v2
+            #D = ((S*torch.abs(T - R)**self.mask_p) /                                # v3
+            #     (1 + torch.nn.functional.softplus(mlp_out))).reshape(c, n, h, w)   # v3
+        else:
+            D = super().apply_masking_model(T, R, S)
         return D
 
     # Perform pooling with per-band weights and map to JODs
