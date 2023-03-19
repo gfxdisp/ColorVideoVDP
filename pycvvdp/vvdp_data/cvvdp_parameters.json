@@ -1,31 +1,40 @@
 {
     "version": "0.1",
     "__comment": "Calibration parameters of ColourVideoVDP.",
-
     "calibration_date": "17/02/2023",
     "internal_model_name": "cvvdp_0_0",
-
-    "mask_p": 2.4,
-    "mask_c": -0.973838, 
+    "mask_p": 1.9862605333328247,
+    "mask_c": -0.5332393050193787,
     "pu_dilate": 0,
-    "beta": 2, 
-    "beta_t": 1, 
+    "beta": 2,
+    "beta_t": 1,
     "beta_tch": 4,
     "beta_sch": 4,
     "csf_sigma": -1.5,
-    "sensitivity_correction": 0, 
+    "sensitivity_correction": -0.1919620782136917,
     "masking_model": "min_mutual_masking_perc_norm2",
     "local_adapt": "gpyr",
-    "contrast": "weber_g1", 
-    "jod_a": 0.0913983, 
-    "jod_exp": 0.442603,
-    "mask_q_sust": 2.43685,
-    "mask_q_trans": 4.946,
+    "contrast": "weber_g1",
+    "jod_a": 0.12033970654010773,
+    "jod_exp": 0.7617579698562622,
+    "mask_q_sust": 1.1771153211593628,
+    "mask_q_trans": 6.680293083190918,
     "filter_len": -1,
-    "ch_weights": [1, 1.39966, 1.39966, 0.79394],
-    "sigma_tf": [5.79336, 14.1255, 6.63661, 0.12314],
-    "beta_tf": [1.3314, 1.1196, 0.947901, 0.1898],    
-    "baseband_weight": 0.999808,
-    "dclamp_type": "hard", 
-    "dclamp_par": 4
+    "ch_chrom_w": 1.39966,
+    "ch_trans_w": 0.79394,
+    "sigma_tf": [
+        5.79336,
+        14.1255,
+        6.63661,
+        0.12314
+    ],
+    "beta_tf": [
+        1.3314,
+        1.1196,
+        0.947901,
+        0.1898
+    ],
+    "baseband_weight": 2.796626567840576,
+    "dclamp_type": "soft",
+    "dclamp_par": 2.303236246109009
 }

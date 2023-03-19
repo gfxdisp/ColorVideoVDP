@@ -110,7 +110,13 @@ class cvvdp(vq_metric):
         self.mask_q_sust = torch.as_tensor( parameters['mask_q_sust'], device=self.device )
         self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
         self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
-        self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
+
+        if 'ch_chrom_w' in parameters:
+            self.ch_chrom_w = torch.as_tensor( parameters['ch_chrom_w'], device=self.device ) # Chromatic channels (rg, vy) weight
+            self.ch_trans_w = torch.as_tensor( parameters['ch_trans_w'], device=self.device ) # Transient channel weight
+        else:
+            # Depreciated - will be removed later
+            self.ch_weights = torch.as_tensor( parameters['ch_weights'], device=self.device ) # Per-channel weight, Y-sust, rg, vy, Y-trans
         self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.baseband_weight = torch.as_tensor( parameters['baseband_weight'], device=self.device )
@@ -372,6 +378,18 @@ class cvvdp(vq_metric):
 
         return (Q_jod.squeeze(), stats)
 
+    def get_ch_weights(self, no_channels):
+        if hasattr(self, 'ch_chrom_w'):
+            per_ch_w_all = torch.stack( [torch.as_tensor(1., device=self.ch_chrom_w.device), self.ch_chrom_w, self.ch_chrom_w, self.ch_trans_w] )
+        else:
+            # Depreciated - will be removed later
+            per_ch_w_all = self.ch_weights
+            
+        # Weights for the channels: sustained, RG, YV, [transient]
+        per_ch_w = per_ch_w_all[0:no_channels].view(-1,1,1)
+        return per_ch_w
+
+
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
         # Q_per_ch[channel,frame,sp_band]
@@ -380,8 +398,7 @@ class cvvdp(vq_metric):
         no_frames = Q_per_ch.shape[1]
         no_bands = Q_per_ch.shape[2]
 
-        # Weights for the channels: sustained, RG, YV, [transient]
-        per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
+        per_ch_w = self.get_ch_weights( no_channels )
 
         # if no_frames>1: # If video
         #     per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
@@ -482,7 +499,7 @@ class cvvdp(vq_metric):
 
                 # We need to reduce the differences across the channels using the right weights
                 # Weights for the channels: sustained, RG, YV, [transient]
-                per_ch_w = self.ch_weights[0:all_ch].view(-1,1,1,1)
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1)
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
                 self.heatmap_pyr.set_lband(bb, D_chr)
 
