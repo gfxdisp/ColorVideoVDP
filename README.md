@@ -17,11 +17,16 @@ The details of the metric can be found in:
 If you use the metric in your research, please cite the paper above. 
 
 ## PyTorch quickstart
+Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColourVideoVDP and activate it:
+```bash
+conda create -n cvvdp python=3.10
+conda activate cvvdp
+```
 
-Start by installing the right version of PyTorch (with CUDA if supported) by following [these instructions](https://pytorch.org/get-started/locally/). Then clone this repository, and install ColourVideoVDP with PyPI:
+Install PyTorch v1.X by following [these instructions](https://pytorch.org/get-started/previous-versions/#v1131). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. Finally, clone this repository (or extract from a .zip file), and install ColourVideoVDP with PyPI:
 
 ```bash
-git clone git@github.com:mantiuk/ColourVideoVDP.git
+git clone git@github.com:mantiuk/ColourVideoVDP.git   # skip if a .zip is provided
 cd ColourVideoVDP
 pip install -e .
 ```

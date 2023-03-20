@@ -21,7 +21,7 @@ setup(
     install_requires=['numpy>=1.17.3',
                       'scipy>=1.7.0',
                       'ffmpeg-python>=0.2.0',
-                      'torch>=1.8.2',
+                      'torch>=1.8.2,<2.0.0',
                       'ffmpeg>=1.4',
                       'imageio>=2.19.5'],
 
