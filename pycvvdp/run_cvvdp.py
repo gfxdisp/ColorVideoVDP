@@ -116,13 +116,16 @@ def main():
     #     device = torch.device('cuda:' + str(args.gpu))
     # else:
     #     device = torch.device('cpu')
+    args.device = args.device.lower()
     if args.device.startswith('cuda') and torch.cuda.is_available():
-        assert sys.platform != "darwin", 'Device "cuda" is not valid on a Mac'
         device = torch.device(args.device)
     elif args.device == 'mps':
-        assert sys.platform == "darwin", 'Device "mps" is only valid on a Mac'
+        logging.warn('Some PyTorch operations are not yet supported for MPS. It is likely cvvdp will fail.')
+        assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
         device = torch.device(args.device)
     else:
+        if args.device != 'cpu':
+            logging.warn(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
         device = torch.device('cpu')
 
     logging.info("Running on device: " + str(device))

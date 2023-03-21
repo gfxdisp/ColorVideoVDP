@@ -6,7 +6,7 @@ ColourVideoVDP is a full-reference visual quality metric that predicts the perce
 
 However, unlike traditional quality metrics, ColourVideoVDP works for videos in addition to images, accounts for peripheral acuity, works with SDR and HDR content. We model the response of the human visual system to changes over time as well as across the visual field, so we can predict temporal artifacts like flicker and judder, as well as spatiotemporal artifacts as perceived at different degrees of peripheral vision. Such a metric is important for head-mounted displays as it accounts for both the dynamic content, as well as the large field of view.
 
-ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. Its usage is described below.
+ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. Its usage is described [below](#usage).
 
 The details of the metric can be found in:
 
@@ -96,7 +96,7 @@ The main script to run the model on a set of images or videos is [run_cvvdp.py](
 For the first example, a video was downsampled (4x4) and upsampled (4x4) by different combinations of Bicubic and Nearest filters. To predict quality, you can run:
 
 ```bash
-cvvdp --test example_media/aliasing/ferris-*-*.mp4 --ref example_media/aliasing/ferris-ref.mp4 --gpu 0 --display standard_fhd --heatmap supra-threshold
+cvvdp --test example_media/aliasing/ferris-*-*.mp4 --ref example_media/aliasing/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold
 ```
 
 |Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-ref.gif) | Quality | **TODO:** Difference map |

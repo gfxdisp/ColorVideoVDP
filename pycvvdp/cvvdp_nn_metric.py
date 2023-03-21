@@ -12,13 +12,13 @@ def load_ckpt(ckpt_path, net):
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp_nn(cvvdp):
-    from torchvision.ops import MLP
     input_dims_masking = 6      # T, R, S, T*S, R*S, abs(T-R)*S
     input_dims_pooling = 36     # 9 bands x 4 bands per channel
     rho_dims = 1                # Condition on base rho band
 
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False,
                  hidden_dims=8, num_layers=2, dropout=0.2, masking='base', pooling='base', ckpt=None):
+        from torchvision.ops import MLP
         assert masking in ('base', 'mlp')
         self.masking = masking
         if masking == 'mlp':
