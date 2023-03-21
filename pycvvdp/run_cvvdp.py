@@ -73,7 +73,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate ColourVideoVDP on a set of videos")
     parser.add_argument("--test", type=str, nargs='+', required = False, help="list of test images/videos")
     parser.add_argument("--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
-    parser.add_argument("--gpu", type=int,  default=0, help="select which GPU to use (e.g. 0), default is GPU 0. Pass -1 to run on the CPU.")
+    parser.add_argument("--device", type=str,  default='cuda:0', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda:0', 'cuda:1', ...]")
     parser.add_argument("--heatmap", type=str, default="none", help="type of difference map (none, raw, threshold, supra-threshold).")
     parser.add_argument("--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
@@ -111,8 +111,17 @@ def main():
         return
 
 
-    if args.gpu >= 0 and torch.cuda.is_available():
-        device = torch.device('cuda:' + str(args.gpu))
+    # Changed option to include MPS support for Macbooks
+    # if args.gpu >= 0 and torch.cuda.is_available():
+    #     device = torch.device('cuda:' + str(args.gpu))
+    # else:
+    #     device = torch.device('cpu')
+    if args.device.startswith('cuda') and torch.cuda.is_available():
+        assert sys.platform != "darwin", 'Device "cuda" is not valid on a Mac'
+        device = torch.device(args.device)
+    elif args.device == 'mps':
+        assert sys.platform == "darwin", 'Device "mps" is only valid on a Mac'
+        device = torch.device(args.device)
     else:
         device = torch.device('cpu')
 
