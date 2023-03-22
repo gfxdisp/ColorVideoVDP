@@ -14,9 +14,9 @@ ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-en
 
 The details of the metric can be found in:
 
-ColorVideoVDP: A Visible Difference Predictor for Images and Video
-Rafal K. Mantiuk, Maliha Ashraf, Alexandre Chapiro, Yuta Asano.
-Paper in preparation
+> ColorVideoVDP: A Visible Difference Predictor for Images and Video.
+> Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Alexandre Chapiro, Yuta Asano.
+> Paper in preparation.
 
 **[TODO:]** Link to project page
 
