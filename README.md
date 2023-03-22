@@ -1,16 +1,22 @@
-# ColourVideoVDP: A visible difference predictor for colour videos
+# ColourVideoVDP: A visible difference predictor for colour images and videos
 
 **[TODO:]** Teaser
 
-ColourVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images and videos. Similar to popular metrics like PSNR and SSIM, it is aimed at comparing a ground truth reference video against a distorted (e.g. compressed, lower framerate) version.
+ColourVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR and SSIM, it is aimed at comparing a ground truth reference video against a distorted (e.g. compressed, lower framerate) version. However, unlike traditional quality metrics, ColourVideoVDP is based on fundamental perceptual models of contrast sensitivity and masking. 
 
-However, unlike traditional quality metrics, ColourVideoVDP works for videos in addition to images, accounts for peripheral acuity, works with SDR and HDR content. We model the response of the human visual system to changes over time as well as across the visual field, so we can predict temporal artifacts like flicker and judder, as well as spatiotemporal artifacts as perceived at different degrees of peripheral vision. Such a metric is important for head-mounted displays as it accounts for both the dynamic content, as well as the large field of view.
+The main features:
+* models chromatic and achromatic contrast sensitivity;
+* models spatio-temporal sensitivity so it can predict visibility of flicker and other temporal artifacts;
+* works with colorimetrically calibrated content, both SDR and HDR (any colour space);
+* can predict a single number quality correlate or a distortion map.
 
-ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. Its usage is described [below](#usage).
+ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much larger, especially for video. Its usage is described [below](#usage).
 
 The details of the metric can be found in:
 
-**[TODO:]** Citation (after publishing)
+ColorVideoVDP: A Visible Difference Predictor for Images and Video
+Rafal K. Mantiuk, Maliha Ashraf, Alexandre Chapiro, Yuta Asano.
+Paper in preparation
 
 **[TODO:]** Link to project page
 
@@ -58,15 +64,17 @@ See [Command line interface](#command-line-interface) for further details. Colou
 
 Unlike most image quality metrics, ColourVideoVDP needs physical specification of the display (e.g. its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](https://github.com/mantiuk/ColourVideoVDP/blob/main/pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-dir` parameter (`cvvdp` command). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
 
-You specify the display by passing `--display` argument to the PyTorch code.
+You specify the display by passing `--display` argument to `cvvdp`.
 
-Note the the specification in `display_models.json` is for the display and not the image. If you select to use `standard_4k` with the resolution of 3840x2160 for your display and pass a 1920x1080 image, the metric will assume that the image occupies one quarter of that display (the central portion). If you want to enlarge the image to the full resolution of the display, pass `--full-screen-resize {fast_bilinear,bilinear,bicubic,lanczos}` option (now works with video only). 
+Note the the specification in `display_models.json` is for the display and not the image. If you select to use `standard_4k` with the resolution of 3840x2160 for your display and pass a 1920x1080 image, the metric will assume that the image occupies one quarter of that display (the central portion). If you want to enlarge the image to the full resolution of the display, pass `--full-screen-resize {fast_bilinear,bilinear,bicubic,lanczos}` option (for now it works with video only). 
 
-The command line version of ColourVideoVDP can take as input HDR video streams encoded using the PQ transfer function. To correctly model HDR content, it is necessary to pass a display model with `EOTF="PQ"`, for example `standard_hdr`.
+The command line version of ColourVideoVDP can take as input HDR video streams encoded using the PQ transfer function. To correctly model HDR content, it is necessary to pass a display model with `EOTF="PQ"`, for example `standard_hdr_pq`.
 
-### Custom specification
+### Custom display specification
 
-The display photometry and geometry is typically specified by passing `display_name` parameter to the metric. Alternatively, if you need more flexibility in specifying display geometry (size, viewing distance) and its colorimetry, you can instead pass objects of the classes `vvdp_display_geometry`, `vvdp_display_photo_gog` for most SDR displays, and `vvdp_display_photo_absolute` for HDR displays. You can also create your own subclasses of those classes for custom display specification. 
+If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-dir <path-to-dir-with-json-file> --display <name-of-display-spec>`.
+
+If you run the metric from Python code, the display photometry and geometry can be specified by passing `display_name` parameter to the metric. Alternatively, if you need more flexibility in specifying display geometry (size, viewing distance) and its colorimetry, you can instead pass objects of the classes `vvdp_display_geometry`, `vvdp_display_photo_gog` for most SDR displays, and `vvdp_display_photo_absolute` for HDR displays. You can also create your own subclasses of those classes for custom display specification. 
 
 ### HDR content
 
