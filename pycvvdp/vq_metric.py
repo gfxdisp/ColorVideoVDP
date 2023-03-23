@@ -6,6 +6,7 @@ from pycvvdp.video_source import *
 
 class vq_metric:
 
+
     '''
     test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames. 
         Depending on the display model (display_photometry), the pixel values should be either display encoded, or absolute linear.

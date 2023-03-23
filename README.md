@@ -2,11 +2,11 @@
 
 **[TODO:]** Teaser
 
-ColourVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR and SSIM, it is aimed at comparing a ground truth reference video against a distorted (e.g. compressed, lower framerate) version. However, unlike traditional quality metrics, ColourVideoVDP is based on fundamental perceptual models of contrast sensitivity and masking. 
+ColourVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR and SSIM, it is aimed at comparing a ground truth reference video against a distorted (e.g. compressed, lower framerate) version. However, unlike traditional quality metrics, ColourVideoVDP is based on fundamental perceptual models of spatio-temporal contrast sensitivity and masking. 
 
 The main features:
-* models chromatic and achromatic contrast sensitivity;
-* models spatio-temporal sensitivity so it can predict visibility of flicker and other temporal artifacts;
+* models chromatic and achromatic contrast sensitivity so that it predicts distortions in colour;
+* models spatio-temporal sensitivity so that it can predict visibility of flicker and other temporal artifacts;
 * works with colorimetrically calibrated content, both SDR and HDR (any colour space);
 * can predict a single number quality correlate or a distortion map.
 
@@ -141,11 +141,10 @@ Q_JOD_blur, stats_blur = metric.predict( I_test_blur, I_ref, dim_order="HWC" )
 | Gaussian noise (σ<sup>2</sup> = 0.003) | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/simple_image/wavy_facade_noise.png) | 9.0533 | |
 | Gaussian blur (σ = 2) | ![blur](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/simple_image/wavy_facade_blur.png) | 7.9508 | |
 
-More examples can be found in these [example scripts](https://github.com/gfxdisp/ColourVideoVDP/blob/main/pytorch_examples).
-
+More examples can be found in these [example scripts](https://github.com/gfxdisp/ColourVideoVDP/blob/main/examples).
 
 ## Release notes
 
-* v0.1.0 - ?
+* v0.1.0 - Initial internal release.
 
 The detailed list of changes can be found in [ChangeLog.md](https://github.com/gfxdisp/ColourVideoVDP/blob/main/ChangeLog.md).

@@ -32,7 +32,7 @@ def lms2006_to_dkld65( img ):
     return ABC
 
 
-
+# Transform from a given RGB space to one of several perceptually-relevant colour spaces
 class ColorTransform:
 
     def __init__( self, color_space_name='sRGB' ):

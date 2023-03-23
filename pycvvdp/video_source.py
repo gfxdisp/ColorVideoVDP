@@ -2,11 +2,16 @@ from abc import abstractmethod
 import torch
 import os
 import numpy as np 
+import logging
 from torch.functional import Tensor
 import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 
 from pycvvdp.colorspace import ColorTransform
+
+
+
+
 
 """
 fvvdp_video_source_* objects are used to supply test/reference frames to FovVideoVDP. 
@@ -36,6 +41,20 @@ class video_source:
     @abstractmethod
     def get_reference_frame( self, frame, device ) -> Tensor:
         pass
+
+    # Check whether pixel values are valid, display warning if it is not the case
+    def check_if_valid( self, frame ):
+
+        if not hasattr( self, "warning_shown" ):
+            self.warning_shown = False
+
+        if not self.warning_shown and torch.isnan(frame).any():
+            self.warning_shown = True
+            logging.warning( 'Image contains one or more NaN values' )
+
+        if not self.warning_shown and torch.isinf(frame).any():
+            self.warning_shown = True
+            logging.warning( 'Image contains one or more Inf values' )
 
 
 """
@@ -199,9 +218,11 @@ class video_source_array( video_source_dm ):
         L_lin = self.dm_photometry.forward( frame )
 
         if self.is_color:
-            return self.color_trans.rgb2colourspace(L_lin, colorspace)
-        else:
-            return L_lin
+            L_lin = self.color_trans.rgb2colourspace(L_lin, colorspace)
+
+        self.check_if_valid(L_lin)
+        
+        return L_lin
 
 
 class video_source_packed_array( video_source_dm ):

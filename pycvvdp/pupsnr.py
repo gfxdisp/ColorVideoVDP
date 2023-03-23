@@ -1,3 +1,4 @@
+from pycvvdp import colorspace
 import torch
 
 from pycvvdp.utils import PU
@@ -8,7 +9,8 @@ from pycvvdp.vq_metric import *
 PU21-PSNR-Y metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
 """
 class pu_psnr_y(vq_metric):
-    def __init__(self, device=None):
+
+    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -18,8 +20,11 @@ class pu_psnr_y(vq_metric):
         else:
             self.device = device
 
+        self.set_display_model( display_name=display_name, display_photometry=display_photometry )
+        self.color_space = color_space # input content colour space
+
         self.pu = PU()
-        self.colorspace = 'Y'
+        self.metric_colorspace = 'Y' # colour space in which the metric operates
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
@@ -39,8 +44,8 @@ class pu_psnr_y(vq_metric):
 
         psnr = 0.0
         for ff in range(N_frames):
-            T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
-            R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
+            T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.metric_colorspace)
+            R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.metric_colorspace)
 
             # Apply PU
             T_enc = self.pu.encode(T)
@@ -59,10 +64,19 @@ class pu_psnr_y(vq_metric):
     def quality_unit(self):
         return "dB"
 
+    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
+        if display_photometry is None:
+            self.display_photometry = vvdp_display_photometry.load(display_name)
+            self.display_name = display_name
+        else:
+            self.display_photometry = display_photometry
+            self.display_name = "unspecified"
+
+
 class pu_psnr_rgb2020(pu_psnr_y):
-    def __init__(self, device=None):
-        super().__init__(device)
-        self.colorspace = 'RGB2020'
+    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None):
+        super().__init__(display_name=display_name, display_photometry=display_photometry, color_space=color_space, device=device)
+        self.metric_colorspace = 'RGB2020'
 
     def short_name(self):
         return "PU21-PSNR-RGB2020"

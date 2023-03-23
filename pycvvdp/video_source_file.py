@@ -362,8 +362,11 @@ class video_source_video_file(video_source_dm):
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
         L = self.dm_photometry.forward( frame_t )
 
-        # Convert to grayscale
-        return self.color_trans.rgb2colourspace(L, colorspace)
+        # Convert to the target colour space
+        I = self.color_trans.rgb2colourspace(L, colorspace)
+        self.check_if_valid(I)
+
+        return I
 
 
 '''
