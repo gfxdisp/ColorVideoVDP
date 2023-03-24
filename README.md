@@ -23,16 +23,26 @@ The details of the metric can be found in:
 If you use the metric in your research, please cite the paper above. 
 
 ## PyTorch quickstart
-Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColourVideoVDP and activate it:
+1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColourVideoVDP and activate it:
 ```bash
 conda create -n cvvdp python=3.10
 conda activate cvvdp
 ```
 
-Install PyTorch v1.X by following [these instructions](https://pytorch.org/get-started/previous-versions/#v1131). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. Finally, clone this repository (or extract from a .zip file), and install ColourVideoVDP with PyPI:
+1. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**.
 
+1. Install [ffmpeg](https://ffmpeg.org/). The easiest option is to install using conda,
 ```bash
-git clone git@github.com:mantiuk/ColourVideoVDP.git   # skip if a .zip is provided
+conda install ffmpeg
+```
+
+1. Obtain the ColourVDP codebase, by extracting a `.zip` file provided or cloning from Github:
+```bash
+git clone git@github.com:mantiuk/ColourVideoVDP.git   # skip if a .zip is provided or you use Github GUI
+```
+
+1. Finally, install ColourVideoVDP with PyPI:
+```bash
 cd ColourVideoVDP
 pip install -e .
 ```
@@ -45,7 +55,7 @@ cvvdp --test test_file --ref ref_file --display standard_fhd
 ```
 The test and reference files can be images or videos. The option `--display` specifies a display on which the content is viewed. See [vvdp_data/display_models.json](https://github.com/mantiuk/ColourVideoVDP/blob/main/pycvvdp/vvdp_data/display_models.json) for the available displays.
 
-Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package and uses ImageIO instead. It is recommended to separately install this package since ImageIO's handling of OpenEXR files is unreliable as evidenced [here](https://github.com/imageio/imageio/issues/517). PyEXR is not automatically installed because it depends on the [OpenEXR](https://www.openexr.com/) library, whose installation is operating system specific.
+Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package and uses ImageIO instead. It is recommended to separately install this package since ImageIO's handling of OpenEXR files is unreliable as evidenced [here](https://github.com/imageio/imageio/issues/517). PyEXR is not automatically installed because it depends on the [OpenEXR](https://www.openexr.com/) library, whose installation is OS-specific.
 
 See [Command line interface](#command-line-interface) for further details. ColourVideoVDP can be also run directly from Python - see [Low-level Python interface](#low-level-python-interface). 
 
