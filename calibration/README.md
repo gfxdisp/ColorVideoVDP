@@ -3,7 +3,8 @@
 ## Prerequisites
 Install additional python libraries:
 ```bash
-pip install torchmetrics
+conda activate cvvdp
+pip install pandas tensorboard tqdm torchmetrics
 ```
 
 ## Step 1: Prepare quality CSV

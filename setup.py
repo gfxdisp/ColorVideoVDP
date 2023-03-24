@@ -24,8 +24,6 @@ setup(
                       'torch>=1.8.2',
                       'ffmpeg>=1.4',
                       'imageio>=2.19.5',
-                      'pandas>=1.5.1',
-                      'tqdm>=4.64.1'
                      ],
 
     classifiers=[
