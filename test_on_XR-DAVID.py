@@ -1,6 +1,7 @@
 # This example shows how to use python interface to run FovVideoVDP directly on video files
 import os
 import glob
+from tabnanny import verbose
 import time
 
 import pycvvdp
@@ -38,7 +39,7 @@ cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120 )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120, verbose=True )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )

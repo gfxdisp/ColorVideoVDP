@@ -205,7 +205,8 @@ class video_reader_yuv_pytorch(video_reader):
 
         stream = ffmpeg.input(vidfile)
         stream = ffmpeg.output(stream, 'pipe:', format='rawvideo', pix_fmt=out_pix_fmt)
-        self.process = ffmpeg.run_async(stream, pipe_stdout=True, quiet=True)
+        self.process = ffmpeg.run_async(stream, pipe_stdout=True, quiet=not verbose)
+#        self.process = ffmpeg.run_async(stream, pipe_stdout=True, quiet=False).global_args( '-loglevel', 'info' )
 
     def unpack(self, x, device):
         Y = x[:self.y_pixels]

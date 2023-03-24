@@ -265,3 +265,30 @@ def im_ctrans( im, fromCS=None, toCS=None, M=None, exposure=1 ):
         im_out = col_vec_out
 
     return im_out
+
+
+# This looks like BT.601 to me, not 709: https://en.wikipedia.org/wiki/YCbCr 
+
+_ycbcr2rgb_rec709 = np.array([[1, 0, 1.402],
+                        [1, -0.344136, -0.714136],
+                        [1, 1.772, 0]], dtype=np.float32) # This is rec 709 space
+    
+_rgb_rec7092ycbcr = np.array([[0.298999944347618, 0.587000125991912, 0.113999929660470],\
+  [-0.168735860241319,  -0.331264179453675,   0.500000039694994],\
+  [0.500000039694994,  -0.418687679024188,  -0.081312360670806]], dtype=np.float32)
+
+    
+
+def srgb2ycbcr(RGB):
+    width = RGB.shape[1]
+    height = RGB.shape[0]
+    pix_count = width*height
+    YUV = (np.reshape( RGB, (pix_count, 3), order='F' ) @ _rgb_rec7092ycbcr.transpose()).reshape( (height, width, 3 ), order='F' )
+    return YUV
+
+def ycbcr2srgb(YUV):
+    width = YUV.shape[1]
+    height = YUV.shape[0]
+    pix_count = width*height
+    RGB = (np.reshape( YUV, (pix_count, 3), order='F' ) @ _ycbcr2rgb_rec709.transpose()).reshape( (height, width, 3 ), order='F' )
+    return RGB
