@@ -282,8 +282,8 @@ class cvvdp(vq_metric):
                 #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
-                    sw_buf[0] = torch.empty((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
-                    sw_buf[1] = torch.empty((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
+                    sw_buf[0] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
+                    sw_buf[1] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
 
                     if self.temp_padding == "replicate":
                         for fi in range(cur_block_N_frames):
@@ -320,8 +320,11 @@ class cvvdp(vq_metric):
                         raise RuntimeError( 'Unknown padding method "{}"'.format(self.temp_padding) )
                 else:
                     # scroll the sliding window buffers
-                    sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
-                    sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
+                    # Tensor splicing leads to strange errors with videos; switching to torch.roll()
+                    # sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
+                    # sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
+                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-1, dims=2)
+                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-1, dims=2)
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1
