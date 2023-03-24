@@ -71,6 +71,17 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
         if in_dims.find(out_dims[kk]) != -1:
             inter_dims += out_dims[kk]
 
+    # First, squeeze out the dimensions that are missing in the output
+    sq_dims = []
+    new_in_dims = ""
+    for kk in range(len(in_dims)):
+        if inter_dims.find(in_dims[kk]) == -1:
+            sq_dims.append(kk)
+        else:
+            new_in_dims += in_dims[kk]
+    in_dims = new_in_dims
+    T = T.squeeze(dim=sq_dims)
+
     # First, permute into the right order
     perm = [0] * len(inter_dims)
     for kk in range(len(inter_dims)):

@@ -319,9 +319,12 @@ class cvvdp(vq_metric):
                     else:
                         raise RuntimeError( 'Unknown padding method "{}"'.format(self.temp_padding) )
                 else:
-                    # scroll the sliding window buffers
-                    sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
-                    sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
+                    # scroll the sliding window buffers by cur_block_N_frames frames
+                    # copy frame one by one to make sure these are copied in the right order
+                    for fi in range(fl-cur_block_N_frames):
+                        ind=fi+1
+                        sw_buf[0][:,:,fi:(fi+1),:,:] = sw_buf[0][:,:,ind:(ind+1),:,:]
+                        sw_buf[1][:,:,fi:(fi+1),:,:] = sw_buf[1][:,:,ind:(ind+1),:,:]
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1

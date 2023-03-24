@@ -232,6 +232,7 @@ class video_reader_yuv_pytorch(video_reader):
                                                   size=(self.resize_height, self.resize_width),
                                                   mode=self.resize_fn)
             RGB = RGB.squeeze().permute(1,2,0)
+
         return RGB.clip(0, 1)
 
     def _np_to_torchfp32(self, X, device):
