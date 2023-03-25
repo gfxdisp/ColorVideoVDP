@@ -111,18 +111,24 @@ The main advantage of JODs is that they (a) should be linearly related to the pe
 ### Command line interface
 The main script to run the model on a set of images or videos is [run_cvvdp.py](https://github.com/gfxdisp/ColourVideoVDP/blob/main/pycvvdp/run_cvvdp.py), from which the binary `cvvdp` is created . Run `cvvdp --help` for detailed usage information.
 
-For the first example, a video was downsampled (4x4) and upsampled (4x4) by different combinations of Bicubic and Nearest filters. To predict quality, you can run:
+For the first example, a video was degraded with 3 different operations using ffmpeg:
+1. Gaussian noise: `ffmpeg ... -vf noise=alls=28.55:allf=t+u ...`
+1. Increased saturation: `ffmpeg ... -vf eq=saturation=2.418 ...`
+1. Colorbalance: `ffmpeg ... -vf colorbalance=rm=0.3:gm=0.3:bm=0.3:rs=0.15:gs=0.2:bs=0.2`
+
+The magnitude of each degradation was adjusted so that the predicted **Delta E 2000 = 33.5**. Note that the simple, spatially and temporally agnostic metric is unable to capture subjective preferences.
+
+To predict quality with ColourVideoVDP, simply run:
 
 ```bash
-cvvdp --test example_media/aliasing/ferris-*-*.mp4 --ref example_media/aliasing/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold
+cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold
 ```
 
-|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-ref.gif) | Quality | **TODO:** Difference map |
+|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-ref.gif) | Quality | **TODO:** Fix heatmaps |
 | :---: | :---: | :---: | :---: |
-| Bicubic &#8595;<br />Bicubic &#8593;<br />(4x4) | ![bicubic-bicubic](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-bicubic-bicubic.gif) | 7.0957 | |
-| Bicubic &#8595;<br />Nearest &#8593;<br />(4x4) | ![bicubic-nearest](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-bicubic-nearest.gif) | 6.9652 | |
-| Nearest &#8595;<br />Bicubic &#8593;<br />(4x4) | ![nearest-bicubic](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-nearest-bicubic.gif) | 7.0256 | |
-| Nearest &#8595;<br />Nearest &#8593;<br />(4x4) | ![nearest-nearest](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/aliasing/ferris-nearest-nearest.gif) | 6.9634 | |
+| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-noise.gif) | 8.6842 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-noise-supra.gif) |
+| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | 6.8960 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
+| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | 7.1682 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
 
 
 ### Low-level Python interface
