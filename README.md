@@ -106,29 +106,29 @@ ColourVideoVDP reports image/video quality in the JOD (Just-Objectionable-Differ
 
 The main advantage of JODs is that they (a) should be linearly related to the perceived magnitude of the distortion and (b) the difference of JODs can be interpreted as the preference prediction across the population. For example, if method A produces a video with the quality score of 8 JOD and method B gives the quality score of 9 JOD, it means that 75% of the population will choose method B over A. The plots below show the mapping from the difference between two conditions in JOD units to the probability of selecting the condition with the higher JOD score (black numbers on the left) and the percentage increase in preference (blue numbers on the right).
 
-## Usage
+## Example usage
 
 ### Command line interface
 The main script to run the model on a set of images or videos is [run_cvvdp.py](https://github.com/gfxdisp/ColourVideoVDP/blob/main/pycvvdp/run_cvvdp.py), from which the binary `cvvdp` is created . Run `cvvdp --help` for detailed usage information.
 
-For the first example, a video was degraded with 3 different operations using ffmpeg:
+For the first example, we will compare the performance of ColourVideoVDP to the popular Delta E 2000 color metric. A video was degraded with 3 different color artifacts using ffmpeg:
 1. Gaussian noise: `ffmpeg ... -vf noise=alls=28.55:allf=t+u ...`
 1. Increased saturation: `ffmpeg ... -vf eq=saturation=2.418 ...`
 1. Colorbalance: `ffmpeg ... -vf colorbalance=rm=0.3:gm=0.3:bm=0.3:rs=0.15:gs=0.2:bs=0.2`
 
-The magnitude of each degradation was adjusted so that the predicted **Delta E 2000 = 33.5**. Note that the simple, spatially and temporally agnostic metric is unable to capture subjective preferences.
+The magnitude of each degradation was adjusted so that the predicted maximum **Delta E 2000 = 33.5**. As Delta E 2000 is not sensitive to spatial or temporal components of the content, it is unable to distinguish between these cases.
 
-To predict quality with ColourVideoVDP, simply run:
+To predict quality with ColourVideoVDP (shown below), run:
 
 ```bash
 cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold
 ```
 
-|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-ref.gif) | Quality | **TODO:** Fix heatmaps |
+|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-ref.gif) | Quality | **TODO:** adjust heatmaps |
 | :---: | :---: | :---: | :---: |
-| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-noise.gif) | 8.6842 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-noise-supra.gif) |
-| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | 6.8960 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
-| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | 7.1682 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
+| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 8.6842 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-noise-supra.gif) |
+| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.8960 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
+| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 7.1682 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
 
 
 ### Low-level Python interface
@@ -144,8 +144,9 @@ cvvdp = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
 JOD, m_stats = cvvdp.predict( I_test, I_ref, dim_order="HWC" )
 ```
 
+Below, we show an example comparing ColourVideoVDP to the popular SSIM metric. While SSIM is aware of the structure of the content, it operates on luminance only, and is unable to accurately represent the degradation of a color-based artifact like chroma subsampling.
+
 ![chroma_ss](chroma_ss.png)
-TODO: caption and description
 
 More examples can be found in these [example scripts](examples).
 
