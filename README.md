@@ -32,19 +32,19 @@ conda create -n cvvdp python=3.10
 conda activate cvvdp
 ```
 
-1. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**.
+2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**.
 
-1. Install [ffmpeg](https://ffmpeg.org/). The easiest option is to install using conda,
+3. Install [ffmpeg](https://ffmpeg.org/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg
 ```
 
-1. Obtain the ColourVDP codebase, by extracting a `.zip` file provided or cloning from Github:
+4. Obtain the ColourVDP codebase, by extracting a `.zip` file provided or cloning from Github:
 ```bash
 git clone git@github.com:mantiuk/ColourVideoVDP.git   # skip if a .zip is provided or you use Github GUI
 ```
 
-1. Finally, install ColourVideoVDP with PyPI:
+5. Finally, install ColourVideoVDP with PyPI:
 ```bash
 cd ColourVideoVDP
 pip install -e .
@@ -56,7 +56,7 @@ After installation, run `cvvdp` directly from the command line:
 ```bash
 cvvdp --test test_file --ref ref_file --display standard_fhd
 ```
-The test and reference files can be images or videos. The option `--display` specifies a display on which the content is viewed. See [vvdp_data/display_models.json](https://github.com/mantiuk/ColourVideoVDP/blob/main/pycvvdp/vvdp_data/display_models.json) for the available displays.
+The test and reference files can be images or videos. The option `--display` specifies a display on which the content is viewed. See [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json) for the available displays.
 
 Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package and uses ImageIO instead. It is recommended to separately install this package since ImageIO's handling of OpenEXR files is unreliable as evidenced [here](https://github.com/imageio/imageio/issues/517). PyEXR is not automatically installed because it depends on the [OpenEXR](https://www.openexr.com/) library, whose installation is OS-specific.
 
@@ -64,8 +64,8 @@ See [Command line interface](#command-line-interface) for further details. Colou
 
 **Table of contents**
 - [Display specification](#display-specification)
-    - [Custom specification](#custom-specification)
-    - [HDR content](#HDR-content)
+    - [Custom specification](#custom-display-specification)
+    - [HDR content](#hdr-content)
     - [Reporting metric results](#reporting-metric-results)
     - [Predicting quality scores](#predicted-quality-scores)
 - [Usage](#usage)
@@ -75,7 +75,7 @@ See [Command line interface](#command-line-interface) for further details. Colou
 
 ## Display specification
 
-Unlike most image quality metrics, ColourVideoVDP needs physical specification of the display (e.g. its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](https://github.com/mantiuk/ColourVideoVDP/blob/main/pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-dir` parameter (`cvvdp` command). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
+Unlike most image quality metrics, ColourVideoVDP needs physical specification of the display (e.g. its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-dir` parameter (`cvvdp` command). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
 
 You specify the display by passing `--display` argument to `cvvdp`.
 
@@ -112,7 +112,7 @@ The main advantage of JODs is that they (a) should be linearly related to the pe
 ## Example usage
 
 ### Command line interface
-The main script to run the model on a set of images or videos is [run_cvvdp.py](https://github.com/gfxdisp/ColourVideoVDP/blob/main/pycvvdp/run_cvvdp.py), from which the binary `cvvdp` is created . Run `cvvdp --help` for detailed usage information.
+The main script to run the model on a set of images or videos is [run_cvvdp.py](pycvvdp/run_cvvdp.py), from which the binary `cvvdp` is created . Run `cvvdp --help` for detailed usage information.
 
 For the first example, we will compare the performance of ColourVideoVDP to the popular Delta E 2000 color metric. A video was degraded with 3 different color artifacts using ffmpeg:
 1. Gaussian noise: `ffmpeg ... -vf noise=alls=28.55:allf=t+u ...`
@@ -157,4 +157,4 @@ More examples can be found in these [example scripts](examples).
 
 * v0.1.0 - Initial internal release.
 
-The detailed list of changes can be found in [ChangeLog.md](https://github.com/gfxdisp/ColourVideoVDP/blob/main/ChangeLog.md).
+The detailed list of changes can be found in [ChangeLog.md](ChangeLog.md).
