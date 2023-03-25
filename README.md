@@ -1,18 +1,21 @@
 # ColourVideoVDP: A visible difference predictor for colour images and videos
 
-**[TODO:]** Teaser
+**[BETA RELEASE]**
+> **[in the Meta version we have some beta disclaimers]**
 
-ColourVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR and SSIM, it is aimed at comparing a ground truth reference video against a distorted (e.g. compressed, lower framerate) version. However, unlike traditional quality metrics, ColourVideoVDP is based on fundamental perceptual models of spatio-temporal contrast sensitivity and masking. 
+ColourVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR, SSIM, and DeltaE 2000 it is aimed at comparing a ground truth reference against a distorted (e.g. blurry, noisy, color-shifted) version. 
+
+This metric is unique because it is the first color-aware metric that accounts for spatial and temporal aspects of vision. 
 
 The main features:
-* models chromatic and achromatic contrast sensitivity so that it predicts distortions in colour;
-* models spatio-temporal sensitivity so that it can predict visibility of flicker and other temporal artifacts;
+* models chromatic and achromatic contrast sensitivity using a novel contrast sensitivity model, allowing us to predict distortions in colour and luminance;
+* models spatio-temporal sensitivity so that it can predict visibility of artifacts like waveguide nonuniformity and other temporally varying artifacts;
 * works with colorimetrically calibrated content, both SDR and HDR (any colour space);
 * can predict a single number quality correlate or a distortion map.
 
-ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much larger, especially for video. Its usage is described [below](#usage).
+ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#usage).
 
-The details of the metric can be found in:
+The details of the metric will be available in our upcoming paper:
 
 > ColorVideoVDP: A Visible Difference Predictor for Images and Video.
 > Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.
