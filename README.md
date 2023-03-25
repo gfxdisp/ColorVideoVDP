@@ -132,32 +132,22 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 
 
 ### Low-level Python interface
-ColourVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class. This example shows how to predict the quality of images degraded by Gaussian noise and blur.
+ColourVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class.
 
 ```python
 import pycvvdp
-import numpy as np
-import os.path as osp
-import pytorch_examples.ex_utils as utils
 
-I_ref = pycvvdp.load_image_as_array(osp.join('example_media', 'wavy_facade.png'))
-metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+I_ref = pycvvdp.load_image_as_array(...)
+I_test = pycvvdp.load_image_as_array(...)
 
-# Gaussian noise with variance 0.003
-I_test_noise = utils.imnoise(I_ref, np.sqrt(0.003))
-Q_JOD_noise, stats_noise = metric.predict( I_test_noise, I_ref, dim_order="HWC" )
-
-# Gaussian blur with sigma=2
-I_test_blur = utils.imgaussblur(I_ref, 2)
-Q_JOD_blur, stats_blur = metric.predict( I_test_blur, I_ref, dim_order="HWC" )
+cvvdp = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+JOD, m_stats = cvvdp.predict( I_test, I_ref, dim_order="HWC" )
 ```
 
-|Original | ![wavy-facade](https://github.com/gfxdisp/FovVideoVDP/raw/main/example_media/wavy_facade.png) | Quality | **TODO: **Difference map |
-| :---: | :---: | :---: | :---: |
-| Gaussian noise (σ<sup>2</sup> = 0.003) | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/simple_image/wavy_facade_noise.png) | 9.0533 | |
-| Gaussian blur (σ = 2) | ![blur](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/simple_image/wavy_facade_blur.png) | 7.9508 | |
+![chroma_ss](chroma_ss.png)
+TODO: caption and description
 
-More examples can be found in these [example scripts](https://github.com/gfxdisp/ColourVideoVDP/blob/main/examples).
+More examples can be found in these [example scripts](examples).
 
 ## Release notes
 
