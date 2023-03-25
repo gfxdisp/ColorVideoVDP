@@ -323,8 +323,8 @@ class cvvdp(vq_metric):
                     # Tensor splicing leads to strange errors with videos; switching to torch.roll()
                     # sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
                     # sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
-                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-1, dims=2)
-                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-1, dims=2)
+                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-cur_block_N_frames, dims=2)
+                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-cur_block_N_frames, dims=2)
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1
