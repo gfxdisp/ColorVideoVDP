@@ -13,7 +13,7 @@ The main features:
 * works with colorimetrically calibrated content, both SDR and HDR (any colour space);
 * can predict a single number quality correlate or a distortion map.
 
-ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#usage).
+ColourVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#example-usage).
 
 The details of the metric will be available in our upcoming paper:
 
@@ -68,7 +68,7 @@ See [Command line interface](#command-line-interface) for further details. Colou
     - [HDR content](#hdr-content)
     - [Reporting metric results](#reporting-metric-results)
     - [Predicting quality scores](#predicted-quality-scores)
-- [Usage](#usage)
+- [Usage](#example-usage)
     - [Command line interface](#command-line-interface)
     - [Low-level Python interface](#low-level-python-interface)
 - [Release notes](#release-notes)
