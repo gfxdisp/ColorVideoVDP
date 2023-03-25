@@ -65,6 +65,8 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
     in_dims = in_dims.upper()
     out_dims = out_dims.upper()    
 
+    assert len(in_dims) == T.dim(), "The in_dims string must have as many characters as there are dimensions in T"
+
     # Find intersection of two strings    
     inter_dims = ""
     for kk in range(len(out_dims)):
@@ -75,19 +77,22 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
     sq_dims = []
     new_in_dims = ""
     for kk in range(len(in_dims)):
-        if inter_dims.find(in_dims[kk]) == -1:
+        if inter_dims.find(in_dims[kk]) == -1: # The dimension is missing in the output
             sq_dims.append(kk)
+            assert T.shape[kk] == 1, "Only the dimensions of size 1 can be skipped in the output"
         else:
             new_in_dims += in_dims[kk]
     in_dims = new_in_dims
-    T = T.squeeze(dim=sq_dims)
+    # For the compatibility with PyTorch pre 2.0, squeeze dims one by one
+    sq_dims.sort(reverse=True)
+    for kk in sq_dims:
+        T = T.squeeze(dim=kk)
 
     # First, permute into the right order
     perm = [0] * len(inter_dims)
     for kk in range(len(inter_dims)):
         ind = in_dims.find(inter_dims[kk])
-        if ind == -1:
-            raise RuntimeError( 'Dimension "{}" missing in the target dimensions: "{}"'.format(in_dims[kk],out_dims) )
+        assert ind != -1, 'Dimension "{}" missing in the target dimensions: "{}"'.format(in_dims[kk],out_dims)
         perm[kk] = ind                    
     T_p = T.permute(perm)
 
