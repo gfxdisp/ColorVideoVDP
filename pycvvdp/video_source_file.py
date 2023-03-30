@@ -8,6 +8,8 @@ import torch
 import ffmpeg
 import re
 
+import fcntl
+
 import logging
 from video_source import *
 
@@ -101,6 +103,16 @@ class video_reader:
         #.global_args('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda') - no effect on decoding speed
         #.global_args( '-loglevel', 'info' )
         self.process = ffmpeg.run_async(stream, pipe_stdout=True, quiet=not verbose)
+        self.set_pipe_size()
+
+    def set_pipe_size(self):
+        # This will hopefully prevent freezing when reading from stdin
+        try:
+            fcntl.fcntl(self.process.stdout, fcntl.F_SETPIPE_SZ, 1000000)
+            psize = fcntl.fcntl(self.process.stdout, fcntl.F_GETPIPE_SZ, 0)
+            logging.debug( f'Pipe size set to {psize}' )
+        except:
+            logging.warning( 'Failed to increase the system pipe size' )
 
     def get_frame(self):
         in_bytes = self.process.stdout.read(self.frame_bytes )
@@ -206,6 +218,7 @@ class video_reader_yuv_pytorch(video_reader):
         stream = ffmpeg.input(vidfile)
         stream = ffmpeg.output(stream, 'pipe:', format='rawvideo', pix_fmt=out_pix_fmt)
         self.process = ffmpeg.run_async(stream, pipe_stdout=True, quiet=True)
+        self.set_pipe_size()
 
     def unpack(self, x, device):
         Y = x[:self.y_pixels]
