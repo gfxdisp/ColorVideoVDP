@@ -68,6 +68,29 @@ def interp1(x, v, x_q):
 
     return filtered.reshape(shp)
 
+# Performs 1-d interpolation on the last dimension of a tensor 'v'
+# This is equivalent to performing such interpolation multiple times, for each slice of other dimensions.
+# x - tensor with the LUT x values, only one dimension can have size != 1
+# v - tensor with the LUT v values (to be interpolated)
+# x_q - tensor with the query x values, only one dimension can have size != 1
+def interp1lastd(x, v, x_q):
+    #shp = x_q.shape
+
+    assert x.dim() == 1, "'x' must be a 1D vector"
+    assert x_q.dim() == 1, "'x_q' must be a 1D vector"
+    assert x.shape[0] == v.shape[-1], "'x' must have the same number of elements as the last dimension of v"
+
+    imin, imax, ifrc = get_interpolants_v1(x_q, x)
+
+    # imin = imin.view(x.shape).expand(v.shape)
+    # imax = imax.view(x.shape).expand(v.shape)
+    # ifrc = ifrc.view(x.shape).expand(v.shape)
+
+    filtered = v[...,imin] * (1.0-ifrc) + v[...,imax] * (ifrc) 
+
+    return filtered
+
+
 
 def test_interp3(device):
     x_q = torch.tensor([0.5, 1.9, 2.1], dtype=torch.float32).to(device)

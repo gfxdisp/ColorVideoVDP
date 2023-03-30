@@ -30,7 +30,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from third_party.cpuinfo import cpuinfo
 from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from interp import interp1, interp3
+from interp import interp1, interp3, interp1lastd
 
 import pycvvdp.utils as utils
 
@@ -50,6 +50,7 @@ class cvvdp(vq_metric):
         self.color_space = color_space
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
+        self.resample_bands = True # Whether to resample spatial and temporal bands
 
         assert heatmap in ["threshold", "supra-threshold", "raw", None], "Unknown heatmap type"            
 
@@ -270,6 +271,7 @@ class cvvdp(vq_metric):
         else:
             met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
 
+        rho_band_dst_q = None
         for ff in range(0, N_frames, block_N_frames):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
@@ -345,10 +347,19 @@ class cvvdp(vq_metric):
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
+                Q_per_ch_block, rho_band, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
             else:
-                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
+                Q_per_ch_block, rho_band, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
 
+            if self.resample_bands:
+                if rho_band_dst_q is None:
+                    rho_band_src = torch.as_tensor(rho_band, device=Q_per_ch_block.device)
+                    rho_band_dst = 2**torch.linspace(-2, 6, 7, device=Q_per_ch_block.device)
+                    rho_band_per_band = rho_band_dst.tolist()
+                Q_per_ch_block = interp1lastd(rho_band_src, Q_per_ch_block, rho_band_dst)
+            else:
+                rho_band_per_band = rho_band
+        
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
             
@@ -362,12 +373,11 @@ class cvvdp(vq_metric):
                     ref_frame = R[:,0, :, :, :]
                     heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap).detach().type(torch.float16).cpu()
 
-        rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band_per_band[-1])
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
-        stats['rho_band'] = rho_band # Thespatial frequency per band
+        stats['rho_band'] = rho_band_per_band # Thespatial frequency per band
         stats['frames_per_second'] = vid_source.get_frames_per_second()
         stats['width'] = width
         stats['height'] = height
@@ -450,6 +460,8 @@ class cvvdp(vq_metric):
         Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
         return Q_JOD
 
+    # The function returns:
+    # Q_per_ch_block[channel,frame,band]
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, heatmap):
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
@@ -469,7 +481,7 @@ class cvvdp(vq_metric):
         # L_bkg_bb = [None for i in range(lpyr.get_band_count()-1)]
 
         rho_band = lpyr.get_freqs()
-        rho_band[lpyr.get_band_count()-1] = 0.1 # Baseband
+        rho_band[-1] = 0.1 # Baseband
 
         Q_per_ch_block = None
         block_N_frames = R.shape[-3] 
@@ -501,9 +513,11 @@ class cvvdp(vq_metric):
                 D = self.apply_masking_model(T_f, R_f, S)
 
             if Q_per_ch_block is None:
-                Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
+                # We pad the bands with 0s so that we can extrapolate to higher freqs correctly
+                Q_per_ch_block = torch.zeros((all_ch, block_N_frames, lpyr.get_band_count()+1), device=self.device)
 
-            Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
+            # We put the bands in the reverse order so that the first element is the base band
+            Q_per_ch_block[:,:,-(bb+1)] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
             if self.do_heatmap:
 
@@ -518,7 +532,9 @@ class cvvdp(vq_metric):
         else:
             heatmap_block = None
 
-        return Q_per_ch_block, heatmap_block
+        rho_band = [rho_band[0]*2] + rho_band
+        rho_band.reverse()
+        return Q_per_ch_block, rho_band, heatmap_block
 
     def apply_masking_model(self, T, R, S):
         # T - test contrast tensor
