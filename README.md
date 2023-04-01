@@ -109,6 +109,17 @@ ColourVideoVDP reports image/video quality in the JOD (Just-Objectionable-Differ
 
 The main advantage of JODs is that they (a) should be linearly related to the perceived magnitude of the distortion and (b) the difference of JODs can be interpreted as the preference prediction across the population. For example, if method A produces a video with the quality score of 8 JOD and method B gives the quality score of 9 JOD, it means that 75% of the population will choose method B over A. The plots below show the mapping from the difference between two conditions in JOD units to the probability of selecting the condition with the higher JOD score (black numbers on the left) and the percentage increase in preference (blue numbers on the right).
 
+<table>
+  <tr>
+    <td>Fine JOD scale</td>
+    <td>Coarse JOD scale</td>
+  </tr>
+  <tr>
+    <td><img width="512" src="imgs/fine_jod_scale.png"></img></td>
+    <td><img width="512" src="imgs/coarse_jod_scale.png"></img></td>
+  </tr>
+</table>
+
 ## Example usage
 
 ### Command line interface
@@ -149,7 +160,7 @@ JOD, m_stats = cvvdp.predict( I_test, I_ref, dim_order="HWC" )
 
 Below, we show an example comparing ColourVideoVDP to the popular SSIM metric. While SSIM is aware of the structure of the content, it operates on luminance only, and is unable to accurately represent the degradation of a color-based artifact like chroma subsampling.
 
-![chroma_ss](chroma_ss.png)
+![chroma_ss](imgs/chroma_ss.png)
 
 More examples can be found in these [example scripts](examples).
 

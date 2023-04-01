@@ -237,7 +237,7 @@ class cvvdp(vq_metric):
 
         fl = self.filter_len
 
-        if torch.cuda.is_available() and not is_image:
+        if self.device.type == 'cuda' and torch.cuda.is_available() and not is_image:
             # GPU utilization is better if we process many frames, but it requires more GPU memory
 
             # Determine how much memory we have
