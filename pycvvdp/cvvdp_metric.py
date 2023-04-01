@@ -30,7 +30,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from third_party.cpuinfo import cpuinfo
 from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from interp import interp1, interp3
+from interp import interp1, interp3, interp1dim2
 
 import pycvvdp.utils as utils
 
@@ -65,6 +65,9 @@ class cvvdp(vq_metric):
             self.device = device
         
         self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
+
+        self.temp_resample = False  # When True, resample the temporal features to nominal_fps
+        self.nominal_fps = 240
 
         self.load_config()
         if calibrated_ckpt is not None:
@@ -362,13 +365,25 @@ class cvvdp(vq_metric):
                     ref_frame = R[:,0, :, :, :]
                     heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap).detach().type(torch.float16).cpu()
 
+        if self.temp_resample:
+            t_end = N_frames/vid_source.get_frames_per_second() # Video duration in s
+            t_org = torch.linspace( 0., t_end, N_frames, device=self.device )
+            N_frames_resampled = math.ceil(t_end * self.nominal_fps)
+            t_resampled = torch.linspace( 0., N_frames_resampled/self.nominal_fps, N_frames_resampled, device=self.device )
+            Q_per_ch = interp1dim2(t_org, Q_per_ch, t_resampled)
+            N_frames = N_frames_resampled
+            fps = self.nominal_fps
+        else:
+            fps = vid_source.get_frames_per_second()
+
+
         rho_band = self.lpyr.get_freqs()
         Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
         stats['rho_band'] = rho_band # Thespatial frequency per band
-        stats['frames_per_second'] = vid_source.get_frames_per_second()
+        stats['frames_per_second'] = fps
         stats['width'] = width
         stats['height'] = height
         stats['N_frames'] = N_frames
