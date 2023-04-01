@@ -39,7 +39,7 @@ def np2vid(np_srgb, vidfile, fps, verbose=False):
     process = (
         ffmpeg
             .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(W, H), r=fps)
-            .output(vidfile, pix_fmt='yuv420p', crf=10)
+            .output(vidfile, format='mp4', **{ "v:q": "10" } )
             .overwrite_output()
             .global_args( '-hide_banner')
             .global_args( '-loglevel', 'info' if verbose else 'quiet')
