@@ -153,6 +153,10 @@ Below, we show an example comparing ColourVideoVDP to the popular SSIM metric. W
 
 More examples can be found in these [example scripts](examples).
 
+## Known problems
+
+* If `cvvdp` freezes when comparing video files (e.g. mp4) on Windows, running with `--verbose` argument. This problem was observed on Windows 10 and could be related to handling Unix pipes in Windows. Adding the argument should prevent the issue.
+
 ## Release notes
 
 * v0.1.0 - Initial internal release.
