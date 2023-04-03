@@ -39,7 +39,8 @@ def np2vid(np_srgb, vidfile, fps, verbose=False):
     process = (
         ffmpeg
             .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(W, H), r=fps)
-            .output(vidfile, format='mp4', **{ "v:q": "10" } )
+            #.output(vidfile, format='mp4', **{ "v:q": "10" } )
+            .output(vidfile, format='mp4', **{ "c:v": "mpeg4", "qscale:v": "3" } )  # mpeg4 codec is always bundled with ffmpeg so it should work
             .overwrite_output()
             .global_args( '-hide_banner')
             .global_args( '-loglevel', 'info' if verbose else 'quiet')
