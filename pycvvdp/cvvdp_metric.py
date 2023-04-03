@@ -51,7 +51,7 @@ class cvvdp(vq_metric):
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
 
-        assert heatmap in ["threshold", "supra-threshold", "raw", None], "Unknown heatmap type"            
+        assert heatmap in ["threshold", "supra-threshold", "raw", "none", None], "Unknown heatmap type"            
 
         self.do_heatmap = (not self.heatmap is None) and (self.heatmap != "none")
 
