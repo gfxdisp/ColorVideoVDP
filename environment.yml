@@ -1,8 +1,0 @@
-name: pyfvvdp
-channels:
-  - defaults
-dependencies:
-  - pip=22.1.2=py39h06a4308_0
-  - python=3.9.12=h12debd9_1
-  - pip:
-    - -r requirements.txt
