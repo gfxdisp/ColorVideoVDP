@@ -67,11 +67,21 @@ class s_de2000(vq_metric):
 
     def opp_to_sopp(self, img, ppd):
         S_OPP = torch.empty_like(img)
-        # Filters are low-dimensional; construct using np
-        [k1, k2, k3] = [torch.as_tensor(filter).to(img) for filter in self.slab.separableFilters(ppd)]
-        S_OPP[...,0:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,0,:,:,:]), k1, torch.abs(k1))
-        S_OPP[...,1:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,1,:,:,:]), k2, torch.abs(k2))
-        S_OPP[...,2:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,2,:,:,:]), k3, torch.abs(k3))
+        ## Filters are low-dimensional; construct using np
+        #[k1, k2, k3] = [torch.as_tensor(filter).to(img) for filter in self.slab.separableFilters_torch(ppd)]
+        #S_OPP[...,0:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,0,:,:,:]), k1, torch.abs(k1))
+        #S_OPP[...,1:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,1,:,:,:]), k2, torch.abs(k2))
+        #S_OPP[...,2:,:,:] = self.slab.separableConv_torch(torch.squeeze(img[...,2,:,:,:]), k3, torch.abs(k3))
+
+        # Simpler SCIELAB filters implementation
+        [k1, k2, k3] = self.slab.generateSCIELABfiltersParams(ppd)
+        # Limit filter width to 1-degree visual angle, and odd number of sampling points
+        # (so that the gaussians generated from Rick's gauss routine are symmetric).
+        width = int(np.ceil(ppd / 2) * 2 - 1)
+        S_OPP[...,0:,:,:] = self.slab.applyGaussFilter(img[...,0,:,:,:], width, k1)
+        S_OPP[...,1:,:,:] = self.slab.applyGaussFilter(img[...,1,:,:,:], width, k2)
+        S_OPP[...,2:,:,:] = self.slab.applyGaussFilter(img[...,2,:,:,:], width, k3)
+
         return S_OPP
         
     def xyz_to_lab(self, img, W):

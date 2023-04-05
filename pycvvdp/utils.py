@@ -3,6 +3,8 @@ import torch
 import numpy as np
 import json
 import torch.nn.functional as Func
+import torchvision.transforms.functional as gaussFilter
+
 from PIL import Image
 from scipy.signal import convolve2d
 
@@ -502,7 +504,40 @@ class SCIELAB_filter:
             k3 = up3[:, downs]
 
         return [k1, k2, k3]
+
+    def generateSCIELABfiltersParams(self, sampPerDeg):
+        # not full implementation but correct for S-CIELAB usage.
+        # Please refer to original Matlab version
+
+        # if sampPerDeg is smaller than minSAMPPERDEG, need to upsample image data before filtering.
+        # This can be done equivalently by convolving filters with the upsampling matrix, then downsample it.
+        dimension=3
+
+        # these are the same filter parameters, except that the weights are normalized to sum to 1 
+        # This eliminates the need to normalize after the filters are generated
+        x1 = np.array([0.05, 1.00327, 0.225, 0.114416, 7.0, -0.117686])
+        x2 = np.array([0.0685, 0.616725, 0.826, 0.383275])
+        x3 = np.array([0.0920, 0.567885, 0.6451, 0.432115])
+
+        # Convert the unit of halfwidths from visual angle to pixels.
+        x1[[0, 2, 4]] = x1[[0, 2, 4]] * sampPerDeg
+        x2[[0, 2]] = x2[[0, 2]] * sampPerDeg
+        x3[[0, 2]] = x3[[0, 2]] * sampPerDeg   
+
+        return [x1, x2, x3]
+    
+    def applyGaussFilter(self, im, width, kernels):
+        # Apply pytorch Gaussian blur and sum for each channel  
         
+        result = torch.zeros_like(im)
+        for j in range(int((kernels.shape[0])/2)):
+            p = kernels[j*2 + 1]*gaussFilter.gaussian_blur(im, width, kernels[j*2])
+
+            # result is sum of several separable convolutions
+            result = result + p
+        
+        return result
+      
     def separableConv(self, im, xkernels, ykernels):
         # Two-dimensional convolution with X-Y separable kernels.
         #
