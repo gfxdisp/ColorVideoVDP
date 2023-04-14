@@ -114,6 +114,9 @@ class cvvdp(vq_metric):
         self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
         self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
 
+        self.do_xchannel_masking = True if parameters['xchannel_masking'] == "on" else False
+        self.xcm_weights = torch.as_tensor( parameters['xcm_weights'], device=self.device, dtype=torch.float32 ) 
+
         if 'ch_chrom_w' in parameters:
             self.ch_chrom_w = torch.as_tensor( parameters['ch_chrom_w'], device=self.device ) # Chromatic channels (rg, vy) weight
             self.ch_trans_w = torch.as_tensor( parameters['ch_trans_w'], device=self.device ) # Transient channel weight
@@ -536,12 +539,21 @@ class cvvdp(vq_metric):
         return Q_per_ch_block, heatmap_block
 
     def apply_masking_model(self, T, R, S):
-        # T - test contrast tensor
+        # T - test contrast tensor T[channel,frame,width,height]
         # R - reference contrast tensor
         # S - sensitivity
         T = T*S
         R = R*S
         M = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
+
+        # Cross-channel masking
+        if self.do_xchannel_masking:
+            num_ch = M.shape[0]
+            xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+            for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
+                M[cc,...] = torch.sum( M * xcm_weights[:,cc], dim=0, keepdim=True )
+
+
         D = self.clamp_diffs( self.mask_func_perc_norm( torch.abs(T-R), M ) )
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
