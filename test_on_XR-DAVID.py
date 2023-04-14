@@ -39,7 +39,7 @@ cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120, verbose=True )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120, verbose=False )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
