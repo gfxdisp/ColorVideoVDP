@@ -101,7 +101,7 @@ class cvvdp(vq_metric):
         self.mask_c = torch.as_tensor( parameters['mask_c'], device=self.device ) # content masking adjustment
         self.pu_dilate = parameters['pu_dilate']
         if self.pu_dilate>0:
-            self.pu_blur = GaussianBlur(int(self.pu_dilate*5), self.pu_dilate)
+            self.pu_blur = GaussianBlur(int(self.pu_dilate*4)+1, self.pu_dilate)
         self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
         self.beta_t = torch.as_tensor( parameters['beta_t'], device=self.device ) # The exponent of the summation over time (p-norm)
         self.beta_tch = torch.as_tensor( parameters['beta_tch'], device=self.device ) # The exponent of the summation over temporal channels (p-norm)
