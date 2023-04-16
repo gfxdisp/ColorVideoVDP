@@ -5,6 +5,7 @@ import math
 import torch
 from torch.utils import checkpoint
 from torch.functional import Tensor
+from torchvision.transforms import GaussianBlur
 import torch.nn.functional as Func
 import numpy as np 
 import os
@@ -98,7 +99,9 @@ class cvvdp(vq_metric):
         #all common parameters between Matlab and Pytorch, loaded from the .json file
         self.mask_p = torch.as_tensor( parameters['mask_p'], device=self.device )
         self.mask_c = torch.as_tensor( parameters['mask_c'], device=self.device ) # content masking adjustment
-        self.pu_dilate = torch.as_tensor( parameters['pu_dilate'], device=self.device )
+        self.pu_dilate = parameters['pu_dilate']
+        if self.pu_dilate>0:
+            self.pu_blur = GaussianBlur(int(self.pu_dilate*5), self.pu_dilate)
         self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
         self.beta_t = torch.as_tensor( parameters['beta_t'], device=self.device ) # The exponent of the summation over time (p-norm)
         self.beta_tch = torch.as_tensor( parameters['beta_tch'], device=self.device ) # The exponent of the summation over temporal channels (p-norm)
@@ -576,7 +579,8 @@ class cvvdp(vq_metric):
 
     def phase_uncertainty(self, M):
         if self.pu_dilate != 0:
-            M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
+            #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
+            M_pu = self.pu_blur.forward(M) * (10**self.mask_c)
         else:
             M_pu = M * (10**self.mask_c)
         return M_pu
