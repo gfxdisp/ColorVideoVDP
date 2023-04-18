@@ -175,7 +175,11 @@ class video_source_array( video_source_dm ):
         if fps==0 and F>1:
             raise RuntimeError( 'When passing video sequences, you must set ''frames_per_second'' parameter' )
 
-        if C!=3 and C!=1:
+        if C == 4:
+            logging.warning('Input media has 4 colour channels, ignoring the alpha channel to run cvvdp.')
+            test_video = test_video[:,:3]
+            reference_video = reference_video[:,:3]
+        elif C not in (1, 3):
             raise RuntimeError( 'The content must have either 1 or 3 colour channels.' )
 
         self.fps = fps
