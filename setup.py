@@ -22,6 +22,7 @@ setup(
                       'scipy>=1.7.0',
                       'ffmpeg-python>=0.2.0',
                       'torch>=1.8.2',
+                      'torchvision>=0.9.2'
                       'ffmpeg>=1.4',
                       'imageio>=2.19.5',
                      ],
