@@ -102,6 +102,7 @@ class cvvdp(vq_metric):
         self.pu_dilate = parameters['pu_dilate']
         if self.pu_dilate>0:
             self.pu_blur = GaussianBlur(int(self.pu_dilate*4)+1, self.pu_dilate)
+            self.pu_padsize = int(self.pu_dilate*2)
         self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
         self.beta_t = torch.as_tensor( parameters['beta_t'], device=self.device ) # The exponent of the summation over time (p-norm)
         self.beta_tch = torch.as_tensor( parameters['beta_tch'], device=self.device ) # The exponent of the summation over temporal channels (p-norm)
@@ -582,7 +583,8 @@ class cvvdp(vq_metric):
 
 
     def phase_uncertainty(self, M):
-        if self.pu_dilate != 0:
+        # Blur only when the image is larger then the required pad size
+        if self.pu_dilate != 0 and M.shape[-2]>self.pu_padsize and M.shape[-1]>self.pu_padsize:
             #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
             M_pu = self.pu_blur.forward(M) * (10**self.mask_c)
         else:
