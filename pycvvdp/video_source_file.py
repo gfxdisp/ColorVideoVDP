@@ -47,6 +47,10 @@ def load_image_as_array(imgfile):
         logging.warning(f'Input image {imgfile} has more than 3 channels (alpha?). Ignoring the extra channels.')
         img = img[:,:,:3]
 
+    # Expand the tensor to [H,W,1] if we have a one-channel image
+    if img.ndim==2:
+        img = img[:,:,np.newaxis]
+
     return img
 
 
