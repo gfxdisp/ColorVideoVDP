@@ -42,6 +42,11 @@ def load_image_as_array(imgfile):
             import imageio
             imageio.plugins.freeimage.download()
             img = io.imread(imgfile, format=lib)
+
+    if img.ndim==3 and img.shape[2]>3:
+        logging.warning(f'Input image {imgfile} has more than 3 channels (alpha?). Ignoring the extra channels.')
+        img = img[:,:,:3]
+
     return img
 
 
