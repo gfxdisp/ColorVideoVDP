@@ -241,7 +241,9 @@ class video_source_yuv_file(video_source_dm):
 
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
-        self.frames = self.test_vidr.frame_count if frames==-1 else min(self.test_vidr.frame_count, frames)
+        self.total_frames = self.test_vidr.frame_count
+        self.frames = self.total_frames if frames==-1 else min(self.total_frames, frames)
+        self.offset = 0     # Offset for random access of a shorter subsequence
 
         self.full_screen_resize = full_screen_resize
         self.resize_resolution = resize_resolution
@@ -289,8 +291,8 @@ class video_source_yuv_file(video_source_dm):
         L = self._get_frame( self.reference_vidr, frame, device, colorspace )
         return L
 
-    def _get_frame( self, vid_reader, frame, device, colorspace="Y" ):        
-        RGB = vid_reader.get_frame_rgb_tensor(frame, device)
+    def _get_frame( self, vid_reader, frame, device, colorspace="Y" ):
+        RGB = vid_reader.get_frame_rgb_tensor(self.offset + frame, device)
         RGB_bcfhw = reshuffle_dims( RGB, in_dims='HWC', out_dims="BCFHW" )
 
         if not self.full_screen_resize is None and (vid_reader.height != self.resize_resolution[1] or vid_reader.width != self.resize_resolution[0]):
@@ -301,3 +303,9 @@ class video_source_yuv_file(video_source_dm):
         RGB_lin = self.dm_photometry.forward(RGB_bcfhw)
         return self.color_trans.rgb2colourspace(RGB_lin, colorspace)
     
+    def set_offset( self, offset ):
+        assert isinstance(offset, int), 'Please provide an integer offset'
+        self.offset = offset
+
+    def get_total_frames(self):
+        return self.total_frames
