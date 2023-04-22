@@ -61,10 +61,10 @@ class pu_vmaf(vq_metric):
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
 
             # Apply PU
-            T_enc = self.pu.encode(T.clip(0, self.max_L))
-            T_enc_np = T_enc.squeeze().permute(1,2,0).cpu().numpy()
-            R_enc = self.pu.encode(R.clip(0, self.max_L))
-            R_enc_np = R_enc.squeeze().permute(1,2,0).cpu().numpy()
+            T_enc = self.pu.encode(T.clip(0, self.max_L.item()))
+            T_enc_np = T_enc.squeeze().permute(1,2,0).cpu().numpy() / self.pu.encode(self.max_L)
+            R_enc = self.pu.encode(R.clip(0, self.max_L.item()))
+            R_enc_np = R_enc.squeeze().permute(1,2,0).cpu().numpy() / self.pu.encode(self.max_L)
 
             # Save the output as yuv file
             self.write_yuv_frame(T_enc_np, bit_depth=10, type='T')
@@ -94,7 +94,7 @@ class pu_vmaf(vq_metric):
 
     def set_display_model(self, display_photometry, display_geometry):
         self.max_L = display_photometry.get_peak_luminance()
-        self.max_L = min(self.max_L, 300)
+        self.max_L = np.array(min(self.max_L, 300))
 
     # This function takes into input an encoded RGB709 frame and saves it as a yuv file (it operates only on numpy arrays)
     def write_yuv_frame( self, RGB ,bit_depth=10,type = 'T'):
