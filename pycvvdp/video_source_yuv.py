@@ -303,9 +303,15 @@ class video_source_yuv_file(video_source_dm):
         RGB_lin = self.dm_photometry.forward(RGB_bcfhw)
         return self.color_trans.rgb2colourspace(RGB_lin, colorspace)
     
-    def set_offset( self, offset ):
-        assert isinstance(offset, int), 'Please provide an integer offset'
+    def set_offset( self, offset:int ):
         self.offset = offset
 
     def get_total_frames(self):
         return self.total_frames
+
+    def set_num_frames(self, num_frames:int):
+        if self.offset + num_frames > self.total_frames:
+            logging.error(f'Cannot set num_frames={num_frames} because offset={self.offset} and total_frames={self.total_frames}. '
+                          f'Clipping num_frames to {self.total_frames - self.offset}')
+            num_frames = self.total_frames - self.offset
+        self.frames = num_frames
