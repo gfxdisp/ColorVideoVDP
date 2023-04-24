@@ -371,11 +371,8 @@ class video_source_video_file(video_source_dm):
     def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y" ):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
-        L = self.dm_photometry.forward( frame_t )
 
-        # Convert to the target colour space
-        I = self.color_trans.rgb2colourspace(L, colorspace)
-        self.check_if_valid(I)
+        I = self.apply_dm_and_colour_transform(frame_t, colorspace)
 
         return I
 

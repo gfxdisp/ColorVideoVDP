@@ -6,7 +6,6 @@ from pycvvdp.video_source import *
 
 class vq_metric:
 
-
     '''
     test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames. 
         Depending on the display model (display_photometry), the pixel values should be either display encoded, or absolute linear.
@@ -46,8 +45,13 @@ class vq_metric:
     def quality_unit(self):
         pass
 
-    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
-        pass
-
     def get_info_string(self):
         return None
+
+    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
+        if display_photometry is None:
+            self.display_photometry = vvdp_display_photometry.load(display_name)
+            self.display_name = display_name
+        else:
+            self.display_photometry = display_photometry
+            self.display_name = "unspecified"

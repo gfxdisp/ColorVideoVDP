@@ -300,8 +300,8 @@ class video_source_yuv_file(video_source_dm):
                                                 size=(self.resize_resolution[1], self.resize_resolution[0]),
                                                 mode=self.full_screen_resize).view(1,RGB_bcfhw.shape[1],1,self.resize_resolution[1],self.resize_resolution[0]).clip(0.,1.)
 
-        RGB_lin = self.dm_photometry.forward(RGB_bcfhw)
-        return self.color_trans.rgb2colourspace(RGB_lin, colorspace)
+        I = self.apply_dm_and_colour_transform(RGB_bcfhw, colorspace)
+        return I
     
     def set_offset( self, offset:int ):
         self.offset = offset

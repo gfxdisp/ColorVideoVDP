@@ -31,15 +31,16 @@ class video_source:
     def get_frames_per_second(self) -> int:
         pass
     
-    # Get a pair of test and reference video frames as a single-precision luminance map
-    # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
-    # starting from 0. 
+    # Get a test video frame in the selected colorspace. See colorspace.py for the list of available color spaces. 
+    # You can also pass 'display_encoded_01' for the method to return display-encoded image (e.g. sRGB) with the 
+    # values between 0 and 1. If the input source contains linear values (e.g. an HDR image) and you pass 
+    # 'display_encoded_01', the function will return PU21-encoded values. 
     @abstractmethod
-    def get_test_frame( self, frame, device ) -> Tensor:
+    def get_test_frame( self, frame, device, colorspace ) -> Tensor:
         pass
 
     @abstractmethod
-    def get_reference_frame( self, frame, device ) -> Tensor:
+    def get_reference_frame( self, frame, device, colorspace ) -> Tensor:
         pass
 
     # Check whether pixel values are valid, display warning if it is not the case
@@ -121,6 +122,32 @@ class video_source_dm( video_source ):
             self.dm_photometry = display_photometry
         else:
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
+
+    def apply_dm_and_colour_transform(self, frame, colorspace):
+
+        if colorspace == 'display_encoded_01': # if a display-encoded frame is requested
+            if self.dm_photometry.is_input_display_encoded():
+                I = frame # no need to do anything
+            else:
+                # Otherwise, we need to PU-encode the frame
+                if not hasattr( self, "PU" ):
+                    self.PU = utils.PU()
+                    self.PU_max = self.PU.encode(torch.as_tensor(10000.0))
+                I_lin = self.dm_photometry.forward( frame )
+                I = self.PU.encode(I_lin) / self.PU_max # make sure the value are 0-1
+
+        else: # If one of the standard linear color spaces is requested
+            L_lin = self.dm_photometry.forward( frame )
+
+            is_color = (frame.shape[-4]==3)
+            if is_color:
+                I = self.color_trans.rgb2colourspace(L_lin, colorspace)
+            else:
+                I = L_lin
+
+        self.check_if_valid(I)
+        return I
+
 
 
 """
@@ -235,14 +262,9 @@ class video_source_array( video_source_dm ):
         else:
             raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
 
-        L_lin = self.dm_photometry.forward( frame )
-
-        if self.is_color:
-            L_lin = self.color_trans.rgb2colourspace(L_lin, colorspace)
-
-        self.check_if_valid(L_lin)
+        I = self.apply_dm_and_colour_transform(frame, colorspace)
         
-        return L_lin
+        return I
 
 
 class video_source_packed_array( video_source_dm ):
