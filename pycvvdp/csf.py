@@ -5,9 +5,11 @@ from interp import interp1
 
 class castleCSF:
 
-    def __init__(self, device):
+    def __init__(self, contrast, device):
         self.device = device
-        csf_lut_file = utils.config_files.find( "csf_lut.json" )
+        if contrast.startswith("weber"):
+            contrast = "weber"
+        csf_lut_file = utils.config_files.find( f"csf_lut_{contrast}.json" )
         csf_lut = utils.json2dict(csf_lut_file)
 
         self.log_L_bkg = torch.log10( torch.as_tensor(csf_lut["L_bkg"], device=device) )
@@ -25,7 +27,7 @@ class castleCSF:
         self.logS_rho = {}
 
 
-    def sensitivity(self, rho, omega, L_bkg, cc, sigma):
+    def sensitivity(self, rho, omega, logL_bkg, cc, sigma):
         # rho - spatial frequency
         # omega - temporal frequency
         # L_bkg - background luminance
@@ -47,7 +49,7 @@ class castleCSF:
             self.logS_rho[rho_str] = logS_r
 
         # Then, interpolate across luminance levels    
-        S = 10**interp1( self.log_L_bkg, logS_r, torch.log10(L_bkg) )        
+        S = 10**interp1( self.log_L_bkg, logS_r, logL_bkg )        
 
         return S
 

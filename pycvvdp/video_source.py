@@ -2,11 +2,16 @@ from abc import abstractmethod
 import torch
 import os
 import numpy as np 
+import logging
 from torch.functional import Tensor
 import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 
 from pycvvdp.colorspace import ColorTransform
+
+
+
+
 
 """
 fvvdp_video_source_* objects are used to supply test/reference frames to FovVideoVDP. 
@@ -26,16 +31,31 @@ class video_source:
     def get_frames_per_second(self) -> int:
         pass
     
-    # Get a pair of test and reference video frames as a single-precision luminance map
-    # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
-    # starting from 0. 
+    # Get a test video frame in the selected colorspace. See colorspace.py for the list of available color spaces. 
+    # You can also pass 'display_encoded_01' for the method to return display-encoded image (e.g. sRGB) with the 
+    # values between 0 and 1. If the input source contains linear values (e.g. an HDR image) and you pass 
+    # 'display_encoded_01', the function will return PU21-encoded values. 
     @abstractmethod
-    def get_test_frame( self, frame, device ) -> Tensor:
+    def get_test_frame( self, frame, device, colorspace ) -> Tensor:
         pass
 
     @abstractmethod
-    def get_reference_frame( self, frame, device ) -> Tensor:
+    def get_reference_frame( self, frame, device, colorspace ) -> Tensor:
         pass
+
+    # Check whether pixel values are valid, display warning if it is not the case
+    def check_if_valid( self, frame ):
+
+        if not hasattr( self, "warning_shown" ):
+            self.warning_shown = False
+
+        if not self.warning_shown and torch.isnan(frame).any():
+            self.warning_shown = True
+            logging.warning( 'Image contains one or more NaN values' )
+
+        if not self.warning_shown and torch.isinf(frame).any():
+            self.warning_shown = True
+            logging.warning( 'Image contains one or more Inf values' )
 
 
 """
@@ -46,18 +66,34 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
     in_dims = in_dims.upper()
     out_dims = out_dims.upper()    
 
+    assert len(in_dims) == T.dim(), "The in_dims string must have as many characters as there are dimensions in T"
+
     # Find intersection of two strings    
     inter_dims = ""
     for kk in range(len(out_dims)):
         if in_dims.find(out_dims[kk]) != -1:
             inter_dims += out_dims[kk]
 
+    # First, squeeze out the dimensions that are missing in the output
+    sq_dims = []
+    new_in_dims = ""
+    for kk in range(len(in_dims)):
+        if inter_dims.find(in_dims[kk]) == -1: # The dimension is missing in the output
+            sq_dims.append(kk)
+            assert T.shape[kk] == 1, "Only the dimensions of size 1 can be skipped in the output"
+        else:
+            new_in_dims += in_dims[kk]
+    in_dims = new_in_dims
+    # For the compatibility with PyTorch pre 2.0, squeeze dims one by one
+    sq_dims.sort(reverse=True)
+    for kk in sq_dims:
+        T = T.squeeze(dim=kk)
+
     # First, permute into the right order
     perm = [0] * len(inter_dims)
     for kk in range(len(inter_dims)):
         ind = in_dims.find(inter_dims[kk])
-        if ind == -1:
-            raise RuntimeError( 'Dimension "{}" missing in the target dimensions: "{}"'.format(in_dims[kk],out_dims) )
+        assert ind != -1, 'Dimension "{}" missing in the target dimensions: "{}"'.format(in_dims[kk],out_dims)
         perm[kk] = ind                    
     T_p = T.permute(perm)
 
@@ -86,6 +122,32 @@ class video_source_dm( video_source ):
             self.dm_photometry = display_photometry
         else:
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
+
+    def apply_dm_and_colour_transform(self, frame, colorspace):
+
+        if colorspace == 'display_encoded_01': # if a display-encoded frame is requested
+            if self.dm_photometry.is_input_display_encoded():
+                I = frame # no need to do anything
+            else:
+                # Otherwise, we need to PU-encode the frame
+                if not hasattr( self, "PU" ):
+                    self.PU = utils.PU()
+                    self.PU_max = self.PU.encode(torch.as_tensor(10000.0))
+                I_lin = self.dm_photometry.forward( frame )
+                I = self.PU.encode(I_lin) / self.PU_max # make sure the value are 0-1
+
+        else: # If one of the standard linear color spaces is requested
+            L_lin = self.dm_photometry.forward( frame )
+
+            is_color = (frame.shape[-4]==3)
+            if is_color:
+                I = self.color_trans.rgb2colourspace(L_lin, colorspace)
+            else:
+                I = L_lin
+
+        self.check_if_valid(I)
+        return I
+
 
 
 """
@@ -140,7 +202,11 @@ class video_source_array( video_source_dm ):
         if fps==0 and F>1:
             raise RuntimeError( 'When passing video sequences, you must set ''frames_per_second'' parameter' )
 
-        if C!=3 and C!=1:
+        # if C == 4:
+        #     logging.warning('Input media has 4 colour channels, ignoring the alpha channel to run cvvdp.')
+        #     test_video = test_video[:,:3]
+        #     reference_video = reference_video[:,:3]
+        if C not in (1, 3):
             raise RuntimeError( 'The content must have either 1 or 3 colour channels.' )
 
         self.fps = fps
@@ -196,12 +262,9 @@ class video_source_array( video_source_dm ):
         else:
             raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
 
-        L_lin = self.dm_photometry.forward( frame )
-
-        if self.is_color:
-            return self.color_trans.rgb2colourspace(L_lin, colorspace)
-        else:
-            return L_lin
+        I = self.apply_dm_and_colour_transform(frame, colorspace)
+        
+        return I
 
 
 class video_source_packed_array( video_source_dm ):

@@ -69,6 +69,25 @@ def interp1(x, v, x_q):
     return filtered.reshape(shp)
 
 
+# Performs 1-d interpolation on the 2nd dimension of tensor 'v' (hard coded as I do not know how to do it otherwise)
+# This is equivalent to performing such interpolation multiple times, for each slice of other dimensions.
+# x - tensor with the LUT x values, only one dimension can have size != 1
+# v - tensor with the LUT v values (to be interpolated)
+# x_q - tensor with the query x values, only one dimension can have size != 1
+def interp1dim2(x, v, x_q):
+    assert x.dim() == 1, "'x' must be a 1D vector"
+    assert x_q.dim() == 1, "'x_q' must be a 1D vector"
+    assert x.shape[0] == v.shape[1], "'x' must have the same number of elements as the second dimensiom of v"
+
+    imin, imax, ifrc = get_interpolants_v1(x_q, x)
+    sh = [1] * v.dim()
+    sh[1] = ifrc.shape[0]
+    ifrc = ifrc.view(sh)
+
+    filtered = v[:,imin,...] * (1.0-ifrc) + v[:,imax,...] * (ifrc) 
+
+    return filtered
+
 def test_interp3(device):
     x_q = torch.tensor([0.5, 1.9, 2.1], dtype=torch.float32).to(device)
     y_q = torch.tensor([2.0, 2.0, 2.0], dtype=torch.float32).to(device)

@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf8") as fh:
 
 setup(
     name='pycvvdp',
-    version='0.0.1',
+    version='0.1.0',
     description='PyTorch code for \'ColorVideoVDP\': a full-reference' \
                 'visual quality metric that predicts the perceptual' \
                 'difference between pairs of images or videos.',
@@ -22,8 +22,10 @@ setup(
                       'scipy>=1.7.0',
                       'ffmpeg-python>=0.2.0',
                       'torch>=1.8.2',
+                      'torchvision>=0.9.2'
                       'ffmpeg>=1.4',
-                      'imageio>=2.19.5'],
+                      'imageio>=2.19.5',
+                     ],
 
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -32,11 +34,12 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
     ],
 
-    # entry_points={
-    #     'console_scripts': [
-    #         'fvvdp=pyfvvdp.run_fvvdp:main'
-    #     ]
-    # }
+    entry_points={
+        'console_scripts': [
+            'cvvdp=pycvvdp.run_cvvdp:main'
+        ]
+    }
 )

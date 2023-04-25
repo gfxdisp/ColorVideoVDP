@@ -42,6 +42,15 @@ def load_image_as_array(imgfile):
             import imageio
             imageio.plugins.freeimage.download()
             img = io.imread(imgfile, format=lib)
+
+    if img.ndim==3 and img.shape[2]>3:
+        logging.warning(f'Input image {imgfile} has more than 3 channels (alpha?). Ignoring the extra channels.')
+        img = img[:,:,:3]
+
+    # Expand the tensor to [H,W,1] if we have a one-channel image
+    if img.ndim==2:
+        img = img[:,:,np.newaxis]
+
     return img
 
 
@@ -100,7 +109,10 @@ class video_reader:
         log_level = 'info' if verbose else 'quiet'
         stream = ffmpeg.output(stream, 'pipe:', format='rawvideo', pix_fmt=out_pix_fmt).global_args( '-loglevel', log_level )
         #.global_args('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda') - no effect on decoding speed
+<<<<<<< HEAD
         #.global_args( '-loglevel', 'info' )
+=======
+>>>>>>> origin/main
         self.process = ffmpeg.run_async(stream, pipe_stdout=True)
 
     def get_frame(self):
@@ -234,6 +246,7 @@ class video_reader_yuv_pytorch(video_reader):
                                                   size=(self.resize_height, self.resize_width),
                                                   mode=self.resize_fn)
             RGB = RGB.squeeze().permute(1,2,0)
+
         return RGB.clip(0, 1)
 
     def _np_to_torchfp32(self, X, device):
@@ -362,10 +375,10 @@ class video_source_video_file(video_source_dm):
     def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y" ):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
-        L = self.dm_photometry.forward( frame_t )
 
-        # Convert to grayscale
-        return self.color_trans.rgb2colourspace(L, colorspace)
+        I = self.apply_dm_and_colour_transform(frame_t, colorspace)
+
+        return I
 
 
 '''

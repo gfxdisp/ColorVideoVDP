@@ -141,6 +141,10 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         self.k_refl = k_refl
         self.name = name    
 
+    # Say whether the input frame is display-encoded. False if it is linear. 
+    def is_input_display_encoded(self):
+        return True
+
     def __eq__(self, other): 
         if not isinstance(other, self.__class__):
             # don't attempt to compare against unrelated types
@@ -276,6 +280,10 @@ class vvdp_display_photo_gog(vvdp_display_photometry):
         self.k_refl = k_refl
         self.name = name
 
+    # Say whether the input frame is display-encoded. False if it is linear. 
+    def is_input_display_encoded(self):
+        return True
+
     def __eq__(self, other): 
         if not isinstance(other, self.__class__):
             # don't attempt to compare against unrelated types
@@ -338,6 +346,10 @@ class vvdp_display_photo_absolute(vvdp_display_photometry):
 
         self.L_max = L_max
         self.L_min = L_min
+
+    # Say whether the input frame is display-encoded. False if it is linear. 
+    def is_input_display_encoded(self):
+        return False
 
     def __eq__(self, other): 
         if not isinstance(other, self.__class__):
