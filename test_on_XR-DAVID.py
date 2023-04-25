@@ -8,12 +8,14 @@ import pycvvdp
 import logging
 
 display_name = 'eizo_CG3146'
+color_space_name = 'Display P3 Apple' # replace with sRGB
 
 # media_folder = 'S:\\Datasets\\XR-DAVID\\cache'
 # ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
 
 media_folder = '../datasets/XR-DAVID'
+
 # ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_WGNU_Level003.mp4'))
 
@@ -34,12 +36,12 @@ TST_FILEs = glob.glob(os.path.join(media_folder, 'Emojis_DUC_Level003.mp4'))
 pycvvdp.utils.config_files.set_config_dir(media_folder)
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
-cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw")
+cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", color_space=color_space_name)
 cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120, verbose=False )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, color_space_name=color_space_name, frames=120, verbose=False )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
