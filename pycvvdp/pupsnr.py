@@ -73,6 +73,7 @@ class pu_psnr_y(vq_metric):
         self.color_space = color_space # input content colour space
 
         self.pu = PU()
+        self.max_I = self.pu.encode(torch.as_tensor(10000))
         self.metric_colorspace = 'Y' # colour space in which the metric operates
 
     '''
@@ -92,9 +93,8 @@ class pu_psnr_y(vq_metric):
             R_enc = self.pu.encode(R)
 
             mse += torch.mean( (T_enc - R_enc)**2 )
-
-        max_I = 1
-        psnr = 20*torch.log10( max_I/torch.sqrt(mse/N_frames) ) 
+        
+        psnr = 20*torch.log10( self.max_I/torch.sqrt(mse/N_frames) ) 
 
         return psnr, None
 

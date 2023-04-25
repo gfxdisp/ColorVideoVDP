@@ -82,7 +82,7 @@ def parse_args():
     parser.add_argument("--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("--metrics", choices=['cvvdp', 'pu-psnr'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("--verbose", action='store_true', default=False, help="Print out extra information.")
@@ -182,7 +182,7 @@ def main():
     display_photometry = pycvvdp.vvdp_display_photometry.load(args.display)
     display_geometry = pycvvdp.vvdp_display_geometry.load(args.display)
 
-    for mm in args.metrics:
+    for mm in args.metric:
         if mm == 'cvvdp':
             fv = pycvvdp.cvvdp( display_name=args.display,
                                 heatmap=args.heatmap, 
@@ -190,10 +190,14 @@ def main():
                                 temp_padding=args.temp_padding,
                                 quiet=args.quiet )
             metrics.append( fv )
-        elif mm == 'pu-psnr':
+        elif mm == 'pu-psnr-rgb':
             if args.heatmap:
                 logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
-            metrics.append( pycvvdp.pu_psnr(device=device) )
+            metrics.append( pycvvdp.pu_psnr_rgb2020(device=device) )
+        elif mm == 'pu-psnr-y':
+            if args.heatmap:
+                logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
+            metrics.append( pycvvdp.pu_psnr_y(device=device) )
         else:
             raise RuntimeError( f"Unknown metric {mm}")
 
