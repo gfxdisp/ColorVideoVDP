@@ -11,7 +11,7 @@
     "source": "none" },
 
   "standard_hdr_pq": {
-      "name": "30-inch 4K HDR, monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
+      "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
       "EOTF": "PQ",
       "resolution": [3840, 2160], 
       "viewing_distance_meters":  0.7472,  
@@ -22,7 +22,7 @@
       "source": "none" },
 
   "standard_hdr_linear": {
-    "name": "30-inch 4K HDR, monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
+    "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
     "EOTF": "linear",
     "resolution": [3840, 2160], 
     "viewing_distance_meters":  0.7472,  
@@ -31,7 +31,18 @@
     "contrast": 1000000,
     "E_ambient": 10,
     "source": "none" },
-        
+
+  "standard_hdr_linear_zoom": {
+      "name": "30-inch 4K HDR monitor, peak luminance 4000 cd/m^2, viewed under low light levels (10 lux), seen from very close to spot super-resolution artifacts", 
+      "EOTF": "linear",
+      "resolution": [3840, 2160], 
+      "viewing_distance_meters":  0.25,  
+      "diagonal_size_inches": 30,   
+      "max_luminance": 1500,   
+      "contrast": 1000000,
+      "E_ambient": 10,
+      "source": "none" },
+      
   "standard_fhd": {
       "name": "24-inch FullHD monitor, peak luminance 200 cd/m^2, viewed under office light levels (250 lux), seen from 2 x display height", 
       "resolution": [1920, 1080], 

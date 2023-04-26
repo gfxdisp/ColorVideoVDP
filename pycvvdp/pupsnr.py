@@ -73,7 +73,7 @@ class pu_psnr_y(vq_metric):
         self.color_space = color_space # input content colour space
 
         self.pu = PU()
-        self.max_I = self.pu.encode(torch.as_tensor(10000))
+        self.max_I = self.pu.encode(torch.as_tensor(100)) # 100 nit should correspond to white on an SDR display
         self.metric_colorspace = 'Y' # colour space in which the metric operates
 
     '''
