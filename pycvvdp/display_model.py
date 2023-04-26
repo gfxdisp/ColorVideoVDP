@@ -143,7 +143,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
 
     # Say whether the input frame is display-encoded. False if it is linear. 
     def is_input_display_encoded(self):
-        return True
+        # Is not display encoded if EOTF is "linear"
+        return (self.EOTF!='linear')
 
     def __eq__(self, other): 
         if not isinstance(other, self.__class__):

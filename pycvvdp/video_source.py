@@ -5,7 +5,7 @@ import numpy as np
 import logging
 from torch.functional import Tensor
 import pycvvdp.utils as utils
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry, vvdp_display_photo_eotf
 
 from pycvvdp.colorspace import ColorTransform
 
@@ -126,7 +126,9 @@ class video_source_dm( video_source ):
     def apply_dm_and_colour_transform(self, frame, colorspace):
 
         if colorspace == 'display_encoded_01': # if a display-encoded frame is requested
-            if self.dm_photometry.is_input_display_encoded():
+
+            # Special case - if PQ, we still want to use PU21, as it should be marginally better
+            if self.dm_photometry.is_input_display_encoded() and not (isinstance( self.dm_photometry, vvdp_display_photo_eotf) and self.dm_photometry.EOTF == 'PQ'):
                 I = frame # no need to do anything
             else:
                 # Otherwise, we need to PU-encode the frame
