@@ -48,13 +48,16 @@ def vis_tonemap(b, dr):
     return tmo_img
 
 # returns sRGB image/frames
-def visualize_diff_map(diff_map, context_image=None, colormap_type="supra-threshold"):
+def visualize_diff_map(diff_map, context_image=None, colormap_type="supra-threshold", use_cpu=False):
     diff_map = torch.clamp(diff_map, 0.0, 1.0)
+    if use_cpu:
+        diff_map = diff_map.cpu()
+        context_image = context_image.cpu()
 
     if context_image is None:
         tmo_img = torch.ones_like(diff_map) * 0.5
     else:
-        tmo_img = vis_tonemap(log_luminance(context_image), 0.6)
+        tmo_img = vis_tonemap(log_luminance(context_image.cpu()), 0.6)
 
     if colormap_type == 'threshold':
         # Visualize up to 1 JOD (>=1 JOD will be all red)

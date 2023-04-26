@@ -370,7 +370,7 @@ class cvvdp(vq_metric):
                     heatmap[:,:,ff:ff_end,...] = heatmap_block.detach().type(torch.float16).cpu()
                 else:
                     ref_frame = R[:,0, :, :, :]
-                    heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap).detach().type(torch.float16).cpu()
+                    heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach().type(torch.float16).cpu()
 
         if self.temp_resample:
             t_end = N_frames/vid_source.get_frames_per_second() # Video duration in s
