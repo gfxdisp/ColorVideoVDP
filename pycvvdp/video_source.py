@@ -49,11 +49,11 @@ class video_source:
         if not hasattr( self, "warning_shown" ):
             self.warning_shown = False
 
-        if not self.warning_shown and torch.isnan(frame).any():
+        if not self.warning_shown and torch.isnan(frame).flatten().any():
             self.warning_shown = True
             logging.warning( 'Image contains one or more NaN values' )
 
-        if not self.warning_shown and torch.isinf(frame).any():
+        if not self.warning_shown and torch.isinf(frame).flatten().any():
             self.warning_shown = True
             logging.warning( 'Image contains one or more Inf values' )
 

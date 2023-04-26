@@ -666,9 +666,12 @@ class cvvdp(vq_metric):
         #r = torch.empty( (4, N), device=self.device )
 
         F = []
+        if self.device.type == 'mps':
+            # FFT operations not supported on MPS as of torch==2.1 (see https://github.com/pytorch/pytorch/issues/78044)
+            R = R.cpu()
         for kk in range(4):
             # Must be executed once per each channel. For some reason, gives wrong results when run on the entire array
-            r = torch.fft.fftshift( torch.real( torch.fft.irfft( R[kk,:], norm="backward", n=N ) ) ) 
+            r = torch.fft.fftshift( torch.real( torch.fft.irfft( R[kk,:], norm="backward", n=N ) ) ).to(self.device)
             F.append( r )
 
         return F, omega_bands

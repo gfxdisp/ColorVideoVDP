@@ -5,11 +5,22 @@ import os
 import sys
 import math
 
+def bucketize(tensor, bucket_boundaries):
+    if tensor.device.type != 'mps':
+        return torch.bucketize(tensor, bucket_boundaries)
+
+    # MPS does not support bucketize yet
+    result = torch.zeros_like(tensor, dtype=torch.int32)
+    for boundary in bucket_boundaries:
+        result += (tensor > boundary).int()
+    assert (result.cpu() == torch.bucketize(tensor.cpu(), bucket_boundaries.cpu())).flatten().all()
+    return result
+
 # x_q : query tensor 
 # x   : boundaries tensor
 # inspired from: https://github.com/sbarratt/torch_interpolations/blob/master/torch_interpolations/multilinear.py#L39
 def get_interpolants_v1(x_q, x):
-    imax = torch.bucketize(x_q, x)
+    imax = bucketize(x_q, x)
     imax[imax >= x.shape[0]] = x.shape[0] - 1
     imin = (imax - 1).clamp(0, x.shape[0] - 1)
 
