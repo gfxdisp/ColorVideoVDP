@@ -10,6 +10,7 @@ import ffmpeg
 import numpy as np
 import torch
 import imageio.v2 as imageio
+import re
 
 import pycvvdp
 
@@ -121,7 +122,9 @@ def main():
     if args.device.startswith('cuda') and torch.cuda.is_available():
         device = torch.device(args.device)
     elif args.device == 'mps':
-        logging.warn('Some PyTorch operations are not yet supported for MPS. It is likely cvvdp will fail.')
+        torch_version = list(map(int, re.search('\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
+        assert torch_version[0] > 2 or (torch_version[0] == 2 and torch_version[1] > 0), f'Please use torch>=2.1.0 with MPS. Current version is {torch.__version__}.'
+        logging.warn('MPS support is experimental. Please report any issues encountered.')
         assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
         device = torch.device(args.device)
     else:

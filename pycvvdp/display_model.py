@@ -143,7 +143,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
 
     # Say whether the input frame is display-encoded. False if it is linear. 
     def is_input_display_encoded(self):
-        return True
+        # Is not display encoded if EOTF is "linear"
+        return (self.EOTF!='linear')
 
     def __eq__(self, other): 
         if not isinstance(other, self.__class__):
@@ -161,7 +162,7 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     # the display.
     def forward( self, V ):
         
-        if self.EOTF != 'linear' and (torch.any(V>1).bool() or torch.any(V<0).bool()):
+        if self.EOTF != 'linear' and ((V>1).flatten().any() or (V<0).flatten().any()):
             logging.warning("Pixel outside the valid range 0-1")
             V = V.clamp( 0., 1. )
             
