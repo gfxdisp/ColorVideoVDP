@@ -20,15 +20,18 @@ try:
     # ubuntu: sudo apt install libopenexr-dev
     # mac: brew install openexr
     import pyexr
-    use_pyexr = True
+    pyexr_imported = True
 except ImportError as e:
     # Imageio's imread is unreliable for OpenEXR images
     # See https://github.com/imageio/imageio/issues/517
-    use_pyexr = False
+    pyexr_imported = False
 
 def load_image_as_array(imgfile):
     ext = os.path.splitext(imgfile)[1].lower()
-    if ext == '.exr' and use_pyexr:
+    if ext == '.exr':
+        if not pyexr_imported:
+            logging.error( "pyexr is needed to read OpenEXR files. Please follow the instriction in README.md to install it." )
+            raise RuntimeError( "pyexr missing" )
         precisions = pyexr.open(imgfile).precisions
         assert precisions.count(precisions[0]) == len(precisions), 'All channels must have same precision'
         img = pyexr.read(imgfile, precision=precisions[0])
