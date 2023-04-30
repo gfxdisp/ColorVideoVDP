@@ -155,6 +155,16 @@
     "min_luminance": 0.038, 
     "E_ambient": 100,  
     "source": "https://www.displaymate.com/OLED_TV2017_ShootOut_1a.htm"
-  }    
+  },
 
+    "eizo_CG3146": {
+    "name": "EIZO CG3146",
+    "resolution": [4096, 2160],
+    "viewing_distance_inches":  29,
+    "diagonal_size_inches": 31.1,
+    "max_luminance": 300,
+    "min_luminance": 0.0003,
+    "E_ambient": 0,
+    "source": "https://www.eizo.com/products/coloredge/cg3146/"
+  }
 }
