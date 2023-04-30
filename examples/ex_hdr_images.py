@@ -1,3 +1,4 @@
+from ipaddress import collapse_addresses
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,10 +30,12 @@ I_test_noise = (I_ref + I_ref*np.random.randn(*I_ref.shape)*0.3).astype(I_ref.dt
 I_test_blur = utils.imgaussblur(I_ref, 2)
 
 # We use geometry of SDR 4k 30" display, but ignore its photometric
-# properties and instead tell that we pass absolute colorimetric values. 
-# Note that many HDR images are in rec709 color space, so no need to
-# specify rec2020. 
-disp_photo = pycvvdp.vvdp_display_photo_absolute(L_peak)
+# properties and instead use a display model with linear EOTF. Linear EOTF
+# will pass absolute values to the metric after clipping them to display limits
+# (its peak and black level) and adding the screen reflections. 
+# Note that many HDR images are in BT.709 color space, so no need to
+# specify BT.2020. 
+disp_photo = pycvvdp.vvdp_display_photo_eotf(L_peak, contrast=1000000, source_colorspace='BT.709', EOTF="linear", E_ambient=100)
 metric = pycvvdp.cvvdp(display_name='standard_hdr_linear', display_photometry=disp_photo, heatmap='threshold')
 
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data

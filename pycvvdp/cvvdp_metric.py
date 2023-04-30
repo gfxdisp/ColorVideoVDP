@@ -22,7 +22,7 @@ from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
 from pycvvdp.vq_metric import *
-from pycvvdp.colorspace import lms2006_to_dkld65
+#from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
@@ -45,10 +45,9 @@ from pycvvdp.csf import castleCSF
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, color_space="sRGB", heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
         self.quiet = quiet
         self.heatmap = heatmap
-        self.color_space = color_space
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
 
@@ -195,7 +194,7 @@ class cvvdp(vq_metric):
     '''
     def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0):
 
-        test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry, color_space_name=self.color_space )
+        test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
 
         return self.predict_video_source(test_vs)
 
@@ -691,9 +690,11 @@ class cvvdp(vq_metric):
             standard_str = self.display_name
         else:
             standard_str = f'custom-display: {self.display_name}'
+
+        L_black, L_refl = self.display_photometry.get_black_level()
         return f'"ColourVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
                f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
-               f'Lblack={self.display_photometry.get_black_level():.4g} [cd/m^2], ({standard_str})"'
+               f'Lblack={L_black:.4g}, Lrefl={L_refl:.4g} [cd/m^2], ({standard_str})"' 
 
     def write_features_to_json(self, stats, dest_fname):
         Q_per_ch = stats['Q_per_ch'] # quality per channel [cc,ff,bb]

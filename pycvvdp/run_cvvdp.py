@@ -134,10 +134,6 @@ def main():
 
     logging.info("Running on device: " + str(device))
 
-    # heatmap_types = {
-    #     "threshold"   : {"scale" : 1.000, "colormap_type": "trichromatic"},
-    #     "supra-threshold" : {"scale" : 0.333, "colormap_type": "dichromatic"},
-    # }
     heatmap_types = ["raw", "threshold", "supra-threshold"]
 
     if args.heatmap == "none":
@@ -245,9 +241,6 @@ def main():
                     mm.write_features_to_json(stats, dest_name)
 
                 if do_heatmap and not stats is None:
-                    # diff_type = heatmap_types[args.heatmap]
-                    # heatmap = stats["heatmap"] * diff_type["scale"]
-                    # diff_map_viz = visualize_diff_map(heatmap, context_image=ref_vid_luminance, colormap_type=diff_type["colormap_type"])
                     if stats["heatmap"].shape[2]>1: # if it is a video
                         dest_name = os.path.join(out_dir, base + "_heatmap.mp4")
                         logging.info("Writing heat map '" + dest_name + "' ...")

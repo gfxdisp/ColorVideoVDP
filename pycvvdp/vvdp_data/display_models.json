@@ -12,7 +12,7 @@
 
   "standard_hdr_pq": {
       "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
-      "EOTF": "PQ",
+      "colorspace": "BT.2020-PQ",
       "resolution": [3840, 2160], 
       "viewing_distance_meters":  0.7472,  
       "diagonal_size_inches": 30,   
@@ -23,7 +23,7 @@
 
   "standard_hdr_linear": {
     "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
-    "EOTF": "linear",
+    "colorspace": "BT.2020-linear",
     "resolution": [3840, 2160], 
     "viewing_distance_meters":  0.7472,  
     "diagonal_size_inches": 30,   
@@ -34,7 +34,7 @@
 
   "standard_hdr_linear_zoom": {
       "name": "30-inch 4K HDR monitor, peak luminance 4000 cd/m^2, viewed under low light levels (10 lux), seen from very close to spot super-resolution artifacts", 
-      "EOTF": "linear",
+      "colorspace": "BT.2020-linear",
       "resolution": [3840, 2160], 
       "viewing_distance_meters":  0.25,  
       "diagonal_size_inches": 30,   
@@ -157,14 +157,14 @@
     "source": "https://www.displaymate.com/OLED_TV2017_ShootOut_1a.htm"
   },
 
-    "eizo_CG3146": {
-    "name": "EIZO CG3146",
-    "resolution": [4096, 2160],
-    "viewing_distance_inches":  29,
-    "diagonal_size_inches": 31.1,
-    "max_luminance": 300,
-    "min_luminance": 0.0003,
+  "eizo_CG3146": {
+    "name": "EIZO Prominence CG3146 31\"", 
+    "resolution": [4096, 2160], 
+    "viewing_distance_meters":  0.73406,  
+    "diagonal_size_inches": 31.063,   
+    "max_luminance": 300,   
+    "contrast": 3000,
     "E_ambient": 0,
-    "source": "https://www.eizo.com/products/coloredge/cg3146/"
-  }
+    "source": "https://www.eizo.com/products/coloredge/cg3146/" }
+ 
 }

@@ -81,7 +81,9 @@ You specify the display by passing `--display` argument to `cvvdp`.
 
 Note the the specification in `display_models.json` is for the display and not the image. If you select to use `standard_4k` with the resolution of 3840x2160 for your display and pass a 1920x1080 image, the metric will assume that the image occupies one quarter of that display (the central portion). If you want to enlarge the image to the full resolution of the display, pass `--full-screen-resize {fast_bilinear,bilinear,bicubic,lanczos}` option (for now it works with video only). 
 
-The command line version of ColourVideoVDP can take as input HDR video streams encoded using the PQ transfer function. To correctly model HDR content, it is necessary to pass a display model with `EOTF="PQ"`, for example `standard_hdr_pq`.
+The command line version of ColourVideoVDP can take as input HDR video streams encoded using the PQ transfer function. To correctly model HDR content, it is necessary to pass a display model with correct color space and transfer function (with the field `colorspace="BT.2020-PQ"`), for example `standard_hdr_pq`.
+
+The display specification is documented in [vvdp_data/README.md](pycvvdp/vvdp_data/README.md).
 
 ### Custom display specification
 

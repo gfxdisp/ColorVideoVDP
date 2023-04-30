@@ -8,6 +8,47 @@ import os
 
 import pycvvdp.utils as utils
 
+XYZ_to_LMS2006 = (
+  ( 0.185081950317403,   0.584085520715683,  -0.024070430377029 ),
+  (-0.134437959455888,   0.405757045863316,   0.035826598616685 ),
+  ( 0.000790172132780,  -0.000913083981083,   0.019850963261241 ) )
+
+LMS2006_to_DKLd65 = (
+  (1.000000000000000,   1.000000000000000,                   0),
+  (1.000000000000000,  -2.311130179947035,                   0),
+  (-1.000000000000000,  -1.000000000000000,  50.977571328718781) )
+
+XYZ_to_RGB2020 = (  (1.716502508360628, -0.355584689096764,  -0.253375213570850), \
+                    (-0.666625609145029,   1.616446566522207,   0.015775479726511), \
+                    (0.017655211703087,  -0.042810696059636,   0.942089263920533) )
+
+XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986), \
+                    (-0.9689,  1.8758,  0.0415), \
+                    (0.0557, -0.2040,  1.0570) )
+
+def lms2006_to_dkld65( img ):
+    M = torch.as_tensor( LMS2006_to_DKLd65, dtype=img.dtype, device=img.device)
+
+    ABC = torch.empty_like(img)  # ABC represents any linear colour space
+    # To avoid permute (slow), perform separate dot products
+    for cc in range(3):
+        ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+    return ABC
+
+def pq2lin( V ):
+    """ Convert from PQ-encoded values V (between 0 and 1) to absolute linear values (between 0.005 and 10000)
+    """
+    Lmax = 10000
+    n    = 0.15930175781250000
+    m    = 78.843750000000000
+    c1   = 0.83593750000000000
+    c2   = 18.851562500000000
+    c3   = 18.687500000000000
+
+    im_t = torch.pow(V,1/m)
+    L = Lmax * torch.pow((im_t-c1).clamp(min=0)/(c2-c3*im_t), 1/n)
+    return L
+
 # Convert pixel values to linear RGB using sRGB non-linearity
 # 
 # L = srgb2lin( p )
@@ -19,6 +60,18 @@ def srgb2lin( p ):
     return L
 
 class vvdp_display_photometry:
+
+    def __init__( self, source_colorspace='sRGB' ):
+
+        colorspaces_file = utils.config_files.find( "color_spaces.json" )
+        colorspaces = utils.json2dict(colorspaces_file)
+
+        if not source_colorspace in colorspaces:
+            raise RuntimeError( "Unknown color space: \"" + source_colorspace + "\"" )
+
+        self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
+        self.EOTF = colorspaces[source_colorspace]['EOTF']
+
 
     # Transforms gamma-encoded pixel values V, which must be in the range
     # 0-into absolute linear colorimetric values emitted from
@@ -61,10 +114,10 @@ class vvdp_display_photometry:
 
         Y_peak = model["max_luminance"]
 
-        if "EOTF" in model:
-            EOTF = model["EOTF"]
+        if "colorspace" in model:
+            colorspace = model["colorspace"]
         else:
-            EOTF = 'sRGB'
+            colorspace = 'sRGB'
 
         if "min_luminance" in model:
             contrast = Y_peak/model["min_luminance"]
@@ -85,31 +138,63 @@ class vvdp_display_photometry:
         else:
             k_refl = 0.005
 
-        # Reflectivity of the display panel
-        if "gamma" in model: 
-            gamma = model["gamma"]
-        else:
-            gamma = 2.2
-
-        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, gamma=gamma, EOTF=EOTF, E_ambient=E_ambient, k_refl=k_refl, name=display_name)
+        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, source_colorspace=colorspace, E_ambient=E_ambient, k_refl=k_refl, name=display_name)
         obj.full_name = model["name"]
         obj.short_name = display_name
 
         return obj
 
-def pq2lin( V ):
-    """ Convert from PQ-encoded values V (between 0 and 1) to absolute linear values (between 0.005 and 10000)
-    """
-    Lmax = 10000
-    n    = 0.15930175781250000
-    m    = 78.843750000000000
-    c1   = 0.83593750000000000
-    c2   = 18.851562500000000
-    c3   = 18.687500000000000
+    # Transform content from its source colour space (typically display-encoded RGB) into 
+    # the colorimetric values of light emmitted from the display and then into the target colour
+    # space used by a metric.
+    def source_2_target_colourspace(self, I_src, target_colorspace):        
+        # Apply forward display model to get absolute linear values
+        I_lin = self.forward( I_src )
 
-    im_t = torch.pow(V,1/m)
-    L = Lmax * torch.pow((im_t-c1).clamp(min=0)/(c2-c3*im_t), 1/n)
-    return L
+        is_color = (I_src.shape[-4]==3)
+        if is_color:
+            I_target = self.linear_2_target_colourspace(I_lin, target_colorspace)
+        else:
+            I_target = I_lin
+
+        return I_target
+
+    # Transform frame/image from native linear colour space to the target colour space.
+    # Internal, do not use. 
+    def linear_2_target_colourspace(self, RGB_lin, target_colorspace):        
+        if hasattr(self, "rgb2xyz"):
+            rgb2xyz = self.rgb2xyz
+        else:
+            rgb2xyz = torch.tensor( self.rgb2xyz_list, dtype=RGB_lin.dtype, device=RGB_lin.device )
+            self.rgb2xyz = rgb2xyz
+
+        if target_colorspace=="Y":
+            return torch.sum(RGB_lin*(rgb2xyz[1,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+        else:
+            if target_colorspace=="XYZ":
+                rgb2abc = rgb2xyz
+            elif target_colorspace=="LMS2006":
+                rgb2abc = torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            elif target_colorspace=="DKLd65":
+                rgb2abc = torch.as_tensor( LMS2006_to_DKLd65, dtype=RGB_lin.dtype, device=RGB_lin.device) @ torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            elif target_colorspace=="RGB709":
+                rgb2abc = torch.as_tensor( XYZ_to_RGB709, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            elif target_colorspace=="RGB2020":
+                rgb2abc = torch.as_tensor( XYZ_to_RGB2020, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            elif target_colorspace=="logLMS_DKLd65":
+                rgb2abc = torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
+            else:
+                raise RuntimeError( f"Unknown colorspace '{target_colorspace}'" )
+
+            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear colour space
+            # To avoid permute (slow), perform separate dot products
+            for cc in range(3):
+                ABC[...,cc,:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+
+            if target_colorspace=="logLMS_DKLd65":
+                ABC = lms2006_to_dkld65( torch.log10(ABC) )
+
+            return ABC
 
 class vvdp_display_photo_eotf(vvdp_display_photometry): 
     # Display model with several EOTF, to simulate both SDR and HDR displays
@@ -121,8 +206,9 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     #          office monitor, 1000 for an HDR display, ...
     # contrast - [1000] the contrast of the display. The value 1000 means
     #          1000:1
-    # EOTF - 'sRGB', 'gamma' or 'PQ'
-    # gamma - gamma of the display, typically 2.2. Used only if EOTF=='gamma'       
+    # source_colorspace - color space from colorspaces.json. colorspace entry includes EOTF, 
+    #          but it can be overriden using EOTF parameter.
+    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2
     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
     #         office
     # k_refl - [0.005] reflectivity of the display screen
@@ -131,12 +217,14 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
     #
     # Copyright (c) 2010-2022, Rafal Mantiuk
-    def __init__( self, Y_peak, contrast = 1000, EOTF='sRGB', gamma = 2.2, E_ambient = 0, k_refl = 0.005, name=None ):
+    def __init__( self, Y_peak, contrast = 1000, source_colorspace='sRGB', EOTF=None, E_ambient = 0, k_refl = 0.005, name=None ):
             
+        super().__init__(source_colorspace=source_colorspace)
+        if not EOTF is None: 
+            self.EOTF = EOTF
+
         self.Y_peak = Y_peak            
         self.contrast = contrast
-        self.EOTF = EOTF
-        self.gamma = gamma
         self.E_ambient = E_ambient
         self.k_refl = k_refl
         self.name = name    
@@ -153,7 +241,6 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         return self.Y_peak == other.Y_peak \
             and self.contrast == other.contrast \
             and self.EOTF == other.EOTF \
-            and self.gamma == other.gamma \
             and self.E_ambient == other.E_ambient \
             and self.k_refl == other.k_refl
 
@@ -166,16 +253,17 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
             logging.warning("Pixel outside the valid range 0-1")
             V = V.clamp( 0., 1. )
             
-        Y_black = self.get_black_level()
+        Y_black, Y_refl = self.get_black_level()
                 
         if self.EOTF=='sRGB':
-            L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black
-        elif self.EOTF=='gamma':
-            L = (self.Y_peak-Y_black)*torch.pow(V, self.gamma) + Y_black
+            L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black + Y_refl
         elif self.EOTF=='PQ':
-            L = pq2lin( V ).clip(0.005, self.Y_peak) + Y_black #TODO: soft clipping
+            L = pq2lin( V ).clip(0.005, self.Y_peak) + Y_black + Y_refl #TODO: soft clipping
         elif self.EOTF=='linear':
-            L = V.clip(0.005, self.Y_peak) + Y_black #TODO: soft clipping
+            L = V.clip(max(0.005, Y_black), self.Y_peak) + Y_refl #TODO: soft clipping
+        elif self.EOTF[0].isnumeric(): # if the first char is numeric -> gamma
+            gamma = float(self.EOTF)
+            L = (self.Y_peak-Y_black)*torch.pow(V, gamma) + Y_black + Y_refl
         else:
             raise RuntimeError( f"Unknown EOTF '{self.EOTF}'" )        
         return L
@@ -184,206 +272,206 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     def get_peak_luminance( self ):
         return self.Y_peak
 
-    # Get the effective black level, accounting for screen reflections
+    # Get the black level and the light reflected from the display
     def get_black_level( self ):
         Y_refl = self.E_ambient/math.pi*self.k_refl  # Reflected ambient light            
-        Y_black = Y_refl + self.Y_peak/self.contrast
+        Y_black = self.Y_peak/self.contrast
 
-        return Y_black
+        return Y_black, Y_refl
 
     # Print the display specification    
     def print( self ):
-        Y_black = self.get_black_level()
+        Y_black, Y_refl = self.get_black_level()
         
         logging.info( 'Photometric display model: {}'.format(self.name) )
         logging.info( '  Peak luminance: {} cd/m^2'.format(self.Y_peak) )
         logging.info( '  EOTF: {}'.format(self.EOTF) )
         logging.info( '  Contrast - theoretical: {}:1'.format( round(self.contrast) ) )
-        logging.info( '  Contrast - effective: {}:1'.format( round(self.Y_peak/Y_black) ) )
+        logging.info( '  Contrast - effective: {}:1'.format( round(self.Y_peak/(Y_black+Y_refl)) ) )
         logging.info( '  Ambient light: {} lux'.format( self.E_ambient ) )
         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
     
 
-class vvdp_display_photo_absolute(vvdp_display_photometry):
-    # Use this photometric model when passing absolute colorimetric of
-    # photometric values, scaled in cd/m^2
-    # Object variables:
-    #  L_max - display peak luminance in cd/m^2
-    #  L_min - display black level
-    def __init__(self, L_max=10000, L_min=0.005):
+# class vvdp_display_photo_absolute(vvdp_display_photometry):
+#     # Use this photometric model when passing absolute colorimetric of
+#     # photometric values, scaled in cd/m^2
+#     # Object variables:
+#     #  L_max - display peak luminance in cd/m^2
+#     #  L_min - display black level
+#     def __init__(self, L_max=10000, L_min=0.005):
 
-        self.L_max = L_max
-        self.L_min = L_min
+#         self.L_max = L_max
+#         self.L_min = L_min
 
-    def __eq__(self, other): 
-        if not isinstance(other, self.__class__):
-            # don't attempt to compare against unrelated types
-            return NotImplemented
-        return self.L_max == other.L_max \
-            and self.L_min == other.L_min
+#     def __eq__(self, other): 
+#         if not isinstance(other, self.__class__):
+#             # don't attempt to compare against unrelated types
+#             return NotImplemented
+#         return self.L_max == other.L_max \
+#             and self.L_min == other.L_min
 
-    def forward( self, V ):
+#     def forward( self, V ):
 
-        # Clamp the values that are outside the (L_min, L_max) range.
-        L = V.clamp(self.L_min, self.L_max)
+#         # Clamp the values that are outside the (L_min, L_max) range.
+#         L = V.clamp(self.L_min, self.L_max)
 
-        if V.max() < 1:
-            logging.warning('Pixel values are very low. Perhaps images are' \
-                            ' not scaled in the absolute units of cd/m^2.')
+#         if V.max() < 1:
+#             logging.warning('Pixel values are very low. Perhaps images are' \
+#                             ' not scaled in the absolute units of cd/m^2.')
 
-        return L
-
-
-    def  get_peak_luminance( self ):
-        return self.L_max
+#         return L
 
 
-    def get_black_level( self ):
-        return self.L_min
-
-    # Print the display specification
-    def print( self ):
-        Y_black = self.get_black_level()
-
-        logging.info('Photometric display model:')
-        logging.info('  Absolute photometric/colorimetric values')
+#     def  get_peak_luminance( self ):
+#         return self.L_max
 
 
+#     def get_black_level( self ):
+#         return self.L_min
 
-class vvdp_display_photo_gog(vvdp_display_photometry): 
-    # Gain-gamma-offset display model to simulate SDR displays
-    #
-    # Depreciated, included for compatibility. Use fvvdp_display_photo_eotf instead
-    #
-    # dm = fvvdp_display_photo_gog( Y_peak, contrast, gamma, E_ambient, k_refl )
-    #
-    # Parameters (default value shown in []):
-    # Y_peak - display peak luminance in cd/m^2 (nit), e.g. 200 for a typical
-    #          office monitor
-    # contrast - [1000] the contrast of the display. The value 1000 means
-    #          1000:1
-    # gamma - [-1] gamma of the display, typically 2.2. If -1 is
-    #         passed, sRGB non-linearity is used.         
-    # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
-    #         office
-    # k_refl - [0.005] reflectivity of the display screen
-    #
-    # For more details on the GOG display model, see:
-    # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
-    #
-    # Copyright (c) 2010-2021, Rafal Mantiuk
-    def __init__( self, Y_peak, contrast = 1000, gamma = 2.2, E_ambient = 0, k_refl = 0.005, name=None ):
+#     # Print the display specification
+#     def print( self ):
+#         Y_black = self.get_black_level()
+
+#         logging.info('Photometric display model:')
+#         logging.info('  Absolute photometric/colorimetric values')
+
+
+
+# class vvdp_display_photo_gog(vvdp_display_photometry): 
+#     # Gain-gamma-offset display model to simulate SDR displays
+#     #
+#     # Depreciated, included for compatibility. Use fvvdp_display_photo_eotf instead
+#     #
+#     # dm = fvvdp_display_photo_gog( Y_peak, contrast, gamma, E_ambient, k_refl )
+#     #
+#     # Parameters (default value shown in []):
+#     # Y_peak - display peak luminance in cd/m^2 (nit), e.g. 200 for a typical
+#     #          office monitor
+#     # contrast - [1000] the contrast of the display. The value 1000 means
+#     #          1000:1
+#     # gamma - [-1] gamma of the display, typically 2.2. If -1 is
+#     #         passed, sRGB non-linearity is used.         
+#     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
+#     #         office
+#     # k_refl - [0.005] reflectivity of the display screen
+#     #
+#     # For more details on the GOG display model, see:
+#     # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
+#     #
+#     # Copyright (c) 2010-2021, Rafal Mantiuk
+#     def __init__( self, Y_peak, contrast = 1000, gamma = 2.2, E_ambient = 0, k_refl = 0.005, name=None ):
             
-        self.Y_peak = Y_peak            
-        self.contrast = contrast
-        self.gamma = gamma
-        self.E_ambient = E_ambient
-        self.k_refl = k_refl
-        self.name = name
+#         self.Y_peak = Y_peak            
+#         self.contrast = contrast
+#         self.gamma = gamma
+#         self.E_ambient = E_ambient
+#         self.k_refl = k_refl
+#         self.name = name
 
-    # Say whether the input frame is display-encoded. False if it is linear. 
-    def is_input_display_encoded(self):
-        return True
+#     # Say whether the input frame is display-encoded. False if it is linear. 
+#     def is_input_display_encoded(self):
+#         return True
 
-    def __eq__(self, other): 
-        if not isinstance(other, self.__class__):
-            # don't attempt to compare against unrelated types
-            return NotImplemented
-        return self.Y_peak == other.Y_peak \
-            and self.contrast == other.contrast \
-            and self.gamma == other.gamma \
-            and self.E_ambient == other.E_ambient \
-            and self.k_refl == other.k_refl
+#     def __eq__(self, other): 
+#         if not isinstance(other, self.__class__):
+#             # don't attempt to compare against unrelated types
+#             return NotImplemented
+#         return self.Y_peak == other.Y_peak \
+#             and self.contrast == other.contrast \
+#             and self.gamma == other.gamma \
+#             and self.E_ambient == other.E_ambient \
+#             and self.k_refl == other.k_refl
 
-    # Transforms gamma-encoded pixel values V, which must be in the range
-    # 0-into absolute linear colorimetric values emitted from
-    # the display.
-    def forward( self, V ):
+#     # Transforms gamma-encoded pixel values V, which must be in the range
+#     # 0-into absolute linear colorimetric values emitted from
+#     # the display.
+#     def forward( self, V ):
         
-        if torch.any(V>1).bool() or torch.any(V<0).bool():
-            logging.warning("Pixel outside the valid range 0-1")
-            V = V.clamp( 0., 1. )
+#         if torch.any(V>1).bool() or torch.any(V<0).bool():
+#             logging.warning("Pixel outside the valid range 0-1")
+#             V = V.clamp( 0., 1. )
             
-        Y_black = self.get_black_level()
+#         Y_black = self.get_black_level()
         
-        if self.gamma==-1: # sRGB
-            L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black
-        else:
-            L = (self.Y_peak-Y_black)*torch.pow(V, self.gamma) + Y_black
+#         if self.gamma==-1: # sRGB
+#             L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black
+#         else:
+#             L = (self.Y_peak-Y_black)*torch.pow(V, self.gamma) + Y_black
         
-        return L
+#         return L
         
 
-    def get_peak_luminance( self ):
-        return self.Y_peak
+#     def get_peak_luminance( self ):
+#         return self.Y_peak
 
 
-    # Get the effective black level, accounting for screen reflections
-    def get_black_level( self ):
-        Y_refl = self.E_ambient/math.pi*self.k_refl  # Reflected ambient light            
-        Y_black = Y_refl + self.Y_peak/self.contrast
+#     # Get the effective black level, accounting for screen reflections
+#     def get_black_level( self ):
+#         Y_refl = self.E_ambient/math.pi*self.k_refl  # Reflected ambient light            
+#         Y_black = Y_refl + self.Y_peak/self.contrast
 
-        return Y_black
+#         return Y_black
 
-    # Print the display specification    
-    def print( self ):
-        Y_black = self.get_black_level()
+#     # Print the display specification    
+#     def print( self ):
+#         Y_black = self.get_black_level()
         
-        logging.info( 'Photometric display model: {}'.format(self.name) )
-        logging.info( '  Peak luminance: {} cd/m^2'.format(self.Y_peak) )
-        logging.info( '  Contrast - theoretical: {}:1'.format( round(self.contrast) ) )
-        logging.info( '  Contrast - effective: {}:1'.format( round(self.Y_peak/Y_black) ) )
-        logging.info( '  Ambient light: {} lux'.format( self.E_ambient ) )
-        logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
+#         logging.info( 'Photometric display model: {}'.format(self.name) )
+#         logging.info( '  Peak luminance: {} cd/m^2'.format(self.Y_peak) )
+#         logging.info( '  Contrast - theoretical: {}:1'.format( round(self.contrast) ) )
+#         logging.info( '  Contrast - effective: {}:1'.format( round(self.Y_peak/Y_black) ) )
+#         logging.info( '  Ambient light: {} lux'.format( self.E_ambient ) )
+#         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
     
 
-class vvdp_display_photo_absolute(vvdp_display_photometry):
-    # Use this photometric model when passing absolute colorimetric of
-    # photometric values, scaled in cd/m^2
-    # Object variables:
-    #  L_max - display peak luminance in cd/m^2
-    #  L_min - display black level
-    def __init__(self, L_max=10000, L_min=0.005):
+# class vvdp_display_photo_absolute(vvdp_display_photometry):
+#     # Use this photometric model when passing absolute colorimetric of
+#     # photometric values, scaled in cd/m^2
+#     # Object variables:
+#     #  L_max - display peak luminance in cd/m^2
+#     #  L_min - display black level
+#     def __init__(self, L_max=10000, L_min=0.005):
 
-        self.L_max = L_max
-        self.L_min = L_min
+#         self.L_max = L_max
+#         self.L_min = L_min
 
-    # Say whether the input frame is display-encoded. False if it is linear. 
-    def is_input_display_encoded(self):
-        return False
+#     # Say whether the input frame is display-encoded. False if it is linear. 
+#     def is_input_display_encoded(self):
+#         return False
 
-    def __eq__(self, other): 
-        if not isinstance(other, self.__class__):
-            # don't attempt to compare against unrelated types
-            return NotImplemented
-        return self.L_max == other.L_max \
-            and self.L_min == other.L_min
+#     def __eq__(self, other): 
+#         if not isinstance(other, self.__class__):
+#             # don't attempt to compare against unrelated types
+#             return NotImplemented
+#         return self.L_max == other.L_max \
+#             and self.L_min == other.L_min
 
-    def forward( self, V ):
+#     def forward( self, V ):
 
-        # Clamp the values that are outside the (L_min, L_max) range.
-        L = V.clamp(self.L_min, self.L_max)
+#         # Clamp the values that are outside the (L_min, L_max) range.
+#         L = V.clamp(self.L_min, self.L_max)
 
-        if V.max() < 1:
-            logging.warning('Pixel values are very low. Perhaps images are' \
-                            ' not scaled in the absolute units of cd/m^2.')
+#         if V.max() < 1:
+#             logging.warning('Pixel values are very low. Perhaps images are' \
+#                             ' not scaled in the absolute units of cd/m^2.')
 
-        return L
-
-
-    def  get_peak_luminance( self ):
-        return self.L_max
+#         return L
 
 
-    def get_black_level( self ):
-        return self.L_min
+#     def  get_peak_luminance( self ):
+#         return self.L_max
 
-    # Print the display specification
-    def print( self ):
-        Y_black = self.get_black_level()
 
-        logging.info('Photometric display model:')
-        logging.info('  Absolute photometric/colorimetric values')
+#     def get_black_level( self ):
+#         return self.L_min
+
+#     # Print the display specification
+#     def print( self ):
+#         Y_black = self.get_black_level()
+
+#         logging.info('Photometric display model:')
+#         logging.info('  Absolute photometric/colorimetric values')
 
 
 # Use this class to compute the effective resolution of a display in pixels

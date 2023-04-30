@@ -286,7 +286,7 @@ Use ffmpeg to read video frames, one by one.
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', color_space_name='auto', frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
 
         fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -307,18 +307,18 @@ class video_source_video_file(video_source_dm):
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
             logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {vr.avg_fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
 
-        if color_space_name=='auto':
-            if self.test_vidr.color_space=='bt2020nc':
-                color_space_name="BT.2020"
-            else:
-                color_space_name="sRGB"
+        # if color_space_name=='auto':
+        #     if self.test_vidr.color_space=='bt2020nc':
+        #         color_space_name="BT.2020"
+        #     else:
+        #         color_space_name="sRGB"
 
         if self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
             logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
             raise RuntimeError( "Inconsistent frame rates" )
 
 
-        super().__init__(display_photometry=display_photometry, color_space_name=color_space_name)        
+        super().__init__(display_photometry=display_photometry)
 
         if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry.EOTF!="PQ":
             logging.warning( f"Video color transfer function ({self.test_vidr.color_transfer}) inconsistent with EOTF of the display model ({self.dm_photometry.EOTF})" )
@@ -421,28 +421,38 @@ Recognize whether the file is an image of video and wraps an appropriate video_s
 '''
 class video_source_file(video_source):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', color_space_name='auto', frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
         # these extensions switch mode to images instead
         image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".dds", ".exr", ".hdr"]
 
         assert os.path.isfile(test_fname), f'File does not exists: "{test_fname}"'
         assert os.path.isfile(reference_fname), f'File does not exists: "{reference_fname}"'
 
-        if os.path.splitext(test_fname)[1].lower() in image_extensions:
+        extension = os.path.splitext(test_fname)[1].lower()
+        if extension in image_extensions:
             assert os.path.splitext(reference_fname)[1].lower() in image_extensions, 'Test is an image, but reference is a video'
-            if color_space_name=='auto':
-                color_space_name='sRGB' # TODO: detect the right colour space
+            # if color_space_name=='auto':
+            #     color_space_name='sRGB' # TODO: detect the right colour space
             img_test = load_image_as_array(test_fname)
             img_reference = load_image_as_array(reference_fname)
             if not full_screen_resize is None:
                 logging.error("full-screen-resize not implemented for images.")
-            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, color_space_name=color_space_name )            
+                raise RuntimeError( "Not implemented" )
+            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry )            
+
+            hdr_extensions = [".exr", ".hdr"]
+            if extension in hdr_extensions:
+                if self.vs.dm_photometry.EOTF != "linear":
+                    logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
+            else:
+                if self.vs.dm_photometry.EOTF == "linear":
+                    logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
+
         else:
             assert os.path.splitext(reference_fname)[1].lower() not in image_extensions, 'Test is a video, but reference is an image'
             vs_class = video_source_video_file_preload if preload else video_source_video_file
             self.vs = vs_class( test_fname, reference_fname, 
                                 display_photometry=display_photometry, 
-                                color_space_name=color_space_name, 
                                 frames=frames, 
                                 full_screen_resize=full_screen_resize, 
                                 resize_resolution=resize_resolution, 
