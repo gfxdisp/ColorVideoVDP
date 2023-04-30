@@ -58,8 +58,6 @@ cvvdp --test test_file --ref ref_file --display standard_fhd
 ```
 The test and reference files can be images or videos. The option `--display` specifies a display on which the content is viewed. See [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json) for the available displays.
 
-Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package and uses ImageIO instead. It is recommended to separately install this package since ImageIO's handling of OpenEXR files is unreliable as evidenced [here](https://github.com/imageio/imageio/issues/517). PyEXR is not automatically installed because it depends on the [OpenEXR](https://www.openexr.com/) library, whose installation is OS-specific.
-
 See [Command line interface](#command-line-interface) for further details. ColourVideoVDP can be also run directly from Python - see [Low-level Python interface](#low-level-python-interface). 
 
 **Table of contents**
@@ -95,7 +93,15 @@ If you run the metric from Python code, the display photometry and geometry can 
 
 * HDR video files encoded using PQ EOTF function (SMPTE ST 2084). Pass the video files as `--test` and `--ref` arguments and specify `--display standard_hdr_pq`.
 
-* OpenEXR images. The images *MUST* contain absolute linear colour values (colour graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF.
+* OpenEXR images. The images *MUST* contain absolute linear colour values (colour graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package, which is required to read `.exr` files. To install, run:
+```bash
+conda install -c conda-forge openexr-python.   # or "sudo apt install openxr" on Linux machines
+pip install pyexr
+```
+**Troubleshooting on Linux:** You may need to update your library path by adding the following line to your `~/.bashrc`:
+```bash
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
+```
 
 ### Reporting metric results
 
