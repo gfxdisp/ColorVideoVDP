@@ -7,11 +7,7 @@ from torch.functional import Tensor
 import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry, vvdp_display_photo_eotf
 
-from pycvvdp.colorspace import ColorTransform
-
-
-
-
+#from pycvvdp.colorspace import ColorTransform
 
 """
 fvvdp_video_source_* objects are used to supply test/reference frames to FovVideoVDP. 
@@ -112,9 +108,9 @@ This video_source uses a photometric display model to convert input content (e.g
 """
 class video_source_dm( video_source ):
 
-    def __init__( self,  display_photometry='sdr_4k_30', color_space_name='sRGB' ):
+    def __init__( self,  display_photometry='sdr_4k_30' ):
 
-        self.color_trans = ColorTransform(color_space_name)
+#        self.color_trans = ColorTransform(color_space_name)
 
         if isinstance( display_photometry, str ):
             self.dm_photometry = vvdp_display_photometry.load(display_photometry) 
@@ -123,9 +119,9 @@ class video_source_dm( video_source ):
         else:
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
 
-    def apply_dm_and_colour_transform(self, frame, colorspace):
+    def apply_dm_and_colour_transform(self, frame, target_colorspace):
 
-        if colorspace == 'display_encoded_01': # if a display-encoded frame is requested
+        if target_colorspace == 'display_encoded_01': # if a display-encoded frame is requested
 
             # Special case - if PQ, we still want to use PU21, as it should be marginally better
             if self.dm_photometry.is_input_display_encoded() and not (isinstance( self.dm_photometry, vvdp_display_photo_eotf) and self.dm_photometry.EOTF == 'PQ'):
@@ -139,13 +135,15 @@ class video_source_dm( video_source ):
                 I = self.PU.encode(I_lin) / self.PU_max # make sure the value are 0-1
 
         else: # If one of the standard linear color spaces is requested
-            L_lin = self.dm_photometry.forward( frame )
+            I = self.dm_photometry.source_2_target_colourspace(frame, target_colorspace)
 
-            is_color = (frame.shape[-4]==3)
-            if is_color:
-                I = self.color_trans.rgb2colourspace(L_lin, colorspace)
-            else:
-                I = L_lin
+            # L_lin = self.dm_photometry.forward( frame )
+
+            # is_color = (frame.shape[-4]==3)
+            # if is_color:
+            #     I = self.color_trans.rgb2colourspace(L_lin, colorspace)
+            # else:
+            #     I = L_lin
 
         self.check_if_valid(I)
         return I
@@ -169,9 +167,9 @@ class video_source_array( video_source_dm ):
     #   class
     # color_space_name - name of the colour space (see
     #   fvvdp_data/color_spaces.json)
-    def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30', color_space_name='sRGB' ):
+    def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30' ):
 
-        super().__init__(display_photometry=display_photometry, color_space_name=color_space_name)        
+        super().__init__(display_photometry=display_photometry)        
 
         if test_video.shape != reference_video.shape:
             raise RuntimeError( 'Test and reference image/video tensors must be exactly the same shape' )
@@ -216,7 +214,6 @@ class video_source_array( video_source_dm ):
         self.is_color = (C==3)
         self.test_video = test_video
         self.reference_video = reference_video
-
 
     def get_frames_per_second(self):
         return self.fps

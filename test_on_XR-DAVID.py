@@ -14,6 +14,7 @@ display_name = 'eizo_CG3146'
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Bonfire_Blur_*.yuv'))
 
 media_folder = '../datasets/XR-DAVID'
+
 # ref_file = os.path.join(media_folder, 'Business_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Business_WGNU_Level003.mp4'))
 

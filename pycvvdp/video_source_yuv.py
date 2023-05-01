@@ -237,7 +237,7 @@ class YUVReader:
 
 class video_source_yuv_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', color_space_name='auto', frames=-1, full_screen_resize=None, resize_resolution=None, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', frames=-1, full_screen_resize=None, resize_resolution=None, verbose=False ):
 
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
@@ -248,13 +248,13 @@ class video_source_yuv_file(video_source_dm):
         self.full_screen_resize = full_screen_resize
         self.resize_resolution = resize_resolution
 
-        if color_space_name=='auto':
-            if self.test_vidr.color_space=='2020':
-                color_space_name="BT.2020"
-            else:
-                color_space_name="sRGB"
+        # if color_space_name=='auto':
+        #     if self.test_vidr.color_space=='2020':
+        #         color_space_name="BT.2020"
+        #     else:
+        #         color_space_name="sRGB"
 
-        super().__init__(display_photometry=display_photometry, color_space_name=color_space_name)        
+        super().__init__(display_photometry=display_photometry)        
 
         for vr in [self.test_vidr, self.reference_vidr]:
             if vr == self.test_vidr:

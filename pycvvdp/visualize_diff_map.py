@@ -57,7 +57,7 @@ def visualize_diff_map(diff_map, context_image=None, colormap_type="supra-thresh
     if context_image is None:
         tmo_img = torch.ones_like(diff_map) * 0.5
     else:
-        tmo_img = vis_tonemap(log_luminance(context_image.cpu()), 0.6)
+        tmo_img = vis_tonemap(log_luminance(context_image), 0.6)
 
     if colormap_type == 'threshold':
         # Visualize up to 1 JOD (>=1 JOD will be all red)

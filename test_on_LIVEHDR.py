@@ -14,8 +14,8 @@ media_folder = '../datasets/LIVEHDR'
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'train', '1080p_6M_football4.mp4'))
 # ref_file = os.path.join(media_folder, 'train', '4k_ref_football4.mp4')
 
-TST_FILEs = glob.glob(os.path.join(media_folder, 'train', '720p_2.6M_firework.mp4'))
-ref_file = os.path.join(media_folder, 'train', '4k_ref_firework.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, 'train', '1080p_1M_UrbanLandmark.mp4'))
+ref_file = os.path.join(media_folder, 'train', '4k_ref_UrbanLandmark.mp4')
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
@@ -25,7 +25,7 @@ cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, full_screen_resize='bicubic', resize_resolution=(3840, 2160) )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=30, full_screen_resize='bicubic', resize_resolution=(3840, 2160) )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )

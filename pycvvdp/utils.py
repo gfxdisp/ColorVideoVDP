@@ -144,7 +144,7 @@ class config_files:
             if os.path.isfile(path):
                 return path
 
-        ev_config_dir = os.getenv("FVVDP_PATH")
+        ev_config_dir = os.getenv("CVVDP_PATH")
         if not ev_config_dir is None:
             path = os.path.join( ev_config_dir, fname )
             if os.path.isfile(path):
