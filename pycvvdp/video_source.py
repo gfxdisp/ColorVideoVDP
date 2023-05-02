@@ -130,9 +130,9 @@ class video_source_dm( video_source ):
                 # Otherwise, we need to PU-encode the frame
                 if not hasattr( self, "PU" ):
                     self.PU = utils.PU()
-                    self.PU_max = self.PU.encode(torch.as_tensor(10000.0))
+                    self.PU_white = self.PU.encode(torch.as_tensor(100.0))
                 I_lin = self.dm_photometry.forward( frame )
-                I = self.PU.encode(I_lin) / self.PU_max # make sure the value are 0-1
+                I = self.PU.encode(I_lin) / self.PU_white # White diffuse of 100 nit will be mapped to 1
 
         else: # If one of the standard linear color spaces is requested
             I = self.dm_photometry.source_2_target_colourspace(frame, target_colorspace)
