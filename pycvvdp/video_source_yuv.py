@@ -237,7 +237,7 @@ class YUVReader:
 
 class video_source_yuv_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', frames=-1, full_screen_resize=None, resize_resolution=None, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', frames=-1, full_screen_resize=None, resize_resolution=None, retain_aspect_ratio=False, verbose=False ):
 
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
@@ -246,6 +246,15 @@ class video_source_yuv_file(video_source_dm):
         self.offset = 0     # Offset for random access of a shorter subsequence
 
         self.full_screen_resize = full_screen_resize
+        if retain_aspect_ratio:
+            h, w = self.test_vidr.height, self.test_vidr.width
+            if h / resize_resolution[1] * resize_resolution[0] <= w:
+                # retain provided width: resize_resolution[0]
+                resize_resolution = (resize_resolution[0], int(resize_resolution[0] / w * h))
+            else:
+                # retain provided height: resize_resolution[1]
+                resize_resolution = (int(resize_resolution[1] / h * w), resize_resolution[1])
+
         self.resize_resolution = resize_resolution
 
         # if color_space_name=='auto':
