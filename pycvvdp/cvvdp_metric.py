@@ -119,6 +119,8 @@ class cvvdp(vq_metric):
 
         self.do_xchannel_masking = True if parameters['xchannel_masking'] == "on" else False
         self.xcm_weights = torch.as_tensor( parameters['xcm_weights'], device=self.device, dtype=torch.float32 ) 
+        
+        self.image_int = torch.as_tensor( parameters['image_int'], device=self.device )
 
         if 'ch_chrom_w' in parameters:
             self.ch_chrom_w = torch.as_tensor( parameters['ch_chrom_w'], device=self.device ) # Chromatic channels (rg, vy) weight
@@ -445,7 +447,11 @@ class cvvdp(vq_metric):
 
         Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
         Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
-        Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
+
+        is_image = (no_frames==1)
+        t_int = self.image_int if is_image else 1.0 # Integration correction for images
+
+        Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
         Q = Q.squeeze()
 
         Q_JOD = self.met2jod(Q)            
