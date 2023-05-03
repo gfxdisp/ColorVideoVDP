@@ -27,10 +27,15 @@ class video_source:
     def get_frames_per_second(self) -> int:
         pass
     
-    # Get a test video frame in the selected colorspace. See colorspace.py for the list of available color spaces. 
-    # You can also pass 'display_encoded_01' for the method to return display-encoded image (e.g. sRGB) with the 
-    # values between 0 and 1. If the input source contains linear values (e.g. an HDR image) and you pass 
-    # 'display_encoded_01', the function will return PU21-encoded values. 
+    # Get a test video frame in the selected colorspace. See display_model.py->linear_2_target_colourspace
+    # for the list of available color spaces. 
+    # You can also pass:
+    # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return 
+    #  display-encoded image (e.g. sRGB) with the values between 0 and 1. If the input source contains linear
+    #  values (e.g. an HDR image) they will be PU-encoded:
+    # 'display_encoded_01' when the input is 0.005 to 10000, the PU-encoded values are between 0-1
+    # 'display_encoded_100nit' when the input is 100, the PU-encoded value is 1, the values can be >1
+    # 'display_encoded_dmax' when the input is equal display peak luminance, the PU-encoded value is 1, the values can be >1
     @abstractmethod
     def get_test_frame( self, frame, device, colorspace ) -> Tensor:
         pass
@@ -121,7 +126,7 @@ class video_source_dm( video_source ):
 
     def apply_dm_and_colour_transform(self, frame, target_colorspace):
 
-        if target_colorspace == 'display_encoded_01': # if a display-encoded frame is requested
+        if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
 
             # Special case - if PQ, we still want to use PU21, as it should be marginally better
             if self.dm_photometry.is_input_display_encoded() and not (isinstance( self.dm_photometry, vvdp_display_photo_eotf) and self.dm_photometry.EOTF == 'PQ'):
@@ -130,9 +135,16 @@ class video_source_dm( video_source ):
                 # Otherwise, we need to PU-encode the frame
                 if not hasattr( self, "PU" ):
                     self.PU = utils.PU()
-                    self.PU_white = self.PU.encode(torch.as_tensor(100.0))
+
+                if target_colorspace == 'display_encoded_01':
+                    PU_max = self.PU.encode(torch.as_tensor(10000.0))
+                elif target_colorspace == 'display_encoded_100nit':
+                    PU_max = self.PU.encode(torch.as_tensor(100.0))
+                else:
+                    PU_max = self.PU.encode(torch.as_tensor(self.dm_photometry.get_peak_luminance()))
+                
                 I_lin = self.dm_photometry.forward( frame )
-                I = self.PU.encode(I_lin) / self.PU_white # White diffuse of 100 nit will be mapped to 1
+                I = self.PU.encode(I_lin) / PU_max # White diffuse of 100 nit will be mapped to 1
 
         else: # If one of the standard linear color spaces is requested
             I = self.dm_photometry.source_2_target_colourspace(frame, target_colorspace)
