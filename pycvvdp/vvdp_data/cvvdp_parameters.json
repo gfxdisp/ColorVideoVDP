@@ -38,5 +38,7 @@
     "xcm_weights": [0, -1, -1, -1,  -1, 0, -1, -1,  -1, -1, 0, -1,  -1, -1, -1, 0],
     "baseband_weight": 2.796626567840576,
     "dclamp_type": "soft",
-    "dclamp_par": 2.303236246109009
+    "dclamp_par": 2.303236246109009,
+    "image_int": 1
+
 }

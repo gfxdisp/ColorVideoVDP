@@ -7,7 +7,7 @@ import time
 import pycvvdp
 import logging
 
-display_name = 'eizo_CG3146'
+display_name = 'eizo_CG3146-XR-DAVID'
 
 # media_folder = 'S:\\Datasets\\XR-DAVID\\cache'
 # ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
