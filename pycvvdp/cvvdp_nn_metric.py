@@ -98,7 +98,7 @@ class cvvdp_nn(cvvdp):
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, Q_per_ch, base_rho_band, fps):
         if self.pooling == 'base':
-            return super().do_pooling_and_jods(Q_per_ch, base_rho_band)
+            return super().do_pooling_and_jods(Q_per_ch, base_rho_band, fps)
         # Q_per_ch[channel,frame,sp_band]
         feat_in = Q_per_ch.permute(1, 0, 2).flatten(start_dim=1)
         feat_intermediate, _ = self.pooling_net[0](feat_in)
