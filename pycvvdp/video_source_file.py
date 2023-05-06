@@ -425,8 +425,8 @@ class video_source_file(video_source):
         # these extensions switch mode to images instead
         image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".dds", ".exr", ".hdr"]
 
-        assert os.path.isfile(test_fname), f'File does not exists: "{test_fname}"'
-        assert os.path.isfile(reference_fname), f'File does not exists: "{reference_fname}"'
+        assert os.path.isfile(test_fname), f'Test file does not exists: "{test_fname}"'
+        assert os.path.isfile(reference_fname), f'Reference file does not exists: "{reference_fname}"'
 
         extension = os.path.splitext(test_fname)[1].lower()
         if extension in image_extensions:

@@ -135,6 +135,9 @@ class cvvdp(vq_metric):
         self.dclamp_par = torch.as_tensor( parameters['dclamp_par'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
 
+        self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
+        self.bfilt_duration = parameters['bfilt_duration']
+
         self.omega = [0, 5]
 
         self.csf = castleCSF(contrast=self.contrast, device=self.device)
@@ -386,7 +389,7 @@ class cvvdp(vq_metric):
 
 
         rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1], fps)
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
@@ -424,7 +427,7 @@ class cvvdp(vq_metric):
 
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
+    def do_pooling_and_jods(self, Q_per_ch, base_rho_band, fps):
         # Q_per_ch[channel,frame,sp_band]
 
         no_channels = Q_per_ch.shape[0]
@@ -446,12 +449,21 @@ class cvvdp(vq_metric):
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
         Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
-        Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
 
         is_image = (no_frames==1)
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
 
-        Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
+        if not is_image and self.do_Bloch_int:
+            bfilt_len = int(math.ceil(self.bfilt_duration * fps))
+            Q_in = Q_sc.permute(0,2,1)
+            B_filt = torch.ones( (1,1,bfilt_len), device=Q_in.device )/float(bfilt_len)
+            Q_bi = torch.nn.functional.conv1d(Q_in,B_filt, padding="valid")
+            Q_tc = self.lp_norm(Q_bi,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=2, normalize=True)   # Sum across frames
+        else:
+            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
+
         Q = Q.squeeze()
 
         Q_JOD = self.met2jod(Q)            

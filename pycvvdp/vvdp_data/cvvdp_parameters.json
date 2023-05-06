@@ -39,6 +39,7 @@
     "baseband_weight": 2.796626567840576,
     "dclamp_type": "soft",
     "dclamp_par": 2.303236246109009,
-    "image_int": 1
-
+    "image_int": 1,
+    "Bloch_int": "off",
+    "bfilt_duration": 0.4
 }
