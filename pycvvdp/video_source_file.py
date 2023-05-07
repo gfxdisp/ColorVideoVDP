@@ -423,7 +423,7 @@ class video_source_file(video_source):
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
         # these extensions switch mode to images instead
-        image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".dds", ".exr", ".hdr"]
+        image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".tif", ".dds", ".exr", ".hdr"]
 
         assert os.path.isfile(test_fname), f'Test file does not exists: "{test_fname}"'
         assert os.path.isfile(reference_fname), f'Reference file does not exists: "{reference_fname}"'

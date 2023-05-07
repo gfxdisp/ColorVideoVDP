@@ -359,9 +359,9 @@ class cvvdp(vq_metric):
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
+                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, use_reentrant=False)
             else:
-                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
+                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
@@ -489,7 +489,7 @@ class cvvdp(vq_metric):
         Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
         return Q_JOD
 
-    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, heatmap):
+    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
@@ -550,7 +550,8 @@ class cvvdp(vq_metric):
 
                 # We need to reduce the differences across the channels using the right weights
                 # Weights for the channels: sustained, RG, YV, [transient]
-                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1)
+                t_int = self.image_int if is_image else 1.0
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
                 self.heatmap_pyr.set_lband(bb, D_chr)
 
