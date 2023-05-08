@@ -12,7 +12,7 @@
     "beta_sch": 4,
     "csf_sigma": -1.5,
     "sensitivity_correction": -0.1919620782136917,
-    "masking_model": "min_mutual_masking_perc_norm2",
+    "masking_model": "fvvdp",
     "local_adapt": "gpyr",
     "contrast": "weber_g1",
     "jod_a": 0.12033970654010773,
