@@ -108,7 +108,7 @@ class cvvdp(vq_metric):
         self.beta_sch = torch.as_tensor( parameters['beta_sch'], device=self.device ) # The exponent of the summation over spatial channels (p-norm)
         self.csf_sigma = torch.as_tensor( parameters['csf_sigma'], device=self.device )
         self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
-        #self.masking_model = parameters['masking_model']
+        self.masking_model = parameters['masking_model']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
@@ -612,13 +612,14 @@ class cvvdp(vq_metric):
     def mask_func_perc_norm(self, G, G_mask ):
         # Masking on perceptually normalized quantities (as in Daly's VDP)        
         p = self.mask_p
-        if G_mask.shape[0]==3: # image
-            #q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
-            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], dim=0 ).view(3,1,1,1)
-        else: # video
-            #q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
-            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], dim=0 ).view(4,1,1,1)
-        R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
+        if self.masking_model == "none":
+            R = torch.pow(G,p)
+        else:
+            if G_mask.shape[0]==3: # image
+                q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], dim=0 ).view(3,1,1,1)
+            else: # video
+                q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], dim=0 ).view(4,1,1,1)
+            R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
 
