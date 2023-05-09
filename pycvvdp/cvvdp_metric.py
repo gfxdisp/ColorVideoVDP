@@ -109,6 +109,7 @@ class cvvdp(vq_metric):
         self.csf_sigma = torch.as_tensor( parameters['csf_sigma'], device=self.device )
         self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
+        self.csf = parameters['csf']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
@@ -140,7 +141,7 @@ class cvvdp(vq_metric):
 
         self.omega = [0, 5]
 
-        self.csf = castleCSF(contrast=self.contrast, device=self.device)
+        self.csf = castleCSF(csf_version=self.csf, device=self.device)
 
         # other parameters
         self.debug = False

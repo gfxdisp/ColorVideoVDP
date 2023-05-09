@@ -15,6 +15,7 @@
     "masking_model": "fvvdp",
     "local_adapt": "gpyr",
     "contrast": "weber_g1",
+    "csf": "weber_old",
     "jod_a": 0.12033970654010773,
     "jod_exp": 0.7617579698562622,
     "mask_q_sust": 1.1771153211593628,
