@@ -36,10 +36,10 @@ class psnr_rgb(vq_metric):
 
         mse = 0
         for ff in range(N_frames):
-            # colorspace='display_encoded_01' will get us display-encoded image, or if the original source is linear, it will apply PU-encoding.
+            # colorspace='display_encoded_100nit' will get us display-encoded image, or if the original source is linear, it will apply PU-encoding.
             # If the input is PQ-encoded, it will return a PQ-encoded values. 
-            T = vid_source.get_test_frame(ff, device=self.device, colorspace='display_encoded_01')
-            R = vid_source.get_reference_frame(ff, device=self.device, colorspace='display_encoded_01')
+            T = vid_source.get_test_frame(ff, device=self.device, colorspace='display_encoded_100nit')
+            R = vid_source.get_reference_frame(ff, device=self.device, colorspace='display_encoded_100nit')
             mse += torch.mean( (T - R)**2 )
 
         max_I = 1
