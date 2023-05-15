@@ -91,21 +91,11 @@ class pu_psnr_y(vq_metric):
             # Apply PU
             T_enc = self.pu.encode(T)
             R_enc = self.pu.encode(R)
-<<<<<<< HEAD
-            
-            if torch.sum(T_enc != R_enc): 
-                psnr = psnr + self.psnr_fn(T_enc, R_enc) / N_frames
-            else: # If T_enc and R_enc are the same, psnr value is set to zero
-                psnr = psnr + 0   
-                
-            #psnr = psnr + self.psnr_fn(T_enc, R_enc) / N_frames
-=======
 
             mse += torch.mean( (T_enc - R_enc)**2 )
         
         psnr = 20*torch.log10( self.max_I/torch.sqrt(mse/N_frames) ) 
 
->>>>>>> origin/main
         return psnr, None
         
     def psnr_fn(self, img1, img2):
