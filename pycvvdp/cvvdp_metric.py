@@ -143,6 +143,9 @@ class cvvdp(vq_metric):
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device)
 
+        # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
+        self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device ) if 'block_channels' in parameters else None
+        
         # other parameters
         self.debug = False
 
@@ -418,6 +421,8 @@ class cvvdp(vq_metric):
     def get_ch_weights(self, no_channels):
         if hasattr(self, 'ch_chrom_w'):
             per_ch_w_all = torch.stack( [torch.as_tensor(1., device=self.ch_chrom_w.device), self.ch_chrom_w, self.ch_chrom_w, self.ch_trans_w] )
+            if hasattr( self, 'block_channels' ):
+                per_ch_w_all = per_ch_w_all * self.block_channels
         else:
             # Depreciated - will be removed later
             per_ch_w_all = self.ch_weights
