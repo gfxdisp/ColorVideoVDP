@@ -421,7 +421,7 @@ class cvvdp(vq_metric):
     def get_ch_weights(self, no_channels):
         if hasattr(self, 'ch_chrom_w'):
             per_ch_w_all = torch.stack( [torch.as_tensor(1., device=self.ch_chrom_w.device), self.ch_chrom_w, self.ch_chrom_w, self.ch_trans_w] )
-            if hasattr( self, 'block_channels' ):
+            if not self.block_channels is None:
                 per_ch_w_all = per_ch_w_all * self.block_channels
         else:
             # Depreciated - will be removed later
