@@ -144,7 +144,7 @@ class cvvdp(vq_metric):
         self.csf = castleCSF(csf_version=self.csf, device=self.device)
 
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
-        self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device ) if 'block_channels' in parameters else None
+        self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
         # other parameters
         self.debug = False
@@ -421,8 +421,6 @@ class cvvdp(vq_metric):
     def get_ch_weights(self, no_channels):
         if hasattr(self, 'ch_chrom_w'):
             per_ch_w_all = torch.stack( [torch.as_tensor(1., device=self.ch_chrom_w.device), self.ch_chrom_w, self.ch_chrom_w, self.ch_trans_w] )
-            if not self.block_channels is None:
-                per_ch_w_all = per_ch_w_all * self.block_channels
         else:
             # Depreciated - will be removed later
             per_ch_w_all = self.ch_weights
@@ -464,10 +462,16 @@ class cvvdp(vq_metric):
             Q_in = Q_sc.permute(0,2,1)
             B_filt = torch.ones( (1,1,bfilt_len), device=Q_in.device )/float(bfilt_len)
             Q_bi = torch.nn.functional.conv1d(Q_in,B_filt, padding="valid")
-            Q_tc = self.lp_norm(Q_bi,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            if not self.block_channels is None:
+                Q_tc = self.lp_norm(Q_bi[self.block_channels,...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
+            else:
+                Q_tc = self.lp_norm(Q_bi,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
             Q = self.lp_norm(Q_tc,     self.beta_t,   dim=2, normalize=True)   # Sum across frames
         else:
-            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            if not self.block_channels is None:
+                Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
+            else:
+                Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
             Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
 
         Q = Q.squeeze()
