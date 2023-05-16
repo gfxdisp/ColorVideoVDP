@@ -625,10 +625,12 @@ class cvvdp(vq_metric):
         if self.masking_model == "none":
             R = torch.pow(G,p)
         else:
+            q_sust = self.mask_q_sust.clamp(1.0, 7.0)
+            q_trans = self.mask_q_trans.clamp(1.0, 7.0)
             if G_mask.shape[0]==3: # image
-                q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], dim=0 ).view(3,1,1,1)
+                q = torch.stack( [q_sust, q_sust, q_sust], dim=0 ).view(3,1,1,1)
             else: # video
-                q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], dim=0 ).view(4,1,1,1)
+                q = torch.stack( [q_sust, q_sust, q_sust, q_trans], dim=0 ).view(4,1,1,1)
             R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
