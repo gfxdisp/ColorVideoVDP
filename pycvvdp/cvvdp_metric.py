@@ -114,8 +114,12 @@ class cvvdp(vq_metric):
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
-        self.mask_q_sust = torch.as_tensor( parameters['mask_q_sust'], device=self.device )
-        self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
+
+        if 'mask_q' in parameters:
+            self.mask_q = torch.as_tensor( parameters['mask_q'], device=self.device )
+        else:
+            self.mask_q_sust = torch.as_tensor( parameters['mask_q_sust'], device=self.device )
+            self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
         self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
 
         self.do_xchannel_masking = True if parameters['xchannel_masking'] == "on" else False
@@ -625,12 +629,16 @@ class cvvdp(vq_metric):
         if self.masking_model == "none":
             R = torch.pow(G,p)
         else:
-            q_sust = self.mask_q_sust.clamp(1.0, 7.0)
-            q_trans = self.mask_q_trans.clamp(1.0, 7.0)
-            if G_mask.shape[0]==3: # image
-                q = torch.stack( [q_sust, q_sust, q_sust], dim=0 ).view(3,1,1,1)
-            else: # video
-                q = torch.stack( [q_sust, q_sust, q_sust, q_trans], dim=0 ).view(4,1,1,1)
+            no_channels = G_mask.shape[0]
+            if hasattr( self, 'mask_q' ):
+                q = self.mask_q[0:no_channels].view(no_channels,1,1,1)
+            else:
+                q_sust = self.mask_q_sust.clamp(1.0, 7.0)
+                q_trans = self.mask_q_trans.clamp(1.0, 7.0)
+                if no_channels==3: # image
+                    q = torch.stack( [q_sust, q_sust, q_sust], dim=0 ).view(3,1,1,1)
+                else: # video
+                    q = torch.stack( [q_sust, q_sust, q_sust, q_trans], dim=0 ).view(4,1,1,1)
             R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
