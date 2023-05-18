@@ -15,7 +15,7 @@ class pu_vmaf(vq_metric):
     def __init__(self, ffmpeg_bin=None, cache_ref_loc='.', device=None):
         if ffmpeg_bin is None:
             # Empty constructor to retrieve name
-            pass
+            return
 
         # Use GPU if available
         if device is None:
@@ -26,7 +26,6 @@ class pu_vmaf(vq_metric):
         else:
             self.device = device
 
-        self.pu = PU()
         if not osp.isdir(cache_ref_loc):
             os.makedirs(cache_ref_loc)
 
@@ -34,7 +33,6 @@ class pu_vmaf(vq_metric):
         self.R_enc_path = osp.join(cache_ref_loc, 'temp_ref.yuv')
         self.output_file = osp.join(cache_ref_loc, 'vmaf_output.json')
 
-        self.colorspace = 'RGB709'
         self.ffmpeg_bin = ffmpeg_bin
 
     '''
@@ -57,18 +55,12 @@ class pu_vmaf(vq_metric):
         self.R_enc_file = open(self.R_enc_path,'w')
 
         for ff in trange(N_frames, leave=False):
-            T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.colorspace)
-            R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.colorspace)
-
-            # Apply PU
-            T_enc = self.pu.encode(T.clip(0, self.max_L.item()))
-            T_enc_np = T_enc.squeeze().permute(1,2,0).cpu().numpy() / self.pu.encode(self.max_L)
-            R_enc = self.pu.encode(R.clip(0, self.max_L.item()))
-            R_enc_np = R_enc.squeeze().permute(1,2,0).cpu().numpy() / self.pu.encode(self.max_L)
+            T = vid_source.get_test_frame(ff, device=self.device, colorspace='display_encoded_01').squeeze().permute(1,2,0).cpu().numpy()
+            R = vid_source.get_reference_frame(ff, device=self.device, colorspace='display_encoded_01').squeeze().permute(1,2,0).cpu().numpy()
 
             # Save the output as yuv file
-            self.write_yuv_frame(T_enc_np, bit_depth=10, type='T')
-            self.write_yuv_frame(R_enc_np, bit_depth=10, type='R')
+            self.write_yuv_frame(T, bit_depth=10, type='T')
+            self.write_yuv_frame(R, bit_depth=10, type='R')
 
         self.T_enc_file.close()
         self.R_enc_file.close()
@@ -78,6 +70,7 @@ class pu_vmaf(vq_metric):
                      f'-s {w}x{h} -pix_fmt {pix_fmt} -i {self.T_enc_path} ' \
                      f'-s {w}x{h} -pix_fmt {pix_fmt} -i {self.R_enc_path} ' \
                      f'-lavfi libvmaf=\"log_fmt=json:log_path={self.output_file}:n_threads=4\" -f null -'
+
         os.system(ffmpeg_cmd)
 
         with open(self.output_file) as f:
@@ -91,10 +84,6 @@ class pu_vmaf(vq_metric):
 
     def short_name(self):
         return 'PU21-VMAF'
-
-    def set_display_model(self, display_photometry, display_geometry):
-        self.max_L = display_photometry.get_peak_luminance()
-        self.max_L = np.array(min(self.max_L, 300))
 
     # This function takes into input an encoded RGB709 frame and saves it as a yuv file (it operates only on numpy arrays)
     def write_yuv_frame( self, RGB ,bit_depth=10,type = 'T'):
