@@ -99,6 +99,44 @@ def fovdots_load_condition(content_id, condition_id, device, data_res="full"):
     ncdhw_tensor = torch.unsqueeze(torch.unsqueeze(dhw_tensor, 0), 0)
     return ncdhw_tensor
 
+class YUV_encoding:
+    def write_yuv_frame_444( self, RGB ,bit_depth=10):
+        _rgb2ycbcr_rec709 = np.array([[0.2126 , 0.7152 , 0.0722],\
+        [-0.114572 , -0.385428 , 0.5],\
+        [0.5 , -0.454153 , -0.045847]], dtype=np.float32)
+
+        YUV = (np.reshape( RGB, (-1, 3), order='F' ) @ _rgb2ycbcr_rec709.transpose()).reshape( (RGB.shape), order='F' )
+
+        YUV_fixed = self.float2fixed( YUV, bit_depth )
+
+        Y = YUV_fixed[:,:,0]
+        u = YUV_fixed[:,:,1]
+        v = YUV_fixed[:,:,2]
+
+        return Y, u, v
+
+        
+# For now this code operates only on array vectors (Because there is no available torch.uint16)
+    def float2fixed(self,YCbCr,nbit):
+
+        offset = (2**(nbit-8))*16
+        weight = (2**(nbit-8))*219
+        max_lum = (2**nbit)-1
+
+        if nbit<=8:
+            dtype = np.uint8
+        else:
+            dtype = np.uint16
+        
+        Y = np.round(weight*YCbCr[:,:,0]+offset).clip(0,max_lum).astype(dtype)
+        
+        offset = (2**(nbit-8)) * 128
+        weight = (2**(nbit-8)) * 224  
+        
+        U = np.round(weight*YCbCr[:,:,1]+offset).clip(0,max_lum).astype(dtype)
+        V = np.round(weight*YCbCr[:,:,2]+offset).clip(0,max_lum).astype(dtype)
+
+        return np.concatenate(  (Y[:,:,np.newaxis], U[:,:,np.newaxis], V[:,:,np.newaxis]), axis=2 )
 
 class ImGaussFilt():
     def __init__(self, sigma, device):
