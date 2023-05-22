@@ -24,26 +24,38 @@ media_folder = '../datasets/XR-DAVID'
 # ref_file = os.path.join(media_folder, 'Snow_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Snow_Dither_Level003.mp4'))
 
-ref_file = os.path.join(media_folder, 'Emojis_reference_Level001.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, 'Emojis_DUC_Level003.mp4'))
+# ref_file = os.path.join(media_folder, 'Emojis_reference_Level001.mp4')
+# TST_FILEs = glob.glob(os.path.join(media_folder, 'Emojis_DUC_Level003.mp4'))
 
 # media_folder = 'S:\\Datasets\\LIVEHDR\\train'
 # ref_file = os.path.join(media_folder, '4k_ref_CenterPanorama.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, '4k_3M_CenterPanorama.mp4'))
 
+# ref_file = os.path.join(media_folder, 'Phone_reference_Level001.mp4')
+# TST_FILEs = glob.glob(os.path.join(media_folder, 'Phone_CSub_Level003.mp4'))
+
+video="Wiki"
+#distortion = "WGNU_Level003"
+distortion = "CSub_Level003"
+
+ref_file = os.path.join(media_folder, video + '_reference_Level001.mp4')
+TST_FILEs = glob.glob(os.path.join(media_folder, video + '_' + distortion + '.mp4'))
+
 
 pycvvdp.utils.config_files.set_config_dir(media_folder)
-logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
+logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
 cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw")
 cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=120, verbose=False )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, verbose=False )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
     end = time.time()
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
+
+    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=4 )

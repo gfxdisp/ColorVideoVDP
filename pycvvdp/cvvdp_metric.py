@@ -18,6 +18,14 @@ import torch.utils.benchmark as torchbench
 import logging
 from datetime import date
 
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib import ticker
+    from matplotlib.colors import Normalize
+    has_matplotlib = True
+except:
+    has_matplotlib = False
+
 from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
@@ -401,7 +409,7 @@ class cvvdp(vq_metric):
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
-        stats['rho_band'] = rho_band # Thespatial frequency per band
+        stats['rho_band'] = rho_band # The spatial frequency per band in cpd
         stats['frames_per_second'] = fps
         stats['width'] = width
         stats['height'] = height
@@ -715,9 +723,6 @@ class cvvdp(vq_metric):
 
         return F, omega_bands
 
-#    def torch_scalar(self, val, dtype=torch.float32):
-#        return torch.tensor(val, dtype=dtype, device=self.device) if not torch.is_tensor(val) else val.to(dtype)
-
     def short_name(self):
         return "cvvdp"
 
@@ -774,3 +779,63 @@ class cvvdp(vq_metric):
 
         with open(fname, 'w') as f:
             json.dump(parameters, f, indent=4)
+
+
+    # Export the visualization of distortions over time
+    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
+        # Q_per_ch[channel,frame,sp_band]
+        Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
+        ch_no = Q_per_ch.shape[0]    
+
+        Q_per_ch[:,:,-1] *= self.baseband_weight
+        Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
+        dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
+
+        if jod_max is None:
+            jod_max = math.ceil(dmap.max())
+        
+        dmap /= jod_max
+
+        fps = stats['frames_per_second']
+        band_no = Q_per_ch.shape[2]
+        frame_no = Q_per_ch.shape[1]
+        rho_band = stats['rho_band']
+        band_labels = [None] + [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
+        band_labels[1] = "BB"
+
+        if not has_matplotlib:
+            raise RuntimeError( 'matplotlib is missing. Please install it before exporting distograms.')
+            
+        fig, axs = plt.subplots(nrows=ch_no, figsize=(base_size*frame_no/60+0.5, base_size))
+
+        ch_labels = ["A-sust", "RG", "YV", "A-trans"]
+        cmap = plt.colormaps["plasma"]
+
+        for kk in range(ch_no):
+            dmap_ch = np.flip(np.transpose(dmap[kk,:,:].clip(0.,1.)),axis=0)
+            axs[kk].imshow(dmap_ch, cmap=cmap, aspect="auto" )
+            axs[kk].set_ylabel( ch_labels[kk] )
+            axs[kk].yaxis.set_major_locator(ticker.MultipleLocator(2.0))
+            axs[kk].yaxis.set_minor_locator(ticker.MultipleLocator(1.0))
+            axs[kk].set_yticklabels(band_labels)
+            if kk==(ch_no-1):
+                axs[kk].xaxis.set_major_formatter(lambda x, pos: str(int(x/fps*1000)))
+                axs[kk].set_xlabel( 'Time [ms]')
+                axs[kk].xaxis.set_minor_locator(ticker.MultipleLocator(1.0))
+            else:
+                axs[kk].set_xticks([])
+
+        plt.subplots_adjust(bottom=0.1, right=0.9, top=0.9)
+        cax = plt.axes([0.925, 0.1, 0.025, 0.8])
+        plt.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, jod_max), cmap=cmap), cax=cax, cmap=cmap)
+
+        # fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=cmap),
+        #             ax=axs[0], label="JODs")
+
+        plt.savefig( fname, bbox_inches='tight' )  
+
+        fig.show()
+        plt.waitforbuttonpress()        
+        
+
+
