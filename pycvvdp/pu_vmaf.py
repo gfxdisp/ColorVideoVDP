@@ -1,5 +1,6 @@
 import json
 import os, os.path as osp
+from time import time
 from tqdm import trange
 import torch
 
@@ -38,7 +39,7 @@ class pu_vmaf(vq_metric):
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
     '''
-    def predict_video_source(self, vid_source, frame_padding="replicate"):
+    def predict_video_source(self, vid_source, frame_padding="replicate", record_time=False):
 
         # T_vid and R_vid are the tensors of the size (1,1,N,H,W)
         # where:
@@ -50,6 +51,10 @@ class pu_vmaf(vq_metric):
         # We assume the pytorch default NCDHW layout
 
         h, w, N_frames = vid_source.get_video_size()
+
+        if osp.isfile(self.T_enc_path): os.remove(self.T_enc_path)
+        if osp.isfile(self.R_enc_path): os.remove(self.R_enc_path)
+        if osp.isfile(self.output_file): os.remove(self.output_file)
 
         self.T_enc_file = open(self.T_enc_path,'w')
         self.R_enc_file = open(self.R_enc_path,'w')
@@ -71,16 +76,20 @@ class pu_vmaf(vq_metric):
                      f'-s {w}x{h} -pix_fmt {pix_fmt} -i {self.R_enc_path} ' \
                      f'-lavfi libvmaf=\"log_fmt=json:log_path={self.output_file}:n_threads=4\" -f null -'
 
-        os.system(ffmpeg_cmd)
-
-        with open(self.output_file) as f:
-            results = json.load(f)
-            quality = results['pooled_metrics']['vmaf']['mean']
+        if record_time:
+            start = time()
+            os.system(ffmpeg_cmd)
+            time_taken = time() - start
+        else:
+            os.system(ffmpeg_cmd)
+            with open(self.output_file) as f:
+                results = json.load(f)
+                quality = results['pooled_metrics']['vmaf']['mean']
 
         os.remove(self.T_enc_path)
         os.remove(self.R_enc_path)
         os.remove(self.output_file)
-        return torch.tensor(quality), None
+        return time_taken if record_time else (torch.tensor(quality), None)
 
     def short_name(self):
         return 'PU21-VMAF'
