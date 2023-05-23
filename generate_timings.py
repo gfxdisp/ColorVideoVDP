@@ -32,13 +32,13 @@ class DummyVS:
     def to(self, device):
         self.frame = self.frame.to(device)
 
-debug = False
+debug = True
 metrics = ['PU21-VMAF', 'cvvdp', 'fvvdp']
 device = torch.device('cuda')
-# dims = ((720, 1280), (1080, 1920), (1440, 2560), (2160, 3840), (4320, 7680))
-h, w = 1080, 1920
-n = (30, 60, 120, 240, 480)
-# num_frames = 120
+dims = ((720, 1280), (1080, 1920), (1440, 2560), (2160, 3840))
+# h, w = 1080, 1920
+# n = (30, 60, 120, 240, 480)
+num_frames = 50
 num_samples = 5
 
 # VMAF paths set for Param's PC
@@ -48,8 +48,8 @@ vmaf_cache = '/local/scratch/pmh64/tmp'
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG if debug else logging.INFO)
 
 timings = []
-for num_frames in tqdm(n):
-# for h, w in tqdm(dims):
+# for num_frames in tqdm(n):
+for h, w in tqdm(dims):
     vs = DummyVS(num_frames, h, w, device=device)
     pbar = tqdm(metrics, leave=False)
     for metric_type in pbar:
