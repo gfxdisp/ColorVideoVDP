@@ -34,9 +34,10 @@ media_folder = '../datasets/XR-DAVID'
 # ref_file = os.path.join(media_folder, 'Phone_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Phone_CSub_Level003.mp4'))
 
-video="Wiki"
+video="VR"
 #distortion = "WGNU_Level003"
-distortion = "CSub_Level003"
+#distortion = "CSub_Level003"
+distortion = "LSNU_Level003"
 
 ref_file = os.path.join(media_folder, video + '_reference_Level001.mp4')
 TST_FILEs = glob.glob(os.path.join(media_folder, video + '_' + distortion + '.mp4'))
@@ -58,4 +59,4 @@ for tst_fname in TST_FILEs:
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
 
-    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=4 )
+    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )
