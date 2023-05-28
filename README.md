@@ -66,6 +66,7 @@ See [Command line interface](#command-line-interface) for further details. Colou
     - [HDR content](#hdr-content)
     - [Reporting metric results](#reporting-metric-results)
     - [Predicting quality scores](#predicted-quality-scores)
+    - [Visualization](#visualization)
 - [Usage](#example-usage)
     - [Command line interface](#command-line-interface)
     - [Low-level Python interface](#low-level-python-interface)
@@ -130,12 +131,14 @@ The main advantage of JODs is that they (a) should be linearly related to the pe
 
 ### Visualization
 
-In addition to the single-valued quality scored in the JOD units, ColourVideoVDP can generate a heatmap (video or image) and a distogram. There are three types of heatmaps:
-* supra-threshold - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
-* threshold - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
-* raw - the difference values between 0 and 10 will be mapped to back to white
+In addition to the single-valued quality scored in the JOD units, ColourVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
+* `supra-threshold` - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
+* `threshold` - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
+* `raw` - the difference values between 0 and 10 will be mapped to back to white
 
 The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD value to use in the visualization. The default is 10.
+
+Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
 
 ## Example usage
 
