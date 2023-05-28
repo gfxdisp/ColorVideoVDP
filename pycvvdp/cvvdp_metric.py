@@ -800,8 +800,8 @@ class cvvdp(vq_metric):
         band_no = Q_per_ch.shape[2]
         frame_no = Q_per_ch.shape[1]
         rho_band = stats['rho_band']
-        band_labels = [None] + [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
-        band_labels[1] = "BB"
+        band_labels = [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
+        band_labels[0] = "BB"
 
         if not has_matplotlib:
             raise RuntimeError( 'matplotlib is missing. Please install it before exporting distograms.')
@@ -815,7 +815,7 @@ class cvvdp(vq_metric):
             dmap_ch = np.flip(np.transpose(dmap[kk,:,:].clip(0.,1.)),axis=0)
             axs[kk].imshow(dmap_ch, cmap=cmap, aspect="auto" )
             axs[kk].set_ylabel( ch_labels[kk] )
-            axs[kk].yaxis.set_major_locator(ticker.MultipleLocator(2.0))
+            axs[kk].yaxis.set_major_locator(ticker.FixedLocator(range(0,len(band_labels)*2,2)))
             axs[kk].yaxis.set_minor_locator(ticker.MultipleLocator(1.0))
             axs[kk].set_yticklabels(band_labels)
             if kk==(ch_no-1):
@@ -834,8 +834,8 @@ class cvvdp(vq_metric):
 
         plt.savefig( fname, bbox_inches='tight' )  
 
-        fig.show()
-        plt.waitforbuttonpress()        
+        # fig.show()
+        # plt.waitforbuttonpress()        
         
 
 

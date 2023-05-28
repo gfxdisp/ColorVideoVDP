@@ -128,6 +128,15 @@ The main advantage of JODs is that they (a) should be linearly related to the pe
   </tr>
 </table>
 
+### Visualization
+
+In addition to the single-valued quality scored in the JOD units, ColourVideoVDP can generate a heatmap (video or image) and a distogram. There are three types of heatmaps:
+* supra-threshold - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
+* threshold - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
+* raw - the difference values between 0 and 10 will be mapped to back to white
+
+The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD value to use in the visualization. The default is 10.
+
 ## Example usage
 
 ### Command line interface
@@ -143,7 +152,7 @@ The magnitude of each degradation was adjusted so that the predicted maximum **D
 To predict quality with ColourVideoVDP (shown below), run:
 
 ```bash
-cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold
+cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold --distogram
 ```
 
 |Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-ref.gif) | Quality | **TODO:** adjust heatmaps |
