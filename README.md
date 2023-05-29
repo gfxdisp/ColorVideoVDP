@@ -66,15 +66,16 @@ See [Command line interface](#command-line-interface) for further details. Colou
     - [HDR content](#hdr-content)
     - [Reporting metric results](#reporting-metric-results)
     - [Predicting quality scores](#predicted-quality-scores)
-    - [Visualization](#visualization)
 - [Usage](#example-usage)
     - [Command line interface](#command-line-interface)
+    - [Visualization](#visualization)
+    - [Configuration files](#configuration-files)
     - [Low-level Python interface](#low-level-python-interface)
 - [Release notes](#release-notes)
 
 ## Display specification
 
-Unlike most image quality metrics, ColourVideoVDP needs physical specification of the display (e.g. its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-dir` parameter (`cvvdp` command). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
+Unlike most image quality metrics, ColourVideoVDP needs physical specification of the display (e.g. its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-paths` parameter (see [Configuration files](#configuration-files)). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
 
 You specify the display by passing `--display` argument to `cvvdp`.
 
@@ -86,7 +87,7 @@ The display specification is documented in [vvdp_data/README.md](pycvvdp/vvdp_da
 
 ### Custom display specification
 
-If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-dir <path-to-dir-with-json-file> --display <name-of-display-spec>`.
+If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`.
 
 If you run the metric from Python code, the display photometry and geometry can be specified by passing `display_name` parameter to the metric. Alternatively, if you need more flexibility in specifying display geometry (size, viewing distance) and its colorimetry, you can instead pass objects of the classes `vvdp_display_geometry`, `vvdp_display_photo_gog` for most SDR displays, and `vvdp_display_photo_absolute` for HDR displays. You can also create your own subclasses of those classes for custom display specification. 
 
@@ -129,17 +130,6 @@ The main advantage of JODs is that they (a) should be linearly related to the pe
   </tr>
 </table>
 
-### Visualization
-
-In addition to the single-valued quality scored in the JOD units, ColourVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
-* `supra-threshold` - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
-* `threshold` - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
-* `raw` - the difference values between 0 and 10 will be mapped to back to white
-
-The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD value to use in the visualization. The default is 10.
-
-Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
-
 ## Example usage
 
 ### Command line interface
@@ -164,6 +154,32 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 | Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.8960 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
 | Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 7.1682 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
 
+### Visualization
+
+In addition to the single-valued quality scored in the JOD units, ColourVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
+* `supra-threshold` - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
+* `threshold` - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
+* `raw` - the difference values between 0 and 10 will be mapped to back to white
+
+The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD value to use in the visualization. The default is 10.
+
+Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
+
+### Configuration files
+
+Configuration files contain a list of available display models (`display_models.json`), colour spaces (`color_spaces.json`) and the parameters of the metric (`cvvdp_parameters.json`). Those are located by default in `pycvvdp/vvdp_data` folder. Different locations could be specified with the `--config-paths` argument or the `CVVDP_PATH` environment variable. 
+
+If you want to use a different colour space or display model, make a copy of the corresponding file in another directory, add your custom entry, and then pass the path to either the directory or the file as the `--config-paths` argument.
+
+You can also use a different metric calibration file by passing a path to another `cvvdp_parameters.json` file. 
+
+The modified configuration files must start with the same name as the original file (excluding the file name extension). For example, you can create a new metric parameter file `cvvdp_parameters_new.json`, but `new_cvvdp_parameters.json` will not be recognized. 
+
+When looking for the configuration files, the paths specified in the `--config-paths` will be checked first, followed by the directory pointed by the environment variable `CVVDP_PATH`, followed by the default directory `pycvvdp/vvdp_data`. 
+
+To check which `display_models.json` file is used, run `cvvdp` with `--display ?`. 
+
+To check which `cvvdp_parameters.json` file is used, run `cvvdp` with `--verbose`.
 
 ### Low-level Python interface
 ColourVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class.

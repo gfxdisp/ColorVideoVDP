@@ -53,7 +53,7 @@ from pycvvdp.csf import castleCSF
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
@@ -72,12 +72,12 @@ class cvvdp(vq_metric):
         else:
             self.device = device
         
-        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
+        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry, config_paths=config_paths)
 
         self.temp_resample = False  # When True, resample the temporal features to nominal_fps
         self.nominal_fps = 240
 
-        self.load_config()
+        self.load_config(config_paths)
         if calibrated_ckpt is not None:
             self.update_from_checkpoint(calibrated_ckpt)
 
@@ -96,10 +96,10 @@ class cvvdp(vq_metric):
 
         self.heatmap_pyr = None
 
-    def load_config( self ):
+    def load_config( self, config_paths ):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
-        self.parameters_file = utils.config_files.find( "cvvdp_parameters.json" )
+        self.parameters_file = utils.config_files.find( "cvvdp_parameters.json", config_paths )
         logging.debug( f"Loading ColourVideoVDP parameters from '{self.parameters_file}'" )
         parameters = utils.json2dict(self.parameters_file)
 
@@ -153,7 +153,7 @@ class cvvdp(vq_metric):
 
         self.omega = [0, 5]
 
-        self.csf = castleCSF(csf_version=self.csf, device=self.device)
+        self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
 
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
@@ -176,16 +176,16 @@ class cvvdp(vq_metric):
                     setattr(self, key[len(prefix):], value.to(self.device))
         
         
-    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
+    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[]):
         if display_photometry is None:
-            self.display_photometry = vvdp_display_photometry.load(display_name)
+            self.display_photometry = vvdp_display_photometry.load(display_name, config_paths)
             self.display_name = display_name
         else:
             self.display_photometry = display_photometry
             self.display_name = "unspecified"
         
         if display_geometry is None:
-            self.display_geometry = vvdp_display_geometry.load(display_name)
+            self.display_geometry = vvdp_display_geometry.load(display_name, config_paths)
         else:
             self.display_geometry = display_geometry
 

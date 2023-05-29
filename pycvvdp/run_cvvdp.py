@@ -80,7 +80,7 @@ def parse_args():
     parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
-    parser.add_argument("-c", "--config-dir", type=str, default=None, help="A path to cvvdp configuration files: display_models.json, cvvdp_parameters.json and others.")
+    parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
@@ -102,11 +102,8 @@ def main():
         
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
-    if not args.config_dir is None:
-        pycvvdp.utils.config_files.set_config_dir(args.config_dir)
-
     if args.display == "?":
-        pycvvdp.vvdp_display_photometry.list_displays()
+        pycvvdp.vvdp_display_photometry.list_displays(args.config_paths)
         return
 
     if args.test is None or args.ref is None:
@@ -179,8 +176,8 @@ def main():
         sys.exit()
 
     metrics = []
-    display_photometry = pycvvdp.vvdp_display_photometry.load(args.display)
-    display_geometry = pycvvdp.vvdp_display_geometry.load(args.display)
+    display_photometry = pycvvdp.vvdp_display_photometry.load(args.display, config_paths=args.config_paths)
+    display_geometry = pycvvdp.vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
 
     for mm in args.metric:
         if mm == 'cvvdp':
@@ -188,6 +185,7 @@ def main():
                                 heatmap=args.heatmap, 
                                 device=device,
                                 temp_padding=args.temp_padding,
+                                config_paths=args.config_paths,
                                 quiet=args.quiet )
             metrics.append( fv )
         elif mm == 'pu-psnr-rgb':
@@ -218,6 +216,7 @@ def main():
             with torch.no_grad():
                 vs = pycvvdp.video_source_file( test_file, ref_file, 
                                                 display_photometry=display_photometry, 
+                                                config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize, 
                                                 resize_resolution=display_geometry.resolution, 
                                                 frames=args.nframes,

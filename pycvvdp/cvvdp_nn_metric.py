@@ -17,7 +17,7 @@ class cvvdp_nn(cvvdp):
     rho_dims = 1                # Condition on base rho band
 
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False,
-                 hidden_dims=8, num_layers=2, dropout=0.2, masking='base', pooling='base', ckpt=None):
+                 hidden_dims=8, num_layers=2, dropout=0.2, masking='base', pooling='base', ckpt=None, config_paths=[]):
         from torchvision.ops import MLP
         assert masking in ('base', 'mlp')
         self.masking = masking
@@ -38,7 +38,7 @@ class cvvdp_nn(cvvdp):
             )
             self.pooling_net = torch.nn.Sequential(recurrent_net, linear)
 
-        super().__init__(display_name, display_photometry, display_geometry, heatmap, quiet, device, temp_padding, use_checkpoints, ckpt)
+        super().__init__(display_name, display_photometry, display_geometry, heatmap, quiet, device, temp_padding, use_checkpoints, ckpt, config_paths=config_paths)
 
         if masking == 'mlp':
             self.masking_net.to(self.device)
