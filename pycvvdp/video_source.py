@@ -58,6 +58,20 @@ class video_source:
             self.warning_shown = True
             logging.warning( 'Image contains one or more Inf values' )
 
+        if not hasattr( self, "first_frame" ):
+            self.first_frame = True
+
+        if self.first_frame:
+            self.first_frame = False
+            f_mean = torch.mean(frame[:,0,:,:,:])
+            f_max = torch.max(frame[:,0,:,:,:])
+            f_min = torch.min(frame[:,0,:,:,:])
+            logging.debug( f"Content mean={f_mean}, max={f_max}, min={f_min}" )
+
+            if not self.warning_shown and f_mean <= 1:
+                logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
+
+
 
 """
 Function for changing the order of dimensions, for example, from "WHC" (width, height, colour) to "BCHW" (batch, colour, height, width)
