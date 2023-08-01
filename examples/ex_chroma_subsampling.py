@@ -14,6 +14,11 @@ import copy
 from torchmetrics import StructuralSimilarityIndexMeasure
 
 import cv2
+#import PIL
+
+def resize_array(img, dsize):
+    #return np.array( PIL.Image.fromarray(img).resize(dsize, resample=PIL.Image.LANCZOS) )
+    return cv2.resize( img, dsize=dsize, interpolation=cv2.INTER_LANCZOS4 )
 
 # For debugging only
 # from gfxdisp.pfs.pfs import pfs
@@ -61,16 +66,16 @@ for tt, subsampling in enumerate(ss_type): # For each type of subsampling
         dim_ss = (int(I_ref.shape[1]/ss_factors[kk]), int(I_ref.shape[0]/ss_factors[kk]))
 
         if subsampling == 'RGB-ss': # regular subsampling
-            I_ss = cv2.resize(I_ref, dsize=dim_ss, interpolation=cv2.INTER_CUBIC)
-            I_test[tt][kk] = cv2.resize(I_ss, dsize=dim, interpolation=cv2.INTER_CUBIC)
+            I_ss = resize_array(I_ref, dsize=dim_ss)
+            I_test[tt][kk] = resize_array(I_ss, dsize=dim)
         elif subsampling == 'Chroma-ss Yxy': # chroma subsampling, Yxy
-            chroma_ss = cv2.resize(I_Yxy[:,:,1:3], dsize=dim_ss, interpolation=cv2.INTER_CUBIC)
-            chroma_rec = cv2.resize(chroma_ss, dsize=dim, interpolation=cv2.INTER_CUBIC)
+            chroma_ss = resize_array(I_Yxy[:,:,1:3], dsize=dim_ss)
+            chroma_rec = resize_array(chroma_ss, dsize=dim)
             I_Yxy[:,:,1:3] = chroma_rec
             I_test[tt][kk] = utils.im_ctrans( I_Yxy, 'Yxy', 'srgb' ).clip(0.,1.)
         elif subsampling == 'Chroma-ss YCbCr': # chroma subsampling, YCbCr
-            chroma_ss = cv2.resize(I_YCbCr[:,:,1:3], dsize=dim_ss, interpolation=cv2.INTER_CUBIC)
-            chroma_rec = cv2.resize(chroma_ss, dsize=dim, interpolation=cv2.INTER_CUBIC)
+            chroma_ss = resize_array(I_YCbCr[:,:,1:3], dsize=dim_ss)
+            chroma_rec = resize_array(chroma_ss, dsize=dim)
             I_YCbCr[:,:,1:3] = chroma_rec
             I_test[tt][kk] = utils.ycbcr2srgb( I_YCbCr ).clip(0.,1.)
 
@@ -95,29 +100,39 @@ for tt, subsampling in enumerate(ss_type): # For each type of subsampling
         #print( q_str )
 
 
+mplots = [ {'ylabel': 'Quality [JOD]', 'ylim': (4, 10), 'metrics': ['cvvdp'] }, 
+           {'ylabel': 'SSIM', 'ylim': (0.4, 1), 'metrics': ['ssim-lum', 'ssim-rgb'] } ]
 
-M = len(Q[0]) # The number of metrics
+M = len(mplots) #len(Q[0]) # The number of metrics
 
-f, axs = plt.subplots(len(ss_type), N+M, layout="constrained")
+fig, axs = plt.subplots(len(ss_type), N+M, layout="constrained", figsize=(18, 8) )
 if len(ss_type) == 1:
     axs = [axs]
 
-qpp = { 'cvvdp': { 'ylabel': 'ColourVideoVDP JOD', 'ylim': (5, 10) }, 
-        'ssim-lum': { 'ylabel': 'SSIM-luma', 'ylim': (0, 1) },
-        'ssim-rgb': { 'ylabel': 'SSIM-RGB', 'ylim': (0, 1) } }
+# qpp = { 'cvvdp': { 'ylabel': 'ColourVideoVDP JOD', 'ylim': (4, 10), 'col': 0 }, 
+#         'ssim-lum': { 'ylabel': 'SSIM-luma', 'ylim': (0.4, 1), 'col': 1 },
+#         'ssim-rgb': { 'ylabel': 'SSIM-RGB', 'ylim': (0.4, 1), 'col': 1 } }
+
+nice_name = { 'cvvdp': 'ColorVideoVDP', 'ssim-rgb': 'SSIM (RGB)', 'ssim-lum': 'SSIM (luma)'}
 
 for tt in range(len(ss_type)):
+    first_row = tt==0
+    last_row = tt == (len(ss_type)-1)
     for mm in range(M):
         qm_key = list(Q[tt].keys())[mm]
-        axs[tt][mm].plot( ss_factors, Q[tt][qm_key], '-or' )
-        axs[tt][mm].set_ylabel( qpp[qm_key]['ylabel'] ) 
-        axs[tt][mm].set_ylim( qpp[qm_key]['ylim'] ) 
-        #axs[tt][mm].tick_params(axis='y', labelcolor='r')
+        for qm in mplots[mm]["metrics"]:
+            axs[tt][mm].plot( ss_factors, Q[tt][qm], '-o', label=nice_name[qm] )
+        axs[tt][mm].set_ylim( mplots[mm]['ylim'] ) 
         axs[tt][mm].set_xscale("log")
         axs[tt][mm].set_xticks(ss_factors)
-        axs[tt][mm].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-        axs[tt][mm].set_xlabel( 'Subsample factor' )
+        axs[tt][mm].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())        
+        if last_row:
+            axs[tt][mm].set_xlabel( 'Subsample factor' )
+        if first_row:
+            axs[tt][mm].legend()
         axs[tt][mm].grid(True)
+        axs[tt][mm].set_ylabel( mplots[mm]['ylabel'] ) 
+            #axs[tt][mm].tick_params(axis='y', labelcolor='r')
 
     # ax2 = axs[0][0].twinx()
     # ax2.plot( ss_factors, Q_PSNR, '-sb' )
@@ -131,7 +146,9 @@ for tt in range(len(ss_type)):
         axs[tt][col].set_yticks([])
         axs[tt][col].set_title(f'{ss_type[tt]} x {ss_factors[kk]}')
 
-f.show()
+plt.savefig( 'chroma-ss.pdf', bbox_inches='tight' )  
+
+fig.show()
 plt.waitforbuttonpress()
 # plt.savefig('chroma-ss.png')
 

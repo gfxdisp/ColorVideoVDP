@@ -168,26 +168,36 @@ class ImGaussFilt():
 
 
 class config_files:
-    fvvdp_config_dir = None
+    # fvvdp_config_dir = None
     
-    @classmethod
-    def set_config_dir( cls, path ):
-        cls.fvvdp_config_dir = path
+    # @classmethod
+    # def set_config_dir( cls, path ):
+    #     cls.fvvdp_config_dir = path
 
     @classmethod
-    def find(cls, fname):
+    def find(cls, fname, config_paths):
 
-        if not cls.fvvdp_config_dir is None:
-            path = os.path.join( cls.fvvdp_config_dir, fname )
-            if os.path.isfile(path):
-                return path
+        bname, ext = os.path.splitext(fname)
+        # First check if the matching file name is in the config paths
+        for cp in config_paths:
+            if os.path.isfile(cp) and os.path.basename(cp).startswith(bname):
+                return cp
 
+        # Then, check all directories
+        for cp in config_paths:
+            if os.path.isdir(cp):
+                path = os.path.join( cp, fname )
+                if os.path.isfile(path):
+                    return path
+
+        # Then, check CVVDP_PATH
         ev_config_dir = os.getenv("CVVDP_PATH")
         if not ev_config_dir is None:
             path = os.path.join( ev_config_dir, fname )
             if os.path.isfile(path):
                 return path
 
+        # Finally, check the default config dir
         path = os.path.join(os.path.dirname(__file__), "vvdp_data", fname)
         if os.path.isfile(path):
             return path

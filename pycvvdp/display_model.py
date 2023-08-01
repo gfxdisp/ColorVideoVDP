@@ -61,9 +61,9 @@ def srgb2lin( p ):
 
 class vvdp_display_photometry:
 
-    def __init__( self, source_colorspace='sRGB' ):
+    def __init__( self, source_colorspace='sRGB', config_paths=[] ):
 
-        colorspaces_file = utils.config_files.find( "color_spaces.json" )
+        colorspaces_file = utils.config_files.find( "color_spaces.json", config_paths )
         colorspaces = utils.json2dict(colorspaces_file)
 
         if not source_colorspace in colorspaces:
@@ -90,25 +90,26 @@ class vvdp_display_photometry:
     #     return os.path.join(os.path.dirname(__file__), "fvvdp_data/display_models.json")
 
     @classmethod
-    def list_displays( cls ):
-        models_file = utils.config_files.find( "display_models.json" )
+    def list_displays( cls, config_paths ):
+        models_file = utils.config_files.find( "display_models.json", config_paths )
 
         logging.info( f"JSON file with display models: {models_file}" )
 
         models = utils.json2dict(models_file)
 
         for display_name in models:
-            dm = vvdp_display_photometry.load(display_name)
+            dm = vvdp_display_photometry.load(display_name, config_paths)
             dm.print()
 
     @classmethod
-    def load( cls, display_name ):
-        models_file = utils.config_files.find( "display_models.json" )
+    def load( cls, display_name, config_paths ):
+        models_file = utils.config_files.find( "display_models.json", config_paths )
 
         models = utils.json2dict(models_file)
 
         if not display_name in models:
-            raise RuntimeError( "Unknown display model: \"" + display_name + "\"" )
+            logging.error(f"Display model: '{display_name}' not found in '{models_file}'")
+            raise RuntimeError( 'Display model not found' )
 
         model = models[display_name]
 
@@ -138,7 +139,7 @@ class vvdp_display_photometry:
         else:
             k_refl = 0.005
 
-        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, source_colorspace=colorspace, E_ambient=E_ambient, k_refl=k_refl, name=display_name)
+        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, source_colorspace=colorspace, E_ambient=E_ambient, k_refl=k_refl, name=display_name, config_paths=config_paths)
         obj.full_name = model["name"]
         obj.short_name = display_name
 
@@ -217,9 +218,9 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
     #
     # Copyright (c) 2010-2022, Rafal Mantiuk
-    def __init__( self, Y_peak, contrast = 1000, source_colorspace='sRGB', EOTF=None, E_ambient = 0, k_refl = 0.005, name=None ):
+    def __init__( self, Y_peak, contrast = 1000, source_colorspace='sRGB', EOTF=None, E_ambient = 0, k_refl = 0.005, name=None, config_paths=[] ):
             
-        super().__init__(source_colorspace=source_colorspace)
+        super().__init__(source_colorspace=source_colorspace, config_paths=config_paths)
         if not EOTF is None: 
             self.EOTF = EOTF
 
@@ -291,187 +292,6 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         logging.info( '  Ambient light: {} lux'.format( self.E_ambient ) )
         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
     
-
-# class vvdp_display_photo_absolute(vvdp_display_photometry):
-#     # Use this photometric model when passing absolute colorimetric of
-#     # photometric values, scaled in cd/m^2
-#     # Object variables:
-#     #  L_max - display peak luminance in cd/m^2
-#     #  L_min - display black level
-#     def __init__(self, L_max=10000, L_min=0.005):
-
-#         self.L_max = L_max
-#         self.L_min = L_min
-
-#     def __eq__(self, other): 
-#         if not isinstance(other, self.__class__):
-#             # don't attempt to compare against unrelated types
-#             return NotImplemented
-#         return self.L_max == other.L_max \
-#             and self.L_min == other.L_min
-
-#     def forward( self, V ):
-
-#         # Clamp the values that are outside the (L_min, L_max) range.
-#         L = V.clamp(self.L_min, self.L_max)
-
-#         if V.max() < 1:
-#             logging.warning('Pixel values are very low. Perhaps images are' \
-#                             ' not scaled in the absolute units of cd/m^2.')
-
-#         return L
-
-
-#     def  get_peak_luminance( self ):
-#         return self.L_max
-
-
-#     def get_black_level( self ):
-#         return self.L_min
-
-#     # Print the display specification
-#     def print( self ):
-#         Y_black = self.get_black_level()
-
-#         logging.info('Photometric display model:')
-#         logging.info('  Absolute photometric/colorimetric values')
-
-
-
-# class vvdp_display_photo_gog(vvdp_display_photometry): 
-#     # Gain-gamma-offset display model to simulate SDR displays
-#     #
-#     # Depreciated, included for compatibility. Use fvvdp_display_photo_eotf instead
-#     #
-#     # dm = fvvdp_display_photo_gog( Y_peak, contrast, gamma, E_ambient, k_refl )
-#     #
-#     # Parameters (default value shown in []):
-#     # Y_peak - display peak luminance in cd/m^2 (nit), e.g. 200 for a typical
-#     #          office monitor
-#     # contrast - [1000] the contrast of the display. The value 1000 means
-#     #          1000:1
-#     # gamma - [-1] gamma of the display, typically 2.2. If -1 is
-#     #         passed, sRGB non-linearity is used.         
-#     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
-#     #         office
-#     # k_refl - [0.005] reflectivity of the display screen
-#     #
-#     # For more details on the GOG display model, see:
-#     # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
-#     #
-#     # Copyright (c) 2010-2021, Rafal Mantiuk
-#     def __init__( self, Y_peak, contrast = 1000, gamma = 2.2, E_ambient = 0, k_refl = 0.005, name=None ):
-            
-#         self.Y_peak = Y_peak            
-#         self.contrast = contrast
-#         self.gamma = gamma
-#         self.E_ambient = E_ambient
-#         self.k_refl = k_refl
-#         self.name = name
-
-#     # Say whether the input frame is display-encoded. False if it is linear. 
-#     def is_input_display_encoded(self):
-#         return True
-
-#     def __eq__(self, other): 
-#         if not isinstance(other, self.__class__):
-#             # don't attempt to compare against unrelated types
-#             return NotImplemented
-#         return self.Y_peak == other.Y_peak \
-#             and self.contrast == other.contrast \
-#             and self.gamma == other.gamma \
-#             and self.E_ambient == other.E_ambient \
-#             and self.k_refl == other.k_refl
-
-#     # Transforms gamma-encoded pixel values V, which must be in the range
-#     # 0-into absolute linear colorimetric values emitted from
-#     # the display.
-#     def forward( self, V ):
-        
-#         if torch.any(V>1).bool() or torch.any(V<0).bool():
-#             logging.warning("Pixel outside the valid range 0-1")
-#             V = V.clamp( 0., 1. )
-            
-#         Y_black = self.get_black_level()
-        
-#         if self.gamma==-1: # sRGB
-#             L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black
-#         else:
-#             L = (self.Y_peak-Y_black)*torch.pow(V, self.gamma) + Y_black
-        
-#         return L
-        
-
-#     def get_peak_luminance( self ):
-#         return self.Y_peak
-
-
-#     # Get the effective black level, accounting for screen reflections
-#     def get_black_level( self ):
-#         Y_refl = self.E_ambient/math.pi*self.k_refl  # Reflected ambient light            
-#         Y_black = Y_refl + self.Y_peak/self.contrast
-
-#         return Y_black
-
-#     # Print the display specification    
-#     def print( self ):
-#         Y_black = self.get_black_level()
-        
-#         logging.info( 'Photometric display model: {}'.format(self.name) )
-#         logging.info( '  Peak luminance: {} cd/m^2'.format(self.Y_peak) )
-#         logging.info( '  Contrast - theoretical: {}:1'.format( round(self.contrast) ) )
-#         logging.info( '  Contrast - effective: {}:1'.format( round(self.Y_peak/Y_black) ) )
-#         logging.info( '  Ambient light: {} lux'.format( self.E_ambient ) )
-#         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
-    
-
-# class vvdp_display_photo_absolute(vvdp_display_photometry):
-#     # Use this photometric model when passing absolute colorimetric of
-#     # photometric values, scaled in cd/m^2
-#     # Object variables:
-#     #  L_max - display peak luminance in cd/m^2
-#     #  L_min - display black level
-#     def __init__(self, L_max=10000, L_min=0.005):
-
-#         self.L_max = L_max
-#         self.L_min = L_min
-
-#     # Say whether the input frame is display-encoded. False if it is linear. 
-#     def is_input_display_encoded(self):
-#         return False
-
-#     def __eq__(self, other): 
-#         if not isinstance(other, self.__class__):
-#             # don't attempt to compare against unrelated types
-#             return NotImplemented
-#         return self.L_max == other.L_max \
-#             and self.L_min == other.L_min
-
-#     def forward( self, V ):
-
-#         # Clamp the values that are outside the (L_min, L_max) range.
-#         L = V.clamp(self.L_min, self.L_max)
-
-#         if V.max() < 1:
-#             logging.warning('Pixel values are very low. Perhaps images are' \
-#                             ' not scaled in the absolute units of cd/m^2.')
-
-#         return L
-
-
-#     def  get_peak_luminance( self ):
-#         return self.L_max
-
-
-#     def get_black_level( self ):
-#         return self.L_min
-
-#     # Print the display specification
-#     def print( self ):
-#         Y_black = self.get_black_level()
-
-#         logging.info('Photometric display model:')
-#         logging.info('  Absolute photometric/colorimetric values')
 
 
 # Use this class to compute the effective resolution of a display in pixels
@@ -669,34 +489,33 @@ class vvdp_display_geometry:
             logging.info( '  Pixels-per-degree (center): {ppd:.2f}'.format(ppd=self.get_ppd()) )
 
     @classmethod
-    def load( cls, display_name ):
+    def load( cls, display_name, config_paths=[] ):
 
-        models_file = utils.config_files.find( "display_models.json" )
+        models_file = utils.config_files.find( "display_models.json", config_paths )
         models = utils.json2dict(models_file)
 
-        for mk in models:
-            if mk == display_name:
-                model = models[mk]
-                assert "resolution" in model
+        if not display_name in models:
+            logging.error(f"Display model: '{display_name}' not found in '{models_file}'")
+            raise RuntimeError( 'Display model not found' )
 
-                inches_to_meters = 0.0254
+        model = models[display_name]
+        assert "resolution" in model
 
-                W, H = model["resolution"]
+        inches_to_meters = 0.0254
 
-                if "fov_diagonal" in model: fov_diagonal = model["fov_diagonal"]
-                else:                       fov_diagonal = None
+        W, H = model["resolution"]
 
-                if   "viewing_distance_meters" in model: distance_m = model["viewing_distance_meters"]
-                elif "viewing_distance_inches" in model: distance_m = model["viewing_distance_inches"] * inches_to_meters
-                else:                                    distance_m = None
+        if "fov_diagonal" in model: fov_diagonal = model["fov_diagonal"]
+        else:                       fov_diagonal = None
 
-                if   "diagonal_size_meters" in model: diag_size_inch = model["diagonal_size_meters"] / inches_to_meters
-                elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"] 
-                else:                                 diag_size_inch = None
+        if   "viewing_distance_meters" in model: distance_m = model["viewing_distance_meters"]
+        elif "viewing_distance_inches" in model: distance_m = model["viewing_distance_inches"] * inches_to_meters
+        else:                                    distance_m = None
 
-                obj = vvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
-                return obj
+        if   "diagonal_size_meters" in model: diag_size_inch = model["diagonal_size_meters"] / inches_to_meters
+        elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"] 
+        else:                                 diag_size_inch = None
 
-        logging.error("Error: Display model '%s' not found in display_models.json" % display_name)
-        return None
+        obj = vvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
+        return obj
 

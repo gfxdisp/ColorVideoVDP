@@ -286,7 +286,7 @@ Use ffmpeg to read video frames, one by one.
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
 
         fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -318,7 +318,7 @@ class video_source_video_file(video_source_dm):
             raise RuntimeError( "Inconsistent frame rates" )
 
 
-        super().__init__(display_photometry=display_photometry)
+        super().__init__(display_photometry=display_photometry, config_paths=config_paths)
 
         if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry.EOTF!="PQ":
             logging.warning( f"Video color transfer function ({self.test_vidr.color_transfer}) inconsistent with EOTF of the display model ({self.dm_photometry.EOTF})" )
@@ -421,12 +421,12 @@ Recognize whether the file is an image of video and wraps an appropriate video_s
 '''
 class video_source_file(video_source):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
         # these extensions switch mode to images instead
-        image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".dds", ".exr", ".hdr"]
+        image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".tif", ".dds", ".exr", ".hdr"]
 
-        assert os.path.isfile(test_fname), f'File does not exists: "{test_fname}"'
-        assert os.path.isfile(reference_fname), f'File does not exists: "{reference_fname}"'
+        assert os.path.isfile(test_fname), f'Test file does not exists: "{test_fname}"'
+        assert os.path.isfile(reference_fname), f'Reference file does not exists: "{reference_fname}"'
 
         extension = os.path.splitext(test_fname)[1].lower()
         if extension in image_extensions:
@@ -438,7 +438,7 @@ class video_source_file(video_source):
             if not full_screen_resize is None:
                 logging.error("full-screen-resize not implemented for images.")
                 raise RuntimeError( "Not implemented" )
-            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry )            
+            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )            
 
             hdr_extensions = [".exr", ".hdr"]
             if extension in hdr_extensions:
@@ -453,6 +453,7 @@ class video_source_file(video_source):
             vs_class = video_source_video_file_preload if preload else video_source_video_file
             self.vs = vs_class( test_fname, reference_fname, 
                                 display_photometry=display_photometry, 
+                                config_paths=config_paths,
                                 frames=frames, 
                                 full_screen_resize=full_screen_resize, 
                                 resize_resolution=resize_resolution, 

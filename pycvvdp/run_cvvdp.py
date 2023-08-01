@@ -73,20 +73,21 @@ def np2img(np_srgb, imgfile):
 # -----------------------------------
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate ColourVideoVDP on a set of videos")
-    parser.add_argument("--test", type=str, nargs='+', required = False, help="list of test images/videos")
-    parser.add_argument("--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
+    parser.add_argument("-t", "--test", type=str, nargs='+', required = False, help="list of test images/videos")
+    parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
     parser.add_argument("--device", type=str,  default='cuda:0', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda:0', 'cuda:1', ...]")
     parser.add_argument("--heatmap", type=str, default="none", help="type of difference map (none, raw, threshold, supra-threshold).")
-    parser.add_argument("--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
-    parser.add_argument("--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
-    parser.add_argument("--config-dir", type=str, default=None, help="A path to cvvdp configuration files: display_models.json, cvvdp_parameters.json and others.")
-    parser.add_argument("--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
-    parser.add_argument("--nframes", type=int, default=-1, help="the number of video frames you want to compare")
-    parser.add_argument("--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
+    parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
+    parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
+    parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
+    parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
+    parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
+    parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
+    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
-    parser.add_argument("--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
-    parser.add_argument("--verbose", action='store_true', default=False, help="Print out extra information.")
+    parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
+    parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
     args = parser.parse_args()
     return args
@@ -101,11 +102,8 @@ def main():
         
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
-    if not args.config_dir is None:
-        pycvvdp.utils.config_files.set_config_dir(args.config_dir)
-
     if args.display == "?":
-        pycvvdp.vvdp_display_photometry.list_displays()
+        pycvvdp.vvdp_display_photometry.list_displays(args.config_paths)
         return
 
     if args.test is None or args.ref is None:
@@ -178,8 +176,8 @@ def main():
         sys.exit()
 
     metrics = []
-    display_photometry = pycvvdp.vvdp_display_photometry.load(args.display)
-    display_geometry = pycvvdp.vvdp_display_geometry.load(args.display)
+    display_photometry = pycvvdp.vvdp_display_photometry.load(args.display, config_paths=args.config_paths)
+    display_geometry = pycvvdp.vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
 
     for mm in args.metric:
         if mm == 'cvvdp':
@@ -187,6 +185,7 @@ def main():
                                 heatmap=args.heatmap, 
                                 device=device,
                                 temp_padding=args.temp_padding,
+                                config_paths=args.config_paths,
                                 quiet=args.quiet )
             metrics.append( fv )
         elif mm == 'pu-psnr-rgb':
@@ -217,6 +216,7 @@ def main():
             with torch.no_grad():
                 vs = pycvvdp.video_source_file( test_file, ref_file, 
                                                 display_photometry=display_photometry, 
+                                                config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize, 
                                                 resize_resolution=display_geometry.resolution, 
                                                 frames=args.nframes,
@@ -249,8 +249,14 @@ def main():
                         dest_name = os.path.join(out_dir, base + "_heatmap.png")
                         logging.info("Writing heat map '" + dest_name + "' ...")
                         np2img(torch.squeeze(stats["heatmap"].permute((2,3,4,1,0)), dim=4).cpu().numpy(), dest_name)
-                        
-                    del stats
+
+                if args.distogram != -1 and not stats is None:
+                    dest_name = os.path.join(out_dir, base + "_distogram.png")                    
+                    logging.info("Writing distogram '" + dest_name + "' ...")
+                    jod_max = args.distogram
+                    mm.export_distogram( stats, dest_name, jod_max=jod_max )
+
+                del stats
 
     #     del test_vid
     #     torch.cuda.empty_cache()

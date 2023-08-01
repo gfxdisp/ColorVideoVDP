@@ -1,3 +1,8 @@
+# v0.2
+* Updated ColourVideoVDP model with cross-channel masking and more advanced pooling, different calibration and better prediction accuracy.
+* Added distograms
+* Changed handling of paths to configuration files
+
 # v0.1.1 
 * Heatmaps are now saved using ffmpeg's mpeg4 codec for better comparibility across platforms
 * Fixed freezing on Windows when reading long videos (due to bug in python's /dev/null implementation)

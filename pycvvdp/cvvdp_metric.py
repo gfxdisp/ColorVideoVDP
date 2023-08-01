@@ -18,6 +18,14 @@ import torch.utils.benchmark as torchbench
 import logging
 from datetime import date
 
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib import ticker
+    from matplotlib.colors import Normalize
+    has_matplotlib = True
+except:
+    has_matplotlib = False
+
 from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
@@ -45,7 +53,7 @@ from pycvvdp.csf import castleCSF
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
@@ -64,12 +72,12 @@ class cvvdp(vq_metric):
         else:
             self.device = device
         
-        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry)
+        self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry, config_paths=config_paths)
 
         self.temp_resample = False  # When True, resample the temporal features to nominal_fps
         self.nominal_fps = 240
 
-        self.load_config()
+        self.load_config(config_paths)
         if calibrated_ckpt is not None:
             self.update_from_checkpoint(calibrated_ckpt)
 
@@ -88,10 +96,10 @@ class cvvdp(vq_metric):
 
         self.heatmap_pyr = None
 
-    def load_config( self ):
+    def load_config( self, config_paths ):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
-        self.parameters_file = utils.config_files.find( "cvvdp_parameters.json" )
+        self.parameters_file = utils.config_files.find( "cvvdp_parameters.json", config_paths )
         logging.debug( f"Loading ColourVideoVDP parameters from '{self.parameters_file}'" )
         parameters = utils.json2dict(self.parameters_file)
 
@@ -108,13 +116,18 @@ class cvvdp(vq_metric):
         self.beta_sch = torch.as_tensor( parameters['beta_sch'], device=self.device ) # The exponent of the summation over spatial channels (p-norm)
         self.csf_sigma = torch.as_tensor( parameters['csf_sigma'], device=self.device )
         self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
-        #self.masking_model = parameters['masking_model']
+        self.masking_model = parameters['masking_model']
+        self.csf = parameters['csf']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
-        self.mask_q_sust = torch.as_tensor( parameters['mask_q_sust'], device=self.device )
-        self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
+
+        if 'mask_q' in parameters:
+            self.mask_q = torch.as_tensor( parameters['mask_q'], device=self.device )
+        else:
+            self.mask_q_sust = torch.as_tensor( parameters['mask_q_sust'], device=self.device )
+            self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
         self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
 
         self.do_xchannel_masking = True if parameters['xchannel_masking'] == "on" else False
@@ -135,10 +148,16 @@ class cvvdp(vq_metric):
         self.dclamp_par = torch.as_tensor( parameters['dclamp_par'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
 
+        self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
+        self.bfilt_duration = parameters['bfilt_duration']
+
         self.omega = [0, 5]
 
-        self.csf = castleCSF(contrast=self.contrast, device=self.device)
+        self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
 
+        # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
+        self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
+        
         # other parameters
         self.debug = False
 
@@ -157,16 +176,16 @@ class cvvdp(vq_metric):
                     setattr(self, key[len(prefix):], value.to(self.device))
         
         
-    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
+    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[]):
         if display_photometry is None:
-            self.display_photometry = vvdp_display_photometry.load(display_name)
+            self.display_photometry = vvdp_display_photometry.load(display_name, config_paths)
             self.display_name = display_name
         else:
             self.display_photometry = display_photometry
             self.display_name = "unspecified"
         
         if display_geometry is None:
-            self.display_geometry = vvdp_display_geometry.load(display_name)
+            self.display_geometry = vvdp_display_geometry.load(display_name, config_paths)
         else:
             self.display_geometry = display_geometry
 
@@ -356,9 +375,9 @@ class cvvdp(vq_metric):
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, heatmap, use_reentrant=False)
+                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, use_reentrant=False)
             else:
-                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, heatmap)
+                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
@@ -386,11 +405,11 @@ class cvvdp(vq_metric):
 
 
         rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1], fps)
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
-        stats['rho_band'] = rho_band # Thespatial frequency per band
+        stats['rho_band'] = rho_band # The spatial frequency per band in cpd
         stats['frames_per_second'] = fps
         stats['width'] = width
         stats['height'] = height
@@ -424,7 +443,7 @@ class cvvdp(vq_metric):
 
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
+    def do_pooling_and_jods(self, Q_per_ch, base_rho_band, fps):
         # Q_per_ch[channel,frame,sp_band]
 
         no_channels = Q_per_ch.shape[0]
@@ -446,12 +465,27 @@ class cvvdp(vq_metric):
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
         Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
-        Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
 
         is_image = (no_frames==1)
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
 
-        Q    = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
+        if not is_image and self.do_Bloch_int:
+            bfilt_len = int(math.ceil(self.bfilt_duration * fps))
+            Q_in = Q_sc.permute(0,2,1)
+            B_filt = torch.ones( (1,1,bfilt_len), device=Q_in.device )/float(bfilt_len)
+            Q_bi = torch.nn.functional.conv1d(Q_in,B_filt, padding="valid")
+            if not self.block_channels is None:
+                Q_tc = self.lp_norm(Q_bi[self.block_channels,...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
+            else:
+                Q_tc = self.lp_norm(Q_bi,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=2, normalize=True)   # Sum across frames
+        else:
+            if not self.block_channels is None:
+                Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
+            else:
+                Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
+
         Q = Q.squeeze()
 
         Q_JOD = self.met2jod(Q)            
@@ -477,7 +511,7 @@ class cvvdp(vq_metric):
         Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
         return Q_JOD
 
-    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, heatmap):
+    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
@@ -538,7 +572,8 @@ class cvvdp(vq_metric):
 
                 # We need to reduce the differences across the channels using the right weights
                 # Weights for the channels: sustained, RG, YV, [transient]
-                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1)
+                t_int = self.image_int if is_image else 1.0
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
                 self.heatmap_pyr.set_lband(bb, D_chr)
 
@@ -599,15 +634,20 @@ class cvvdp(vq_metric):
     def mask_func_perc_norm(self, G, G_mask ):
         # Masking on perceptually normalized quantities (as in Daly's VDP)        
         p = self.mask_p
-        # q_sust = self.torch_scalar(self.mask_q_sust)
-        # q_trans = self.torch_scalar(self.mask_q_trans)
-        if G_mask.shape[0]==3: # image
-            #q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], device=self.device ).view(3,1,1,1)
-            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust], dim=0 ).view(3,1,1,1)
-        else: # video
-            #q = torch.as_tensor( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], device=self.device ).view(4,1,1,1)
-            q = torch.stack( [self.mask_q_sust, self.mask_q_sust, self.mask_q_sust, self.mask_q_trans], dim=0 ).view(4,1,1,1)
-        R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
+        if self.masking_model == "none":
+            R = torch.pow(G,p)
+        else:
+            no_channels = G_mask.shape[0]
+            if hasattr( self, 'mask_q' ):
+                q = self.mask_q[0:no_channels].view(no_channels,1,1,1)
+            else:
+                q_sust = self.mask_q_sust.clamp(1.0, 7.0)
+                q_trans = self.mask_q_trans.clamp(1.0, 7.0)
+                if no_channels==3: # image
+                    q = torch.stack( [q_sust, q_sust, q_sust], dim=0 ).view(3,1,1,1)
+                else: # video
+                    q = torch.stack( [q_sust, q_sust, q_sust, q_trans], dim=0 ).view(4,1,1,1)
+            R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
 
 
@@ -683,9 +723,6 @@ class cvvdp(vq_metric):
 
         return F, omega_bands
 
-#    def torch_scalar(self, val, dtype=torch.float32):
-#        return torch.tensor(val, dtype=dtype, device=self.device) if not torch.is_tensor(val) else val.to(dtype)
-
     def short_name(self):
         return "cvvdp"
 
@@ -742,3 +779,63 @@ class cvvdp(vq_metric):
 
         with open(fname, 'w') as f:
             json.dump(parameters, f, indent=4)
+
+
+    # Export the visualization of distortions over time
+    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
+        # Q_per_ch[channel,frame,sp_band]
+        Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
+        ch_no = Q_per_ch.shape[0]    
+
+        Q_per_ch[:,:,-1] *= self.baseband_weight
+        Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
+        dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
+
+        if jod_max is None:
+            jod_max = math.ceil(dmap.max())
+        
+        dmap /= jod_max
+
+        fps = stats['frames_per_second']
+        band_no = Q_per_ch.shape[2]
+        frame_no = Q_per_ch.shape[1]
+        rho_band = stats['rho_band']
+        band_labels = [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
+        band_labels[0] = "BB"
+
+        if not has_matplotlib:
+            raise RuntimeError( 'matplotlib is missing. Please install it before exporting distograms.')
+            
+        fig, axs = plt.subplots(nrows=ch_no, figsize=(base_size*frame_no/60+0.5, base_size))
+
+        ch_labels = ["A-sust", "RG", "YV", "A-trans"]
+        cmap = plt.colormaps["plasma"]
+
+        for kk in range(ch_no):
+            dmap_ch = np.flip(np.transpose(dmap[kk,:,:].clip(0.,1.)),axis=0)
+            axs[kk].imshow(dmap_ch, cmap=cmap, aspect="auto" )
+            axs[kk].set_ylabel( ch_labels[kk] )
+            axs[kk].yaxis.set_major_locator(ticker.FixedLocator(range(0,len(band_labels)*2,2)))
+            axs[kk].yaxis.set_minor_locator(ticker.MultipleLocator(1.0))
+            axs[kk].set_yticklabels(band_labels)
+            if kk==(ch_no-1):
+                axs[kk].xaxis.set_major_formatter(lambda x, pos: str(int(x/fps*1000)))
+                axs[kk].set_xlabel( 'Time [ms]')
+                axs[kk].xaxis.set_minor_locator(ticker.MultipleLocator(1.0))
+            else:
+                axs[kk].set_xticks([])
+
+        plt.subplots_adjust(bottom=0.1, right=0.9, top=0.9)
+        cax = plt.axes([0.925, 0.1, 0.025, 0.8])
+        plt.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, jod_max), cmap=cmap), cax=cax, cmap=cmap)
+
+        # fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=cmap),
+        #             ax=axs[0], label="JODs")
+
+        plt.savefig( fname, bbox_inches='tight' )  
+
+        # fig.show()
+        # plt.waitforbuttonpress()        
+        
+
+

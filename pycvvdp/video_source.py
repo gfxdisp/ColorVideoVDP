@@ -58,6 +58,20 @@ class video_source:
             self.warning_shown = True
             logging.warning( 'Image contains one or more Inf values' )
 
+        if not hasattr( self, "first_frame" ):
+            self.first_frame = True
+
+        if self.first_frame:
+            self.first_frame = False
+            f_mean = torch.mean(frame[:,0,:,:,:])
+            f_max = torch.max(frame[:,0,:,:,:])
+            f_min = torch.min(frame[:,0,:,:,:])
+            logging.debug( f"Content mean={f_mean}, max={f_max}, min={f_min}" )
+
+            if not self.warning_shown and f_mean <= 1:
+                logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
+
+
 
 """
 Function for changing the order of dimensions, for example, from "WHC" (width, height, colour) to "BCHW" (batch, colour, height, width)
@@ -113,12 +127,12 @@ This video_source uses a photometric display model to convert input content (e.g
 """
 class video_source_dm( video_source ):
 
-    def __init__( self,  display_photometry='sdr_4k_30' ):
+    def __init__( self,  display_photometry='sdr_4k_30', config_paths=[] ):
 
 #        self.color_trans = ColorTransform(color_space_name)
 
         if isinstance( display_photometry, str ):
-            self.dm_photometry = vvdp_display_photometry.load(display_photometry) 
+            self.dm_photometry = vvdp_display_photometry.load(display_photometry, config_paths) 
         elif isinstance( display_photometry, vvdp_display_photometry ):
             self.dm_photometry = display_photometry
         else:
@@ -179,9 +193,9 @@ class video_source_array( video_source_dm ):
     #   class
     # color_space_name - name of the colour space (see
     #   fvvdp_data/color_spaces.json)
-    def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30' ):
+    def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30', config_paths=[], ):
 
-        super().__init__(display_photometry=display_photometry)        
+        super().__init__(display_photometry=display_photometry, config_paths=config_paths)        
 
         if test_video.shape != reference_video.shape:
             raise RuntimeError( 'Test and reference image/video tensors must be exactly the same shape' )
@@ -279,15 +293,14 @@ class video_source_array( video_source_dm ):
 
 
 class video_source_packed_array( video_source_dm ):
-    def __init__(self, test_video, reference_video, fps, display_photometry='sdr_4k_30', color_space_name='sRGB', yuv=True, resize_mode='bilinear'):
-        super().__init__(display_photometry, color_space_name)
+    def __init__(self, test_video, reference_video, fps, display_photometry='sdr_4k_30', config_paths=[], yuv=True, resize_mode='bilinear'):
+        super().__init__(display_photometry, config_paths)
 
         self.fps = fps
         self.is_video = fps > 0
         self.test_video = test_video
         self.reference_video = reference_video
         self.yuv = yuv
-        self.color_space = color_space_name
         self.resize_mode = resize_mode
 
     def get_frames_per_second(self):
