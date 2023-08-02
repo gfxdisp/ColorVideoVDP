@@ -13,7 +13,7 @@ the FovVideoVDP metric (see pytorch_examples).
 """
 class psnr_rgb(vq_metric):
 
-    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None, config_paths=[]):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -23,7 +23,7 @@ class psnr_rgb(vq_metric):
         else:
             self.device = device
 
-        self.set_display_model( display_name=display_name, display_photometry=display_photometry )
+        self.set_display_model( display_name=display_name, display_photometry=display_photometry, config_paths=config_paths )
         self.color_space = color_space # input content colour space
 
 
@@ -59,7 +59,7 @@ PU21-PSNR-Y metric. Usage is same as the FovVideoVDP metric (see pytorch_example
 """
 class pu_psnr_y(vq_metric):
 
-    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None, config_paths=[]):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -69,7 +69,7 @@ class pu_psnr_y(vq_metric):
         else:
             self.device = device
 
-        self.set_display_model( display_name=display_name, display_photometry=display_photometry )
+        self.set_display_model( display_name=display_name, display_photometry=display_photometry, config_paths=config_paths )
         self.color_space = color_space # input content colour space
 
         self.pu = PU()

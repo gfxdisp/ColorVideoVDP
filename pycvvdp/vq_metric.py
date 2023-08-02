@@ -48,9 +48,9 @@ class vq_metric:
     def get_info_string(self):
         return None
 
-    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None):
+    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[]):
         if display_photometry is None:
-            self.display_photometry = vvdp_display_photometry.load(display_name)
+            self.display_photometry = vvdp_display_photometry.load(display_name, config_paths)
             self.display_name = display_name
         else:
             self.display_photometry = display_photometry
