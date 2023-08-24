@@ -17,7 +17,7 @@ class cvvdp_nn(cvvdp):
     rho_dims = 1                # Condition on base rho band
 
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False,
-                 hidden_dims=8, num_layers=2, dropout=0.2, masking='base', pooling='base', ckpt=None, config_paths=[]):
+                 hidden_dims=8, num_layers=2, dropout=0.2, masking='base', pooling='base', calibrated_ckpt=None, config_paths=[]):
         from torchvision.ops import MLP
         assert masking in ('base', 'mlp')
         self.masking = masking
@@ -38,7 +38,10 @@ class cvvdp_nn(cvvdp):
             )
             self.pooling_net = torch.nn.Sequential(recurrent_net, linear)
 
-        super().__init__(display_name, display_photometry, display_geometry, heatmap, quiet, device, temp_padding, use_checkpoints, ckpt, config_paths=config_paths)
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         calibrated_ckpt=calibrated_ckpt)
 
         if masking == 'mlp':
             self.masking_net.to(self.device)
@@ -87,10 +90,10 @@ class cvvdp_nn(cvvdp):
             feat_in = torch.stack((T, R, S, T*S, R*S, torch.abs(T - R)*S), dim=-1)
             batch_size = 2560*1440     # Split larger than 2k into multiple batches
             mlp_out = torch.cat([self.masking_net(batch) for batch in feat_in.split(batch_size)]).squeeze(-1)
-            D = mlp_out.reshape(c, n, h, w)     # v1
-            #D = D_base * mlp_out.reshape(c, n, h, w)        # v2
-            #D = ((S*torch.abs(T - R)**self.mask_p) /                                # v3
-            #     (1 + torch.nn.functional.softplus(mlp_out))).reshape(c, n, h, w)   # v3
+            # D = mlp_out.reshape(c, n, h, w)     # v1
+            # D = D_base * mlp_out.reshape(c, n, h, w)        # v2
+            D = ((S*torch.abs(T - R)**self.mask_p) /                                # v3
+                (1 + torch.nn.functional.softplus(mlp_out))).reshape(c, n, h, w)    # v3
         else:
             D = super().apply_masking_model(T, R, S)
         return D
