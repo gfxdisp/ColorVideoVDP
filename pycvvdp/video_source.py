@@ -45,7 +45,7 @@ class video_source:
         pass
 
     # Check whether pixel values are valid, display warning if it is not the case
-    def check_if_valid( self, frame ):
+    def check_if_valid( self, frame, target_colorspace ):
 
         if not hasattr( self, "warning_shown" ):
             self.warning_shown = False
@@ -61,7 +61,7 @@ class video_source:
         if not hasattr( self, "first_frame" ):
             self.first_frame = True
 
-        if self.first_frame:
+        if self.first_frame and not target_colorspace.startswith('display_encoded'):
             self.first_frame = False
             f_mean = torch.mean(frame[:,0,:,:,:])
             f_max = torch.max(frame[:,0,:,:,:])
@@ -171,7 +171,7 @@ class video_source_dm( video_source ):
             # else:
             #     I = L_lin
 
-        self.check_if_valid(I)
+        self.check_if_valid(I, target_colorspace)
         return I
 
 

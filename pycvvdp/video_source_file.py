@@ -453,7 +453,7 @@ class video_source_file(video_source):
             if not full_screen_resize is None:
                 logging.error("full-screen-resize not implemented for images.")
                 raise RuntimeError( "Not implemented" )
-            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )            
+            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
 
             hdr_extensions = [".exr", ".hdr"]
             if extension in hdr_extensions:
