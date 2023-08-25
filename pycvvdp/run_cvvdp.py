@@ -16,8 +16,9 @@ import pycvvdp
 
 #from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
 # from pyfvvdp.visualize_diff_map import visualize_diff_map
-#from pytorch_msssim import SSIM
 import pycvvdp.utils as utils
+
+from pycvvdp.ssim_metric import ssim_metric
 
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
@@ -84,7 +85,7 @@ def parse_args():
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
@@ -196,6 +197,10 @@ def main():
             if args.heatmap:
                 logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
             metrics.append( pycvvdp.pu_psnr_y(device=device) )
+        elif mm == 'ssim':
+            if args.heatmap:
+                logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
+            metrics.append( ssim_metric(device=device) )
         else:
             raise RuntimeError( f"Unknown metric {mm}")
 
