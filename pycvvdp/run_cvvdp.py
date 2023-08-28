@@ -128,7 +128,7 @@ def main():
         device = torch.device(args.device)
     else:
         if args.device != 'cpu':
-            logging.warn(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
+            logging.warning(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
         device = torch.device('cpu')
 
     logging.info("Running on device: " + str(device))
