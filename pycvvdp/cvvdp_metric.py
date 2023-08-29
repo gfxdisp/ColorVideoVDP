@@ -838,4 +838,40 @@ class cvvdp(vq_metric):
         # plt.waitforbuttonpress()        
         
 
+class cvvdp_image(vq_metric):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
+        # Use GPU if available
+        if device is None:
+            if torch.cuda.is_available() and torch.cuda.device_count()>0:
+                self.device = torch.device('cuda:0')
+            else:
+                self.device = torch.device('cpu')
+        else:
+            self.device = device
 
+        # Create a dummy display photometry object that does not change input frame
+        self.cvvdp_metric = cvvdp(display_name, None, None, config_paths, heatmap, quiet, self.device, temp_padding, use_checkpoints, calibrated_ckpt)
+
+    def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[]):
+        self.linear_dm = vvdp_display_photo_eotf(display_photometry.Y_peak, contrast=display_photometry.contrast, source_colorspace='BT.2020-linear', E_ambient=display_photometry.E_ambient, k_refl=display_photometry.k_refl)
+        self.cvvdp_metric.set_display_model(display_photometry=self.linear_dm, display_geometry=display_geometry)
+
+    def predict_video_source(self, vid_source):
+
+        _, _, N_frames = vid_source.get_video_size()
+
+        avg = 0
+        for ff in range(N_frames):
+            T = vid_source.get_test_frame(ff, device=self.device, colorspace='RGB2020')
+            R = vid_source.get_reference_frame(ff, device=self.device, colorspace='RGB2020')
+            test_vs = video_source_array( T, R, fps=0, display_photometry=self.linear_dm )
+            Q, _ = self.cvvdp_metric.predict_video_source(test_vs)
+            avg += Q / N_frames
+
+        return avg, None
+
+    def short_name(self):
+        return "cvvdp-image"
+
+    def quality_unit(self):
+        return "JOD"

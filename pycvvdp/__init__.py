@@ -1,4 +1,4 @@
-from pycvvdp.cvvdp_metric import cvvdp
+from pycvvdp.cvvdp_metric import cvvdp, cvvdp_image
 from pycvvdp.cvvdp_nn_metric import cvvdp_nn
 from pycvvdp.pupsnr import pu_psnr_y, pu_psnr_rgb2020, psnr_rgb
 from pycvvdp.e_itp import e_itp
