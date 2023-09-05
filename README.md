@@ -60,9 +60,9 @@ See [Command line interface](#command-line-interface) for further details. Color
 **Table of contents**
 - [Display specification](#display-specification)
     - [Custom specification](#custom-display-specification)
-    - [HDR content](#hdr-content)
-    - [Reporting metric results](#reporting-metric-results)
-    - [Predicting quality scores](#predicted-quality-scores)
+- [HDR content](#hdr-content)
+- [Reporting metric results](#reporting-metric-results)
+- [Predicting quality scores](#predicted-quality-scores)
 - [Usage](#example-usage)
     - [Command line interface](#command-line-interface)
     - [Visualization](#visualization)
@@ -82,11 +82,11 @@ The command line version of ColorVideoVDP can take as input HDR video streams en
 
 ### Custom display specification
 
-If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`. The format of `display_models.json` is explained [vvdp_data/README.md](here).
+If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`. The format of `display_models.json` is explained [here](tree/main/pycvvdp/vvdp_data#readme).
 
 If you run the metric from Python code, the display photometry and geometry can be specified by passing `display_name` parameter to the metric. Alternatively, if you need more flexibility in specifying display geometry (size, viewing distance) and its colorimetry, you can instead pass objects of the classes `vvdp_display_geometry`, `vvdp_display_photo_gog` for most SDR displays, and `vvdp_display_photo_absolute` for HDR displays. You can also create your own subclasses of those classes for custom display specification. 
 
-### HDR content
+## HDR content
 
 (Python command line only) You can use the metric to compare: 
 
@@ -102,13 +102,13 @@ pip install pyexr
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 ```
 
-### Reporting metric results
+## Reporting metric results
 
 When reporting the results of the metric, please include the string returned by the metric, such as:
 `"ColorVideoVDP v0.3, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
 This is to ensure that you provide enough details to reproduce your results. 
 
-### Predicted quality scores
+## Predicted quality scores
 
 ColorVideoVDP reports image/video quality in the JOD (Just-Objectionable-Difference) units. The highest quality (no difference) is reported as 10 and lower values are reported for distorted content. In case of very strong distortion, or when comparing two unrelated images, the quality value can drop below 0. 
 
@@ -125,9 +125,9 @@ The main advantage of JODs is that they (a) should be linearly related to the pe
   </tr>
 </table>
 
-## Example usage
+# Example usage
 
-### Command line interface
+## Command line interface
 The main script to run the model on a set of images or videos is [run_cvvdp.py](pycvvdp/run_cvvdp.py), from which the binary `cvvdp` is created. Run `cvvdp --help` for detailed usage information.
 
 For the first example, we will compare the performance of ColorVideoVDP to the popular Delta E 2000 color metric. A video was degraded with 3 different color artifacts using ffmpeg:
@@ -149,7 +149,7 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 | Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.8960 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
 | Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 7.1682 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
 
-### Visualization
+## Visualization
 
 In addition to the single-valued quality scored in the JOD units, ColorVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
 * `supra-threshold` - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
@@ -160,7 +160,7 @@ The `--distogram` command line argument can be followed by a floating point valu
 
 Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
 
-### Configuration files
+## Configuration files
 
 Configuration files contain a list of available display models (`display_models.json`), colour spaces (`color_spaces.json`) and the parameters of the metric (`cvvdp_parameters.json`). Those are located by default in `pycvvdp/vvdp_data` folder. Different locations could be specified with the `--config-paths` argument or the `CVVDP_PATH` environment variable. 
 
@@ -176,7 +176,7 @@ To check which `display_models.json` file is used, run `cvvdp` with `--display ?
 
 To check which `cvvdp_parameters.json` file is used, run `cvvdp` with `--verbose`.
 
-### Low-level Python interface
+## Low-level Python interface
 ColorVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class.
 
 ```python
@@ -195,7 +195,7 @@ Below, we show an example comparing ColorVideoVDP to the popular SSIM metric. Wh
 
 More examples can be found in these [example scripts](examples).
 
-## Release notes
+# Release notes
 
 * v0.3.0 (04/Sep/2023) - First public release
 
