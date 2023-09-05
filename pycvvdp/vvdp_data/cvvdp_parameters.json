@@ -1,6 +1,6 @@
 {
-    "version": "0.2",
-    "__comment": "The base model prepared for SIGGRAPH Asia 2023 submission.",
+    "version": "0.3",
+    "__comment": "The base model before the final publication.",
     "calibration_date": "18/05/2023",
     "internal_model_name": "cvvdp_0_2",
     "mask_p": 2.316437244415283,

@@ -1,3 +1,8 @@
+# v0.3 (05/09/2023)
+* Added value range checks when the metric is running on HDR data (to avoid passing relative values)
+* Added SSIM as an alternative metric
+* Better handling of paths to configuration files
+
 # v0.2
 * Updated ColourVideoVDP model with cross-channel masking and more advanced pooling, different calibration and better prediction accuracy.
 * Added distograms
