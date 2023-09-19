@@ -1,6 +1,12 @@
 classdef cvvdp
-    %UNTITLED2 Summary of this class goes here
-    %   Detailed explanation goes here
+    % A wrapper class to run ColourVideoVDP from matlab
+    %
+    % Example:
+    % v = cvvdp( 'cvvdp' ) % the string must be a name of conda
+    %                      % environment with installed cvvdp
+    % img_ref = imread( '../example_media/wavy_facade.png' );
+    % img_test = imnoise( img_ref, 'gaussian', 0, 0.001 );
+    % v.cmp( img_test, img_ref, 'standard_fhd' )
 
     properties
         conda_env
@@ -11,19 +17,22 @@ classdef cvvdp
             obj.conda_env = conda_env;
         end
 
-        function jod = cmp(obj, img_test, img_ref, display)
+        function jod = cmp(obj, img_test, img_ref, display, fps)
             arguments
                 obj
                 img_test {mustBeReal}
                 img_ref {mustBeReal}
                 display = 'standard_4k'
+                fps (1,1) {mustBePositive} = 30
             end
             
-            test_file = strcat( tempname(), '.png' );
-            ref_file = strcat( tempname(), '.png' );
+            test_file = strcat( tempname(), '.mat' );
+            ref_file = strcat( tempname(), '.mat' );
 
-            imwrite( img_test, test_file );
-            imwrite( img_ref, ref_file );
+            save( test_file, 'img_test', 'fps' )
+            save( ref_file, 'img_ref', 'fps' )
+            %imwrite( img_test, test_file );
+            %imwrite( img_ref, ref_file );
             
             cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ' --quiet' ];
 
