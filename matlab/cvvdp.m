@@ -17,27 +17,45 @@ classdef cvvdp
             obj.conda_env = conda_env;
         end
 
-        function jod = cmp(obj, img_test, img_ref, display, fps)
+        function jod = cmp(obj, img_test, img_ref, display, options )
             arguments
                 obj
                 img_test {mustBeReal}
                 img_ref {mustBeReal}
                 display = 'standard_4k'
-                fps (1,1) {mustBePositive} = 30
+                options.fps (1,1) {mustBePositive} = 30
+                options.ppd (1,1) {mustBeNumeric} = -1
             end
             
+            if isa( img_test, 'double' )
+                img_test = single(img_test);
+            end
+            if isa( img_ref, 'double' )
+                img_ref = single(img_ref);
+            end
+
             test_file = strcat( tempname(), '.mat' );
             ref_file = strcat( tempname(), '.mat' );
 
+            ppd = options.ppd;
+            fps = options.fps;
             save( test_file, 'img_test', 'fps' )
             save( ref_file, 'img_ref', 'fps' )
             %imwrite( img_test, test_file );
             %imwrite( img_ref, ref_file );
             
-            cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ' --quiet' ];
+            if ppd>0
+                ppd_arg = sprintf( ' --pix-per-deg %g', ppd );
+            else
+                ppd_arg = '';
+            end
+
+            cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, ' --quiet' ];
 
             if ispc()
                 cmd = [ '"%PROGRAMFILES%\Git\bin\sh.exe" -l -c ''', cmd, '''' ];
+            else
+                cmd = [ '/usr/bin/bash -l -c ''', cmd, '''' ];
             end
 
             [status, cmdout] = system( cmd );

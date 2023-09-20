@@ -87,6 +87,7 @@ def parse_args():
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
     parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
+    parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
@@ -178,11 +179,15 @@ def main():
 
     metrics = []
     display_photometry = pycvvdp.vvdp_display_photometry.load(args.display, config_paths=args.config_paths)
-    display_geometry = pycvvdp.vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
+    if args.pix_per_deg is None:
+        display_geometry = pycvvdp.vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
+    else:
+        display_geometry = pycvvdp.vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
 
     for mm in args.metric:
         if mm == 'cvvdp':
-            fv = pycvvdp.cvvdp( display_name=args.display,
+            fv = pycvvdp.cvvdp( display_photometry=display_photometry,
+                                display_geometry=display_geometry,
                                 heatmap=args.heatmap, 
                                 device=device,
                                 temp_padding=args.temp_padding,
