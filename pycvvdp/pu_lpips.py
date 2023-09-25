@@ -23,7 +23,7 @@ class pu_lpips(vq_metric):
         # Default versions uses VGG net
         self.lpips = LPIPS(net=net)
         self.lpips.to(self.device)
-        self.colorspace = 'RGB2020'
+        self.colorspace = 'display_encoded_100nit'
 
     def predict_video_source(self, vid_source, frame_padding="replicate"):
         # T_vid and R_vid are the tensors of the size (1,3,N,H,W)
