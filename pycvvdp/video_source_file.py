@@ -1,5 +1,6 @@
 # Classes for reading images or videos from files so that they can be passed to FovVideoVDP frame-by-frame
 
+from asyncio.log import logger
 import os
 import imageio.v2 as io
 import numpy as np
@@ -434,7 +435,7 @@ class video_source_matlab( video_source_array ):
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[] ):
         test_mat = sio.loadmat(test_fname)
         ref_mat = sio.loadmat(reference_fname)
-        fps = 30 if not 'fps' in test_mat.keys() else test_mat['fps']
+        fps = 30 if not 'fps' in test_mat.keys() else float(test_mat['fps'])
 
         test_cnt = self.get_content(test_mat)
         ref_cnt = self.get_content(ref_mat)
