@@ -2,8 +2,8 @@ classdef cvvdp
     % A wrapper class to run ColourVideoVDP from matlab
     %
     % Example:
-    % v = cvvdp( 'cvvdp' ) % the string must be a name of conda
-    %                      % environment with installed cvvdp
+    % v = cvvdp( 'cvvdp' ); % the string must be a name of conda
+    %                       % environment with installed cvvdp
     % img_ref = imread( '../example_media/wavy_facade.png' );
     % img_test = imnoise( img_ref, 'gaussian', 0, 0.001 );
     % v.cmp( img_test, img_ref, 'standard_fhd' )
@@ -17,7 +17,7 @@ classdef cvvdp
             obj.conda_env = conda_env;
         end
 
-        function jod = cmp(obj, img_test, img_ref, display, options )
+        function [jod, heatmap] = cmp(obj, img_test, img_ref, display, options )
             arguments
                 obj
                 img_test {mustBeReal}
@@ -25,6 +25,7 @@ classdef cvvdp
                 display = 'standard_4k'
                 options.fps (1,1) {mustBePositive} = 30
                 options.ppd (1,1) {mustBeNumeric} = -1
+                options.heatmap {mustBeMember(options.heatmap, {'none', 'raw', 'threshold', 'supra-threshold'})} = 'none'
             end
             
             if isa( img_test, 'double' )
@@ -50,7 +51,15 @@ classdef cvvdp
                 ppd_arg = '';
             end
 
-            cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, ' --quiet' ];
+            if ~strcmp(options.heatmap, 'none')
+                tmp_dir = fileparts( test_file );
+                heatmap_arg = [ ' --heatmap ', options.heatmap, ' --output-dir ', strrep(tmp_dir, '\', '/') ];
+            else
+                heatmap_arg = '';
+            end
+                
+
+            cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, heatmap_arg, ' --quiet' ]; 
 
             if ispc()
                 cmd = [ '"%PROGRAMFILES%\Git\bin\sh.exe" -l -c ''', cmd, '''' ];
@@ -63,6 +72,17 @@ classdef cvvdp
                 error( 'cvvdp: Something went wrong:\n %s\n', cmdout )
             else
                 jod = str2double(cmdout);
+            end
+
+            if ~strcmp(options.heatmap, 'none')
+                heatmap_fn = [ test_file(1:(end-4)), '_heatmap.png' ];
+                if ~isfile( heatmap_fn )
+                    warning( 'cvvdp: Missing heatmap files - something went wrong' )
+                    heatmap = [];
+                else
+                    heatmap = imread( heatmap_fn );
+                    delete( heatmap_fn );
+                end
             end
 
             delete( test_file );

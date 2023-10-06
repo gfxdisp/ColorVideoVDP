@@ -443,14 +443,22 @@ class video_source_matlab( video_source_array ):
         if test_cnt.ndim != ref_cnt.ndim: # or (test_cnt.shape != ref_cnt.shape).any():
             raise RuntimeError( 'Matlab matrices must have the same number of dimensions and size.' )
 
+        chn_no=1
+        frame_no=1
         if test_cnt.ndim==2:
             dim_order="HW"
         elif test_cnt.ndim==4:
             dim_order="HWCF"
+            chn_no=test_cnt.shape[2]
+            frame_no=test_cnt.shape[3]
         elif test_cnt.ndim==3 and test_cnt.shape[-1]==3:
             dim_order="HWC"
+            chn_no=test_cnt.shape[2]
         else:
             dim_order="HWF"
+            frame_no=test_cnt.shape[2]
+
+        logger.debug( f"Loaded matlab matrices: width={ref_cnt.shape[1]} height={ref_cnt.shape[0]} color_channels={chn_no} frames={frame_no} fps={fps}" )
 
         super().__init__( test_cnt, ref_cnt, fps, dim_order=dim_order, display_photometry=display_photometry, config_paths=config_paths, )
 
