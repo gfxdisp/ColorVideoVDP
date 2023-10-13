@@ -105,7 +105,7 @@ class cvvdp_nn(cvvdp):
         # Q_per_ch[channel,frame,sp_band]
         feat_in = Q_per_ch.permute(1, 0, 2).flatten(start_dim=1)
         feat_intermediate, _ = self.pooling_net[0](feat_in)
-        feat_intermediate = torch.cat((feat_intermediate[-1], base_rho_band.unsqueeze(0)))
+        feat_intermediate = torch.cat((feat_intermediate[-1], torch.as_tensor(base_rho_band, device=self.device, dtype=torch.float32).unsqueeze(0)))
         Q = self.pooling_net[1](feat_intermediate).squeeze() * 10
         return Q
 
