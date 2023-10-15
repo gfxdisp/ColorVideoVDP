@@ -237,11 +237,14 @@ class YUVReader:
 
 class video_source_yuv_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', frames=-1, full_screen_resize=None, resize_resolution=None, retain_aspect_ratio=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='standard_4k', frames=-1, full_screen_resize=None, resize_resolution=None, retain_aspect_ratio=False, match_fps=False, verbose=False ):
 
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
-        self.total_frames = self.test_vidr.frame_count
+        self.match_fps = match_fps
+        if not match_fps:
+            assert self.test_vidr.frame_count == self.reference_vidr.frame_count
+        self.total_frames = self.reference_vidr.frame_count
         self.frames = self.total_frames if frames==-1 else min(self.total_frames, frames)
         self.offset = 0     # Offset for random access of a shorter subsequence
 
@@ -293,6 +296,8 @@ class video_source_yuv_file(video_source_dm):
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        if self.match_fps:
+            frame = int(self.test_vidr.get_frame_count() / self.reference_vidr.get_frame_count() * frame)
         L = self._get_frame( self.test_vidr, frame, device, colorspace )
         return L
 
