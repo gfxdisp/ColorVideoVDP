@@ -7,6 +7,7 @@ from torch.functional import Tensor
 import torch
 import ffmpeg
 import re
+import functools
 
 import logging
 from video_source import *
@@ -59,7 +60,7 @@ def load_image_as_array(imgfile):
 
 class video_reader:
 
-    def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
+    def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False, fps=-1):
         try:
             probe = ffmpeg.probe(vidfile)
         except:
@@ -68,6 +69,7 @@ class video_reader:
         # select the first video stream
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
 
+        self.file_name = vidfile
         self.width = int(video_stream['width']) 
         self.src_width = self.width
         self.height = int(video_stream['height'])
@@ -75,9 +77,18 @@ class video_reader:
         self.color_space = video_stream['color_space'] if ('color_space' in video_stream) else 'unknown'
         self.color_transfer = video_stream['color_transfer'] if ('color_transfer' in video_stream) else 'unknown'
         self.in_pix_fmt = video_stream['pix_fmt']
-        num_frames = int(video_stream['nb_frames'])
-        avg_fps_num, avg_fps_denom = [float(x) for x in video_stream['r_frame_rate'].split("/")]
-        self.avg_fps = avg_fps_num/avg_fps_denom
+
+        avg_fps_num, avg_fps_denom = map(float, video_stream['r_frame_rate'].split('/'))
+        self.avg_fps = avg_fps_num/avg_fps_denom if fps == -1 else fps
+        try:
+            num_frames = int(video_stream['nb_frames'])
+        except KeyError:
+            # Metadata may not contain total number of frames
+            duration_text = video_stream['tags']['DURATION']
+            hrs, mins, secs = map(float, duration_text.split(':'))
+            duration = (hrs * 60 + mins) * 60 + secs
+
+            num_frames = int(np.floor(duration * self.avg_fps))
 
         if frames==-1:
             self.frames = num_frames
@@ -101,6 +112,7 @@ class video_reader:
             self.dtype = np.uint8
 
         stream = ffmpeg.input(vidfile)
+        stream = ffmpeg.filter(stream, 'fps', fps=self.avg_fps)
         if (resize_fn is not None) and (resize_width!=self.width or resize_height!=self.height):
             resize_mode = resize_fn if resize_fn != 'nearest' else 'neighbor'
             stream = ffmpeg.filter(stream, 'scale', resize_width, resize_height, flags=resize_mode)
@@ -168,8 +180,8 @@ class video_reader:
 Decode frames to Yuv, perform upsampling and colour conversion with pytorch (on the GPU)
 '''
 class video_reader_yuv_pytorch(video_reader):
-    def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
-        super().__init__(vidfile, frames, resize_fn, resize_height, resize_width, verbose)
+    def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False, fps=-1):
+        super().__init__(vidfile, frames, resize_fn, resize_height, resize_width, verbose, fps)
 
         y_channel_pixels = int(self.width*self.height)
         self.y_pixels = y_channel_pixels
@@ -216,6 +228,7 @@ class video_reader_yuv_pytorch(video_reader):
             self.resize_width = resize_width
 
         stream = ffmpeg.input(vidfile)
+        stream = ffmpeg.filter(stream, 'fps', fps=self.avg_fps)
         log_level = 'info' if verbose else 'quiet'
         stream = ffmpeg.output(stream, 'pipe:', format='rawvideo', pix_fmt=out_pix_fmt).global_args( '-loglevel', log_level )
         self.process = ffmpeg.run_async(stream, pipe_stdout=True)
@@ -286,13 +299,15 @@ Use ffmpeg to read video frames, one by one.
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, match_fps=False ):
 
         fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         fs_height = -1 if full_screen_resize is None else resize_resolution[1]
-        self.reader = video_reader if ffmpeg_cc else video_reader_yuv_pytorch
-        self.reference_vidr = self.reader(reference_fname, frames, resize_fn=full_screen_resize, resize_width=fs_width, resize_height=fs_height, verbose=verbose)
-        self.test_vidr = self.reader(test_fname, frames, resize_fn=full_screen_resize, resize_width=fs_width, resize_height=fs_height, verbose=verbose)
+        reader_class = video_reader if ffmpeg_cc else video_reader_yuv_pytorch
+        reader = functools.partial(reader_class, frames=frames, resize_fn=full_screen_resize, resize_width=fs_width, resize_height=fs_height, verbose=verbose)
+        self.reference_vidr = reader(vidfile=reference_fname)
+        fps = self.reference_vidr.avg_fps if match_fps else -1
+        self.test_vidr = reader(vidfile=test_fname, fps=fps)
 
         self.frames = self.test_vidr.frames if frames==-1 else frames
 
@@ -341,7 +356,7 @@ class video_source_video_file(video_source_dm):
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
         return self.test_vidr.avg_fps
-    
+
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
