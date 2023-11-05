@@ -1,3 +1,6 @@
+# v0.? (?)
+* Added Matlab wrapper
+
 # v0.3 (05/09/2023)
 * Added value range checks when the metric is running on HDR data (to avoid passing relative values)
 * Added SSIM as an alternative metric

@@ -335,13 +335,17 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
 # http://www.sitesinvr.com/viewer/htcvive/index.html
 class vvdp_display_geometry:
 
-    def __init__(self, resolution, distance_m=None, distance_display_heights=None, fov_horizontal=None, fov_vertical=None, fov_diagonal=None, diagonal_size_inches=None) -> None:
+    def __init__(self, resolution, distance_m=None, distance_display_heights=None, fov_horizontal=None, fov_vertical=None, fov_diagonal=None, diagonal_size_inches=None, ppd=None) -> None:
 
         self.resolution = resolution
         
         ar = resolution[0]/resolution[1] # width/height
         
-        self.fixed_ppd = None
+        if not ppd is None:
+            self.fixed_ppd = ppd
+            return
+        else:
+            self.fixed_ppd = None
 
         if not diagonal_size_inches is None:
             height_mm = math.sqrt( (diagonal_size_inches*25.4)**2 / (1+ar**2) )
@@ -408,6 +412,9 @@ class vvdp_display_geometry:
         #     return;
         # end
         
+        if not self.fixed_ppd is None:
+            return self.fixed_ppd
+
         # pixel size in the centre of the display
         pix_deg = 2*math.degrees(math.atan( 0.5*self.display_size_m[0]/self.resolution[0]/self.distance_m ))
         

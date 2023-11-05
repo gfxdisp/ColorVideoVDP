@@ -1,5 +1,6 @@
 # Classes for reading images or videos from files so that they can be passed to FovVideoVDP frame-by-frame
 
+from asyncio.log import logger
 import os
 import imageio.v2 as io
 import numpy as np
@@ -7,6 +8,8 @@ from torch.functional import Tensor
 import torch
 import ffmpeg
 import re
+
+import scipy.io as sio
 
 import logging
 from video_source import *
@@ -417,6 +420,50 @@ class video_source_video_file_preload(video_source_video_file):
 
 
 '''
+Load Matlab's .mat files
+'''
+class video_source_matlab( video_source_array ):
+
+    def get_content( self, mat_struct ):
+        for v_name in mat_struct:
+            var = mat_struct[v_name]
+            if isinstance( var, np.ndarray ) and var.ndim > 1 and var.ndim < 4:
+                return var
+
+        raise RuntimeError( 'Cannot find image or video data in the .mat file' )
+
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[] ):
+        test_mat = sio.loadmat(test_fname)
+        ref_mat = sio.loadmat(reference_fname)
+        fps = 30 if not 'fps' in test_mat.keys() else float(test_mat['fps'])
+
+        test_cnt = self.get_content(test_mat)
+        ref_cnt = self.get_content(ref_mat)
+
+        if test_cnt.ndim != ref_cnt.ndim: # or (test_cnt.shape != ref_cnt.shape).any():
+            raise RuntimeError( 'Matlab matrices must have the same number of dimensions and size.' )
+
+        chn_no=1
+        frame_no=1
+        if test_cnt.ndim==2:
+            dim_order="HW"
+        elif test_cnt.ndim==4:
+            dim_order="HWCF"
+            chn_no=test_cnt.shape[2]
+            frame_no=test_cnt.shape[3]
+        elif test_cnt.ndim==3 and test_cnt.shape[-1]==3:
+            dim_order="HWC"
+            chn_no=test_cnt.shape[2]
+        else:
+            dim_order="HWF"
+            frame_no=test_cnt.shape[2]
+
+        logger.debug( f"Loaded matlab matrices: width={ref_cnt.shape[1]} height={ref_cnt.shape[0]} color_channels={chn_no} frames={frame_no} fps={fps}" )
+
+        super().__init__( test_cnt, ref_cnt, fps, dim_order=dim_order, display_photometry=display_photometry, config_paths=config_paths, )
+
+
+'''
 Recognize whether the file is an image of video and wraps an appropriate video_source for the given content.
 '''
 class video_source_file(video_source):
@@ -429,7 +476,10 @@ class video_source_file(video_source):
         assert os.path.isfile(reference_fname), f'Reference file does not exists: "{reference_fname}"'
 
         extension = os.path.splitext(test_fname)[1].lower()
-        if extension in image_extensions:
+
+        if extension == '.mat':
+            self.vs = video_source_matlab(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths)
+        elif extension in image_extensions:
             assert os.path.splitext(reference_fname)[1].lower() in image_extensions, 'Test is an image, but reference is a video'
             # if color_space_name=='auto':
             #     color_space_name='sRGB' # TODO: detect the right colour space

@@ -68,6 +68,7 @@ See [Command line interface](#command-line-interface) for further details. Color
     - [Visualization](#visualization)
     - [Configuration files](#configuration-files)
     - [Low-level Python interface](#low-level-python-interface)
+    - [Matlab interface](#matlab-interface)
 - [Release notes](#release-notes)
 
 ## Display specification
@@ -194,6 +195,10 @@ Below, we show an example comparing ColorVideoVDP to the popular SSIM metric. Wh
 ![chroma_ss](imgs/chroma_ss.png)
 
 More examples can be found in these [example scripts](examples).
+
+## Matlab interface
+
+There is no native implementation of ColorVideoVDP in Matlab, but you can use a wrapper that can be found in the [matlab](matlab/) directory.
 
 # Release notes
 
