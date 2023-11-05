@@ -588,21 +588,46 @@ class cvvdp(vq_metric):
         # T - test contrast tensor T[channel,frame,width,height]
         # R - reference contrast tensor
         # S - sensitivity
-        T = T*S
-        R = R*S
-        M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )
 
-        # Cross-channel masking
-        if self.do_xchannel_masking:
-            num_ch = M_pu.shape[0]
-            M = torch.empty_like(M_pu)
-            xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
-            for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                M[cc,...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
+        if self.masking_model == "kulikowski":
+            zero_tens = torch.as_tensor(0., device=T.device)
+            T = torch.maximum( T-1/S+1, zero_tens )
+            R = torch.maximum( R-1/S+1, zero_tens )
+            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
+
+            # Cross-channel masking
+            if self.do_xchannel_masking:
+                num_ch = M_pu.shape[0]
+                M = torch.empty_like(M_pu)
+                xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+                for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
+                    M[cc,...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
+            else:
+                M = M_pu
+
+            D = self.mask_func_perc_norm( torch.abs(T-R), M )
+
         else:
-            M = M_pu
+            T = T*S
+            R = R*S
+            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
 
-        D = self.clamp_diffs( self.mask_func_perc_norm( torch.abs(T-R), M ) )
+            # Cross-channel masking
+            if self.do_xchannel_masking:
+                num_ch = M_pu.shape[0]
+                M = torch.empty_like(M_pu)
+                xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+                for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
+                    M[cc,...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
+            else:
+                M = M_pu
+
+            D_u = self.mask_func_perc_norm( torch.abs(T-R), M )
+
+            if self.masking_model == "soft_clamp_cont":
+                D = D_u
+            else:
+                D = self.clamp_diffs( D_u )
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
@@ -647,8 +672,17 @@ class cvvdp(vq_metric):
                     q = torch.stack( [q_sust, q_sust, q_sust], dim=0 ).view(3,1,1,1)
                 else: # video
                     q = torch.stack( [q_sust, q_sust, q_sust, q_trans], dim=0 ).view(4,1,1,1)
-            R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
+
+            if self.masking_model == "smooth_clamp_cont":
+                R = torch.div( self.smooth_clamp_cont(G, p), 1. + self.smooth_clamp_cont(G_mask, q) )
+            else:
+                R = torch.div(torch.pow(G,p), 1. + torch.pow(G_mask, q))
         return R
+
+    def smooth_clamp_cont( self, C, p ):
+        max_v = 10**self.dclamp_par
+        C_clamped = torch.div( (max_v*(C**p)+1), (max_v + C**p) )
+        return C_clamped
 
 
     def compute_local_contrast(self, T_f, R_f, lpyr, L_bkg_pyr, bb):
