@@ -1,5 +1,5 @@
 classdef cvvdp
-    % A wrapper class to run ColourVideoVDP from matlab
+    % A wrapper class to run ColourVideoVDP from Matlab
     %
     % Example:
     % v = cvvdp( 'cvvdp' ); % the string must be a name of conda
@@ -26,6 +26,7 @@ classdef cvvdp
                 options.fps (1,1) {mustBePositive} = 30
                 options.ppd (1,1) {mustBeNumeric} = -1
                 options.heatmap {mustBeMember(options.heatmap, {'none', 'raw', 'threshold', 'supra-threshold'})} = 'none'
+                options.verbose (1,1) = false
             end
             
             if isa( img_test, 'double' )
@@ -59,7 +60,11 @@ classdef cvvdp
             end
                 
 
-            cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, heatmap_arg, ' --quiet' ]; 
+            
+            cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, heatmap_arg ]; 
+            if ~options.verbose
+                cmd = [cmd, ' --quiet'];
+            end
 
             if ispc()
                 cmd = [ '"%PROGRAMFILES%\Git\bin\sh.exe" -l -c ''', cmd, '''' ];
@@ -71,7 +76,13 @@ classdef cvvdp
             if status ~= 0
                 error( 'cvvdp: Something went wrong:\n %s\n', cmdout )
             else
-                jod = str2double(cmdout);
+                if options.verbose
+                    fwrite( 2, cmdout );
+                    jod_res = regexp( cmdout, "cvvdp=[\d\.]*", "match" );
+                    jod = str2double(jod_res{1}(7:end));
+                else
+                    jod = str2double(cmdout);
+                end
             end
 
             if ~strcmp(options.heatmap, 'none')
@@ -83,6 +94,8 @@ classdef cvvdp
                     heatmap = imread( heatmap_fn );
                     delete( heatmap_fn );
                 end
+            else
+                heatmap = [];
             end
 
             delete( test_file );
