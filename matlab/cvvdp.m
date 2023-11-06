@@ -27,6 +27,7 @@ classdef cvvdp
                 options.ppd (1,1) {mustBeNumeric} = -1
                 options.heatmap {mustBeMember(options.heatmap, {'none', 'raw', 'threshold', 'supra-threshold'})} = 'none'
                 options.verbose (1,1) = false
+                options.config_paths {mustBeText} = []
             end
             
             if isa( img_test, 'double' )
@@ -57,13 +58,14 @@ classdef cvvdp
                 heatmap_arg = [ ' --heatmap ', options.heatmap, ' --output-dir ', strrep(tmp_dir, '\', '/') ];
             else
                 heatmap_arg = '';
-            end
-                
-
+            end                
             
             cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, heatmap_arg ]; 
             if ~options.verbose
                 cmd = [cmd, ' --quiet'];
+            end
+            if ~isempty( options.config_paths )
+                cmd = [cmd, ' --config-paths ', options.config_paths];
             end
 
             if ispc()
