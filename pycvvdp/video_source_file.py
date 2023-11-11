@@ -309,7 +309,7 @@ class video_source_video_file(video_source_dm):
         fps = self.reference_vidr.avg_fps if match_fps else -1
         self.test_vidr = reader(vidfile=test_fname, fps=fps)
 
-        self.frames = self.test_vidr.frames if frames==-1 else frames
+        self.frames = self.reference_vidr.frames if frames==-1 else frames
 
         for vr in [self.test_vidr, self.reference_vidr]:
             if vr == self.test_vidr:
