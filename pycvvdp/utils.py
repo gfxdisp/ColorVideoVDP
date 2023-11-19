@@ -134,7 +134,10 @@ class config_files:
     #     cls.fvvdp_config_dir = path
 
     @classmethod
-    def find(cls, fname, config_paths):
+    def find(cls, fname, config_paths:list):
+
+        if not isinstance( config_paths, list ):
+            raise RuntimeError( "config_paths must be a list" )
 
         bname, ext = os.path.splitext(fname)
         # First check if the matching file name is in the config paths
