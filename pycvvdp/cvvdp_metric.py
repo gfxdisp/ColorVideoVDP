@@ -607,24 +607,24 @@ class cvvdp(vq_metric):
         gain = torch.reshape( torch.as_tensor( [10., 14., 2.1, 10.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
         C_p = torch.maximum( pow_neg((C - C_t)/(1.0-C_t), p_t)*gain + 1.0, zero_tens )
 
-        M = self.mask_pool(C_p)
+        M = self.mask_pool(torch.abs(C_p))
 
         p = self.mask_p
-        q = q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+        q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-        return 2 * C_p**p / (1 + M**q)
+        return 2 * pow_neg(C_p, p) / (1 + M**q)
 
     def transd_watson_solomon(self, C, S):
         num_ch = C.shape[0]
         gain = torch.reshape( torch.as_tensor( [1., 0.45, 0.125, 1.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
         C_p = C * S * gain
 
-        M = self.mask_pool(C_p)
+        M = self.mask_pool(torch.abs(C_p))
 
         p = self.mask_p
-        q = q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+        q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-        return 2 * C_p**p / (1 + M**q)
+        return 2 * pow_neg( C_p, p ) / (1 + M**q)
 
 
     def apply_masking_model(self, T, R, S):
