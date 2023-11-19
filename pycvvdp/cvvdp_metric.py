@@ -49,6 +49,9 @@ import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
+def pow_neg( x:Tensor, p ): 
+    return torch.sign(x) * (torch.abs(x) ** p)
+
 """
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
@@ -584,6 +587,46 @@ class cvvdp(vq_metric):
 
         return Q_per_ch_block, heatmap_block
 
+    def mask_pool(self, C):
+        # Cross-channel masking
+        num_ch = C.shape[0]
+        if self.do_xchannel_masking:
+            M = torch.empty_like(C)
+            xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+            for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
+                M[cc,...] = torch.sum( C * xcm_weights[:,cc], dim=0, keepdim=True )
+        else:
+            M = C
+        return M
+
+    def transd_overconstancy(self, C, S):
+        num_ch = C.shape[0]
+        zero_tens = torch.as_tensor(0., device=C.device)
+        C_t = 1/S
+        p_t = 0.7
+        gain = torch.reshape( torch.as_tensor( [10., 14., 2.1, 10.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
+        C_p = torch.maximum( pow_neg((C - C_t)/(1.0-C_t), p_t)*gain + 1.0, zero_tens )
+
+        M = self.mask_pool(C_p)
+
+        p = self.mask_p
+        q = q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+
+        return 2 * C_p**p / (1 + M**q)
+
+    def transd_watson_solomon(self, C, S):
+        num_ch = C.shape[0]
+        gain = torch.reshape( torch.as_tensor( [1., 0.45, 0.125, 1.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
+        C_p = C * S * gain
+
+        M = self.mask_pool(C_p)
+
+        p = self.mask_p
+        q = q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+
+        return 2 * C_p**p / (1 + M**q)
+
+
     def apply_masking_model(self, T, R, S):
         # T - test contrast tensor T[channel,frame,width,height]
         # R - reference contrast tensor
@@ -606,6 +649,12 @@ class cvvdp(vq_metric):
                 M = M_pu
 
             D = self.mask_func_perc_norm( torch.abs(T-R), M )
+
+        elif self.masking_model == "overconstancy":
+            D = torch.abs( self.transd_overconstancy(T,S) - self.transd_overconstancy(R,S) )
+
+        elif self.masking_model == "watson-solomon":
+            D = torch.abs( self.transd_watson_solomon(T,S) - self.transd_watson_solomon(R,S) )
 
         else:
             T = T*S
