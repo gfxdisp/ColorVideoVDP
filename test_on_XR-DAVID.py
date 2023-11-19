@@ -39,19 +39,20 @@ video="VR"
 #distortion = "CSub_Level003"
 distortion = "LSNU_Level003"
 
-ref_file = os.path.join(media_folder, video + '_reference_Level001.mp4')
-TST_FILEs = glob.glob(os.path.join(media_folder, video + '_' + distortion + '.mp4'))
+# ref_file = os.path.join(media_folder, video + '_reference_Level001.mp4')
+# TST_FILEs = glob.glob(os.path.join(media_folder, video + '_' + distortion + '.mp4'))
 
+ref_file = media_folder + "/" +  video + '_reference_Level001.mp4'
+TST_FILEs = glob.glob(media_folder + "/" + video + '_' + distortion + '.mp4')
 
-pycvvdp.utils.config_files.set_config_dir(media_folder)
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
 
-cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw")
+cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=[media_folder])
 cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, verbose=False )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, verbose=False, config_paths=[media_folder] )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )

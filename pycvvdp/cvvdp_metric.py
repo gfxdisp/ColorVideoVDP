@@ -231,6 +231,9 @@ class cvvdp(vq_metric):
         vid_sz = vid_source.get_video_size() # H, W, F
         height, width, N_frames = vid_sz
 
+        # 'medium' is a bit slower than 'high' on 3090
+        # torch.set_float32_matmul_precision('medium')
+
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.contrast.startswith("weber"):
                 self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
