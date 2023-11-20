@@ -504,6 +504,7 @@ class cvvdp(vq_metric):
                     std_wt = 2**self.std_w[0]
                     Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True) + std_wt*torch.std(Q_tc, dim=1)   # Sum across frames
                 else:
+#                    assert torch.all(Q_tc>=0) and not Q_tc.isnan().any(), "wrong values"
                     Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
 
         Q = Q.squeeze()
@@ -619,17 +620,24 @@ class cvvdp(vq_metric):
     def transd_overconstancy(self, C, S):
         num_ch = C.shape[0]
         zero_tens = torch.as_tensor(0., device=C.device)
-        C_t = 1/S
+        C_t = torch.minimum( 1/S, torch.as_tensor(1.99, device=C.device) )
         p_t = 0.7
         gain = torch.reshape( torch.as_tensor( [10., 14., 2.1, 10.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
-        C_p = torch.maximum( pow_neg((C - C_t)/(1.0-C_t), p_t)*gain + 1.0, zero_tens )
+        C_p = torch.maximum( pow_neg((C - C_t)/(2.0-C_t), p_t)*gain + 1.0, zero_tens )
 
         M = self.mask_pool(torch.abs(C_p))
 
         p = self.mask_p
         q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-        return 2 * pow_neg(C_p, p) / (1 + M**q)
+        #assert torch.all(M>=0), "M must be positive"
+        #assert torch.all(C_p>=0), "C_p must be positive"
+
+        D = 2 * pow_neg(C_p, p) / (1 + M**q)
+
+        #assert not D.isnan().any(), "Must not be nan"
+
+        return D
 
     def transd_watson_solomon(self, C, S):
         num_ch = C.shape[0]
@@ -662,7 +670,9 @@ class cvvdp(vq_metric):
             M = self.mask_pool(M_pu)
             D = self.mask_func_perc_norm( torch.abs(T-R), M )
 
-        elif self.masking_model == "overconstancy":
+            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
+
+        elif self.masking_model == "overconstancy-transd":
             D = torch.abs( self.transd_overconstancy(T,S) - self.transd_overconstancy(R,S) )
 
         elif self.masking_model == "watson-solomon":
