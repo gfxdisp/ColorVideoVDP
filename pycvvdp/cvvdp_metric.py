@@ -637,20 +637,15 @@ class cvvdp(vq_metric):
 
         if self.masking_model == "kulikowski":
             zero_tens = torch.as_tensor(0., device=T.device)
-            T = torch.maximum( T-1/S+1, zero_tens )
-            R = torch.maximum( R-1/S+1, zero_tens )
+
+            num_ch = T.shape[0]
+            gain = torch.reshape( torch.as_tensor( [1., 1.8, 0.11, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...]
+
+            T = torch.maximum( (T-1/S)*gain + 1, zero_tens )
+            R = torch.maximum( (R-1/S)*gain + 1, zero_tens )
             M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
 
-            # Cross-channel masking
-            if self.do_xchannel_masking:
-                num_ch = M_pu.shape[0]
-                M = torch.empty_like(M_pu)
-                xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
-                for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                    M[cc,...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
-            else:
-                M = M_pu
-
+            M = self.mask_pool(M_pu)
             D = self.mask_func_perc_norm( torch.abs(T-R), M )
 
         elif self.masking_model == "overconstancy":
