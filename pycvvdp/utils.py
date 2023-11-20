@@ -142,6 +142,9 @@ class config_files:
         bname, ext = os.path.splitext(fname)
         # First check if the matching file name is in the config paths
         for cp in config_paths:
+            if not (os.path.isfile(cp) or os.path.isdir(cp)):
+                raise RuntimeError( f"config_path '{cp}' does not exist" )
+
             if os.path.isfile(cp) and os.path.basename(cp).startswith(bname):
                 return cp
 

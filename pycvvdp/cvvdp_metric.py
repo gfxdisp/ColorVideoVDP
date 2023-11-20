@@ -617,6 +617,16 @@ class cvvdp(vq_metric):
             M = C
         return M
 
+    def ce_overconstancy(self, C, S):
+        num_ch = C.shape[0]
+        zero_tens = torch.as_tensor(0., device=C.device)
+        C_t = torch.minimum( 1/S, torch.as_tensor(1.99, device=C.device) )
+        p_t = 0.7
+        gain = torch.reshape( torch.as_tensor( [10., 14., 2.1, 10.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
+        C_p = torch.maximum( pow_neg((C - C_t)/(2.0-C_t), p_t)*gain + 1.0, zero_tens )
+        return C_p
+
+
     def transd_overconstancy(self, C, S):
         num_ch = C.shape[0]
         zero_tens = torch.as_tensor(0., device=C.device)
@@ -674,6 +684,16 @@ class cvvdp(vq_metric):
 
         elif self.masking_model == "overconstancy-transd":
             D = torch.abs( self.transd_overconstancy(T,S) - self.transd_overconstancy(R,S) )
+
+        elif self.masking_model == "overconstancy":
+            T = self.ce_overconstancy(T, S)
+            R = self.ce_overconstancy(R, S)
+            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
+
+            M = self.mask_pool(M_pu)
+            D = self.mask_func_perc_norm( torch.abs(T-R), M )
+
+            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
 
         elif self.masking_model == "watson-solomon":
             D = torch.abs( self.transd_watson_solomon(T,S) - self.transd_watson_solomon(R,S) )
