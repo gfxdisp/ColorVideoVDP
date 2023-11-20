@@ -47,12 +47,14 @@ TST_FILEs = glob.glob(media_folder + "/" + video + '_' + distortion + '.mp4')
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
-cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=[media_folder])
+config_paths = [media_folder, "../metric_configs/cvvdp_std_pool_t/cvvdp_parameters.json"]
+
+cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=config_paths)
 cvvdp.debug = True
 
 for tst_fname in TST_FILEs:
 
-    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, verbose=False, config_paths=[media_folder, "../metric_configs/cvvdp_overconstancy/cvvdp_parameters.json"] )
+    vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, verbose=False, config_paths=config_paths )
 
     start = time.time()
     Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )

@@ -126,6 +126,12 @@ class cvvdp(vq_metric):
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
 
+        if 'std_pool' in parameters:
+            self.std_pool = parameters['std_pool']
+            self.std_w = torch.as_tensor( parameters['std_w'], device=self.device )
+        else:
+            self.std_pool = "ts"
+
         if 'mask_q' in parameters:
             self.mask_q = torch.as_tensor( parameters['mask_q'], device=self.device )
         else:
@@ -490,7 +496,15 @@ class cvvdp(vq_metric):
                 Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
             else:
                 Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
-            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)*t_int   # Sum across frames
+
+            if is_image:
+                Q = Q_tc * t_int
+            else:
+                if self.std_pool[0]=='T':
+                    std_wt = 2**self.std_w[0]
+                    Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True) + std_wt*torch.std(Q_tc, dim=1)   # Sum across frames
+                else:
+                    Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
 
         Q = Q.squeeze()
 
