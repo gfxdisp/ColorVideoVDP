@@ -589,6 +589,10 @@ class cvvdp(vq_metric):
 
             Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
+            if self.std_pool[1]=='S':
+                std_ws = 2**self.std_w[1]
+                Q_per_ch_block[:,:,bb] += std_ws*torch.std(D, dim=(-2,-1))
+
             if self.do_heatmap:
 
                 # We need to reduce the differences across the channels using the right weights
