@@ -665,6 +665,17 @@ class cvvdp(vq_metric):
 
         return 2 * pow_neg( C_p, p ) / (1 + M**q)
 
+    def transd_watson_solomon_fixed(self, C, S):
+        num_ch = C.shape[0]
+        gain = torch.reshape( torch.as_tensor( [1., 0.45, 0.125, 1.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
+        C_p = C * S * gain
+
+        p = self.mask_p
+        q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+        M = self.mask_pool(torch.abs(C_p)**q)
+
+        return 2 * pow_neg( C_p, p ) / (1 + M)
+
 
     def apply_masking_model(self, T, R, S):
         # T - test contrast tensor T[channel,frame,width,height]
@@ -701,6 +712,9 @@ class cvvdp(vq_metric):
 
         elif self.masking_model == "watson-solomon":
             D = torch.abs( self.transd_watson_solomon(T,S) - self.transd_watson_solomon(R,S) )
+
+        elif self.masking_model == "watson-solomon-fixed":
+            D = torch.abs( self.transd_watson_solomon_fixed(T,S) - self.transd_watson_solomon_fixed(R,S) )
 
         else:
             T = T*S
