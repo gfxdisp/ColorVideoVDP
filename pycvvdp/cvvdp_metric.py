@@ -60,10 +60,12 @@ def pow_neg( x:Tensor, p ):
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
 
-    #return torch.tanh(100*x) * (torch.abs(x) ** p)
-
-    min_v = torch.as_tensor( 0.00001, device=x.device )
-    return (torch.max(x,min_v) ** p)
+    if isinstance( p, Tensor ) and p.requires_grad:
+        # If we need a derivative with respect to p, x must not be 0
+        min_v = torch.as_tensor( 0.00001, device=x.device )
+        return (torch.max(x,min_v) ** p)
+    else:
+        return x ** p
 
 """
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
