@@ -50,7 +50,20 @@ from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
 def pow_neg( x:Tensor, p ): 
-    return torch.sign(x) * (torch.abs(x) ** p)
+    #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
+
+    #return torch.tanh(100*x) * (torch.abs(x) ** p)
+
+    min_v = torch.as_tensor( 0.00001, device=x.device )
+    return (torch.max(x,min_v) ** p) + (torch.max(-x,min_v) ** p)
+
+def safe_pow( x:Tensor, p ): 
+    #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
+
+    #return torch.tanh(100*x) * (torch.abs(x) ** p)
+
+    min_v = torch.as_tensor( 0.00001, device=x.device )
+    return (torch.max(x,min_v) ** p)
 
 """
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
@@ -587,6 +600,8 @@ class cvvdp(vq_metric):
             if Q_per_ch_block is None:
                 Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
 
+            #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
+
             Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
             if self.std_pool[1]=='S':
@@ -831,7 +846,7 @@ class cvvdp(vq_metric):
 
         if isinstance( p, torch.Tensor ): 
             # p is a Tensor if it is being optimized. In that case, we need the formula for the norm
-            return torch.pow( torch.sum(x ** (p), dim=dim, keepdim=keepdim)/float(N), 1/p) 
+            return safe_pow( torch.sum( safe_pow(x, p), dim=dim, keepdim=keepdim)/float(N), 1/p) 
         else:
             return torch.norm(x, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
 
