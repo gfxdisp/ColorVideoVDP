@@ -141,6 +141,11 @@ class cvvdp(vq_metric):
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
 
+        if 'temp_filter' in parameters:
+            self.temp_filter = parameters['temp_filter']
+        else:
+            self.temp_filter = "default"
+
         if 'std_pool' in parameters:
             self.std_pool = parameters['std_pool']
             self.std_w = torch.as_tensor( parameters['std_w'], device=self.device )
@@ -867,8 +872,13 @@ class cvvdp(vq_metric):
         # Sustained channels 
         R[0:3,:] = torch.exp( -omega ** self.beta_tf[0:3].view(3,1) / self.sigma_tf[0:3].view(3,1) )  # Freqency-space response
         # Transient channel
+
         omega_bands = torch.as_tensor( [0., 5.], device=self.device )
-        R[3:4,:] = torch.exp( -(omega ** self.beta_tf[3] - omega_bands[1] ** self.beta_tf[3])**2  / self.sigma_tf[3] )  # Freqency-space response
+        if self.temp_filter == "hp_trans":
+            # high-pass transient channel
+            R[3:4,:] = 1-R[0:1,:]
+        else:
+            R[3:4,:] = torch.exp( -(omega ** self.beta_tf[3] - omega_bands[1] ** self.beta_tf[3])**2  / self.sigma_tf[3] )  # Freqency-space response
 
         #r = torch.empty( (4, N), device=self.device )
 
@@ -876,6 +886,7 @@ class cvvdp(vq_metric):
         if self.device.type == 'mps':
             # FFT operations not supported on MPS as of torch==2.1 (see https://github.com/pytorch/pytorch/issues/78044)
             R = R.cpu()
+
         for kk in range(4):
             # Must be executed once per each channel. For some reason, gives wrong results when run on the entire array
             r = torch.fft.fftshift( torch.real( torch.fft.irfft( R[kk,:], norm="backward", n=N ) ) ).to(self.device)
