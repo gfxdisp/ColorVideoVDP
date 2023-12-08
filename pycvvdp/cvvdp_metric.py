@@ -698,6 +698,12 @@ class cvvdp(vq_metric):
 
         return 2 * pow_neg( C_p, p ) / (1 + M)
 
+    # a differentiable sign function
+    def diff_sign(self, x):
+        if x.requires_grad:
+            return torch.tanh(10000.0 * x)
+        else:
+            return torch.sign(x)
 
     def apply_masking_model(self, T, R, S):
         # T - test contrast tensor T[channel,frame,width,height]
@@ -710,8 +716,9 @@ class cvvdp(vq_metric):
             num_ch = T.shape[0]
             gain = torch.reshape( torch.as_tensor( [1., 1.8, 0.11, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...]
 
-            T = torch.maximum( (T-1/S)*gain + 1, zero_tens )
-            R = torch.maximum( (R-1/S)*gain + 1, zero_tens )
+            C_t = 1/S
+            T = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*gain + 1, zero_tens )
+            R = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*gain + 1, zero_tens )
             M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
 
             M = self.mask_pool(M_pu)
