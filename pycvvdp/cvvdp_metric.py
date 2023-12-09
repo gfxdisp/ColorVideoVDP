@@ -49,23 +49,24 @@ import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
-def pow_neg( x:Tensor, p ): 
-    #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
-
-    #return torch.tanh(100*x) * (torch.abs(x) ** p)
-
-    min_v = torch.as_tensor( 0.00001, device=x.device )
-    return (torch.max(x,min_v) ** p) + (torch.max(-x,min_v) ** p)
 
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
 
     if isinstance( p, Tensor ) and p.requires_grad:
         # If we need a derivative with respect to p, x must not be 0
-        min_v = torch.as_tensor( 0.00001, device=x.device )
-        return (torch.max(x,min_v) ** p)
+        epsilon = torch.as_tensor( 0.00001, device=x.device )
+        return (x+epsilon) ** p - epsilon**p
     else:
         return x ** p
+
+def pow_neg( x:Tensor, p ): 
+    #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
+
+    #return torch.tanh(100*x) * (torch.abs(x) ** p)
+
+    min_v = torch.as_tensor( 0.00001, device=x.device )
+    return (torch.max(x,min_v) ** p) + (torch.max(-x,min_v) ** p) - min_v**p
 
 """
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
@@ -140,6 +141,15 @@ class cvvdp(vq_metric):
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
+
+        if 'ce_g' in parameters:
+            self.ce_g = torch.as_tensor( parameters['ce_g'], device=self.device )
+
+        if 'similarity_c' in parameters:
+            self.similarity_c = torch.as_tensor( parameters['similarity_c'], device=self.device )
+
+        if 'k_c' in parameters:
+            self.k_c = torch.as_tensor( parameters['k_c'], device=self.device )
 
         if 'temp_filter' in parameters:
             self.temp_filter = parameters['temp_filter']
@@ -698,6 +708,16 @@ class cvvdp(vq_metric):
 
         return 2 * pow_neg( C_p, p ) / (1 + M)
 
+    def cm_transd(self, C_p):
+        num_ch = C_p.shape[0]
+
+        p = self.mask_p
+        q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+
+        M = self.mask_pool(safe_pow(torch.abs(C_p),q))
+
+        return 2 * pow_neg( C_p, p ) / (1 + M)
+
     # a differentiable sign function
     def diff_sign(self, x):
         if x.requires_grad:
@@ -745,7 +765,42 @@ class cvvdp(vq_metric):
         elif self.masking_model == "watson-solomon-fixed":
             D = torch.abs( self.transd_watson_solomon_fixed(T,S) - self.transd_watson_solomon_fixed(R,S) )
 
-        else:
+        elif self.masking_model in [ "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "add-similarity", "mult-similarity" ]:
+            num_ch = T.shape[0]
+            if self.masking_model.startswith( "add" ):
+                zero_tens = torch.as_tensor(0., device=T.device)
+                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1., 1.8, 0.11, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                C_t = 1/S
+                T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
+                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*ch_gain + 1, zero_tens )
+            else:
+                ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                T_p = T * S * ch_gain
+                R_p = R * S * ch_gain
+
+            if self.masking_model.endswith( "transducer" ):
+                D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
+            elif self.masking_model.endswith( "mutual" ):
+
+                M_mm = torch.min( torch.abs(T_p), torch.abs(R_p) )
+                p = self.mask_p
+                q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+
+                M = self.mask_pool(safe_pow(torch.abs(M_mm),q))
+
+                D_band = safe_pow(torch.abs(T_p - R_p),p)
+                k_c = self.k_c
+                D_clamped = k_c*D_band / (k_c + D_band)
+                D = D_clamped / (1 + M)
+            else: # similarity
+                C2 = self.similarity_c
+                T_p_m = self.mask_pool(torch.abs(T_p))
+                R_p_m = self.mask_pool(torch.abs(R_p))
+                D = 1 - torch.abs((2*T_p*R_p+C2)/(T_p_m*T_p_m + R_p_m*R_p_m + C2))
+
+            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
+
+        elif self.masking_model == "min_mutual_masking_perc_norm2":
             T = T*S
             R = R*S
             M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
@@ -766,6 +821,8 @@ class cvvdp(vq_metric):
                 D = D_u
             else:
                 D = self.clamp_diffs( D_u )
+        else:
+            raise RuntimeError( f"Unknown masking model {self.masking_model}" )
 
         if self.debug and hasattr(self,"mem_allocated_peak"): 
             allocated = torch.cuda.memory_allocated(self.device)
