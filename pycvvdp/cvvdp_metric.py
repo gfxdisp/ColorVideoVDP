@@ -796,7 +796,7 @@ class cvvdp(vq_metric):
                 C2 = self.similarity_c
                 T_p_m = self.mask_pool(torch.abs(T_p))
                 R_p_m = self.mask_pool(torch.abs(R_p))
-                D = 1 - torch.abs((2*T_p*R_p+C2)/(T_p_m*T_p_m + R_p_m*R_p_m + C2))
+                D = 1 - (2*torch.abs(T_p)*torch.abs(R_p)+C2)/(T_p_m*T_p_m + R_p_m*R_p_m + C2)
 
             assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
 
