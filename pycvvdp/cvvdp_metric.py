@@ -953,7 +953,12 @@ class cvvdp(vq_metric):
 
         for kk in range(4):
             # Must be executed once per each channel. For some reason, gives wrong results when run on the entire array
-            r = torch.fft.fftshift( torch.real( torch.fft.irfft( R[kk,:], norm="backward", n=N ) ) ).to(self.device)
+            if self.temp_filter == "grad_trans" and kk==3:
+                r = torch.zeros( (N), device=self.device )
+                r[0] = 1
+                r[2] = -1
+            else:
+                r = torch.fft.fftshift( torch.real( torch.fft.irfft( R[kk,:], norm="backward", n=N ) ) ).to(self.device)
             F.append( r )
 
         return F, omega_bands
