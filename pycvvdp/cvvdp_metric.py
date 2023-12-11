@@ -783,7 +783,7 @@ class cvvdp(vq_metric):
                 D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
             elif self.masking_model.endswith( "mutual" ):
 
-                M_mm = torch.min( torch.abs(T_p), torch.abs(R_p) )
+                M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
                 p = self.mask_p
                 q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
