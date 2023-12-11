@@ -52,8 +52,9 @@ from pycvvdp.csf import castleCSF
 
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
+    #assert torch.all(x>=0), "Must be positive"
 
-    if isinstance( p, Tensor ) and p.requires_grad:
+    if True: #isinstance( p, Tensor ) and p.requires_grad:
         # If we need a derivative with respect to p, x must not be 0
         epsilon = torch.as_tensor( 0.00001, device=x.device )
         return (x+epsilon) ** p - epsilon**p
