@@ -766,7 +766,7 @@ class cvvdp(vq_metric):
         elif self.masking_model == "watson-solomon-fixed":
             D = torch.abs( self.transd_watson_solomon_fixed(T,S) - self.transd_watson_solomon_fixed(R,S) )
 
-        elif self.masking_model in [ "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "add-similarity", "mult-similarity" ]:
+        elif self.masking_model in [ "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity" ]:
             num_ch = T.shape[0]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
@@ -800,12 +800,14 @@ class cvvdp(vq_metric):
                 p = self.mask_p
                 q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-                M = self.mask_pool(safe_pow(torch.abs(M_mm),q))
+                M = self.mask_pool(torch.abs(M_mm))
 
                 D_band = safe_pow(torch.abs(T_p - R_p),p)
-                k_c = self.k_c
-                D_clamped = k_c*D_band / (k_c + D_band)
-                D = D_clamped / (1 + M)
+                D_m = D_band / (1 + safe_pow(M,q))
+
+                k_c = self.k_c                
+                D = k_c*D_m / (k_c + D_m)
+
             else: # similarity
                 C2 = self.similarity_c
                 T_p_m = self.mask_pool(torch.abs(T_p))
