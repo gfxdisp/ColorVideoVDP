@@ -34,10 +34,11 @@ media_folder = '../datasets/XR-DAVID'
 # ref_file = os.path.join(media_folder, 'Phone_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, 'Phone_CSub_Level003.mp4'))
 
-video="VR"
+video="Panel"
 #distortion = "WGNU_Level003"
 #distortion = "CSub_Level003"
-distortion = "LSNU_Level003"
+#distortion = "LSNU_Level003"
+distortion = "Dither_Level003"
 
 # ref_file = os.path.join(media_folder, video + '_reference_Level001.mp4')
 # TST_FILEs = glob.glob(os.path.join(media_folder, video + '_' + distortion + '.mp4'))
@@ -48,6 +49,7 @@ TST_FILEs = glob.glob(media_folder + "/" + video + '_' + distortion + '.mp4')
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
 config_paths = [media_folder, "../metric_configs/cvvdp_mult_mutual_base/cvvdp_parameters.json"]
+#config_paths = [media_folder]
 
 cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=config_paths)
 cvvdp.debug = True
@@ -62,4 +64,4 @@ for tst_fname in TST_FILEs:
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
 
-    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )
+#    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )

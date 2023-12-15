@@ -184,6 +184,8 @@ class cvvdp(vq_metric):
         self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.baseband_weight = torch.as_tensor( parameters['baseband_weight'], device=self.device )
+        if self.baseband_weight.numel()<4:
+            self.baseband_weight = self.baseband_weight.repeat(4)
         self.dclamp_type = parameters['dclamp_type']  # clamping mode: soft or hard
         self.dclamp_par = torch.as_tensor( parameters['dclamp_par'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
@@ -502,8 +504,8 @@ class cvvdp(vq_metric):
         #     per_ch_w = 1
 
         # Weights for the spatial bands
-        per_sband_w = torch.ones( (1,1,no_bands), device=self.device)
-        per_sband_w[0,0,-1] = self.baseband_weight
+        per_sband_w = torch.ones( (no_channels,1,no_bands), device=self.device)
+        per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
 
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
@@ -805,8 +807,10 @@ class cvvdp(vq_metric):
                 D_band = safe_pow(torch.abs(T_p - R_p),p)
                 D_m = D_band / (1 + safe_pow(M,q))
 
+                #D = self.clamp_diffs( D_m )
                 k_c = self.k_c                
                 D = k_c*D_m / (k_c + D_m)
+
 
             else: # similarity
                 C2 = self.similarity_c
@@ -1043,7 +1047,7 @@ class cvvdp(vq_metric):
         Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
         ch_no = Q_per_ch.shape[0]    
 
-        Q_per_ch[:,:,-1] *= self.baseband_weight
+        Q_per_ch[:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1,1)
         Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
         dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
 
