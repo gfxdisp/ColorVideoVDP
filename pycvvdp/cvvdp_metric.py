@@ -777,9 +777,13 @@ class cvvdp(vq_metric):
                 T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
                 R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*ch_gain + 1, zero_tens )
             else:
-                ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
-                T_p = T * S * ch_gain
-                R_p = R * S * ch_gain
+                if self.masking_model.endswith( "mutual-old" ):
+                    T_p = T * S
+                    R_p = R * S
+                else:
+                    ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                    T_p = T * S * ch_gain
+                    R_p = R * S * ch_gain
 
             if self.masking_model.endswith( "transducer" ):
                 D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
