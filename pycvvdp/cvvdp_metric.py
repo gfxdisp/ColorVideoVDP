@@ -789,7 +789,7 @@ class cvvdp(vq_metric):
                 D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
             elif self.masking_model.endswith( "mutual" ):
 
-                M_mm = torch.min( torch.abs(T_p), torch.abs(R_p) )
+                M_mm = self.phase_uncertainty_no_c(torch.min( torch.abs(T_p), torch.abs(R_p) ))
                 p = self.mask_p
                 q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
@@ -873,6 +873,15 @@ class cvvdp(vq_metric):
             M_pu = self.pu_blur.forward(M) * (10**self.mask_c)
         else:
             M_pu = M * (10**self.mask_c)
+        return M_pu
+
+    def phase_uncertainty_no_c(self, M):
+        # Blur only when the image is larger then the required pad size
+        if self.pu_dilate != 0 and M.shape[-2]>self.pu_padsize and M.shape[-1]>self.pu_padsize:
+            #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
+            M_pu = self.pu_blur.forward(M)
+        else:
+            M_pu = M
         return M_pu
 
     def mask_func_perc_norm(self, G, G_mask ):
