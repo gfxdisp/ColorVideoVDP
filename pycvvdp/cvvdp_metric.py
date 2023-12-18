@@ -504,7 +504,7 @@ class cvvdp(vq_metric):
         #     per_ch_w = 1
 
         # Weights for the spatial bands
-        per_sband_w = torch.ones( (no_channels,1,no_bands), device=self.device)
+        per_sband_w = torch.ones( (no_channels,1,no_bands), dtype=torch.float32, device=self.device)
         per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
 
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
@@ -517,7 +517,7 @@ class cvvdp(vq_metric):
         if not is_image and self.do_Bloch_int:
             bfilt_len = int(math.ceil(self.bfilt_duration * fps))
             Q_in = Q_sc.permute(0,2,1)
-            B_filt = torch.ones( (1,1,bfilt_len), device=Q_in.device )/float(bfilt_len)
+            B_filt = torch.ones( (1,1,bfilt_len), dtype=torch.float32, device=Q_in.device )/float(bfilt_len)
             Q_bi = torch.nn.functional.conv1d(Q_in,B_filt, padding="valid")
             if not self.block_channels is None:
                 Q_tc = self.lp_norm(Q_bi[self.block_channels,...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
