@@ -860,7 +860,7 @@ class cvvdp(vq_metric):
                     #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
 
                     D[1,...] = torch.abs(mu_T-mu_R)
-                    D[2,...] = torch.abs(sigma_T_sq-sigma_R_sq)
+                    D[2,...] = torch.abs( safe_pow(sigma_T_sq, 0.5) - safe_pow(sigma_R_sq, 0.5) )
 
             else: # similarity
                 C2 = self.similarity_c
