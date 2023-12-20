@@ -19,7 +19,7 @@ ref_file = os.path.join(media_folder, 'train', '4k_ref_NighTraffic.mp4')
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
-config_paths = [media_folder, "../metric_configs/cvvdp_grad_trans_multbase_tmask/cvvdp_parameters.json"]
+config_paths = [media_folder, "../metric_configs/cvvdp_mult_transducer_texture/cvvdp_parameters.json"]
 
 cvvdp = pycvvdp.cvvdp(display_name=display_name, config_paths=config_paths)
 cvvdp.debug = True

@@ -130,6 +130,7 @@ class cvvdp(vq_metric):
         if self.pu_dilate>0:
             self.pu_blur = GaussianBlur(int(self.pu_dilate*4)+1, self.pu_dilate)
             self.pu_padsize = int(self.pu_dilate*2)
+            
         self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
         self.beta_t = torch.as_tensor( parameters['beta_t'], device=self.device ) # The exponent of the summation over time (p-norm)
         self.beta_tch = torch.as_tensor( parameters['beta_tch'], device=self.device ) # The exponent of the summation over temporal channels (p-norm)
@@ -137,6 +138,10 @@ class cvvdp(vq_metric):
         self.csf_sigma = torch.as_tensor( parameters['csf_sigma'], device=self.device )
         self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
+        if "texture" in self.masking_model:
+            tex_blur_sigma = 4
+            self.tex_blur = GaussianBlur(int(tex_blur_sigma*4)+1, tex_blur_sigma)
+
         self.csf = parameters['csf']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
@@ -768,7 +773,7 @@ class cvvdp(vq_metric):
         elif self.masking_model == "watson-solomon-fixed":
             D = torch.abs( self.transd_watson_solomon_fixed(T,S) - self.transd_watson_solomon_fixed(R,S) )
 
-        elif self.masking_model in [ "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity" ]:
+        elif self.masking_model in [ "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
             num_ch = T.shape[0]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
@@ -800,7 +805,7 @@ class cvvdp(vq_metric):
                 D_clamped = k_c*D_band / (k_c + D_band)
                 D = D_clamped / (1 + M)
 
-            elif self.masking_model.endswith( "mutual-old" ):
+            if self.masking_model.endswith( "mutual-old" ):
 
                 M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
                 p = self.mask_p
@@ -815,6 +820,26 @@ class cvvdp(vq_metric):
                 k_c = self.k_c                
                 D = k_c*D_m / (k_c + D_m)
 
+            if self.masking_model.endswith( "transducer-texture" ):
+
+                T_t = self.cm_transd(T_p)
+                R_t = self.cm_transd(R_p)
+
+                mu_T = self.tex_blur.forward(T_t)
+                mu_R = self.tex_blur.forward(R_t)
+
+                mu_T_sq = mu_T * mu_T
+                mu_R_sq = mu_R * mu_R
+                #mu_TR = mu_T * mu_R
+
+                sigma_T_sq = (self.tex_blur.forward(T_t * T_t) - mu_T_sq).clamp(min=0.)
+                sigma_R_sq = (self.tex_blur.forward(R_t * R_t) - mu_R_sq).clamp(min=0.)
+                #sigma_TR = compensation * (gaussian_filter(X * Y, win) - mu1_mu2)
+
+                #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
+                #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
+
+                D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
 
             else: # similarity
                 C2 = self.similarity_c
