@@ -51,7 +51,7 @@ logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 config_paths = [media_folder, "../metric_configs/cvvdp_mult_transducer_texture/cvvdp_parameters.json"]
 #config_paths = [media_folder]
 
-cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=config_paths)
+cvvdp = pycvvdp.cvvdp(display_name=display_name, config_paths=config_paths) #heatmap="raw",
 cvvdp.debug = True
 
 for tst_fname in TST_FILEs:

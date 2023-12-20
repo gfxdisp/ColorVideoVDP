@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from cgi import parse_multipart
 from urllib.parse import ParseResultBytes
 from numpy.lib.shape_base import expand_dims
 import math
@@ -168,6 +169,11 @@ class cvvdp(vq_metric):
             self.std_w = torch.as_tensor( parameters['std_w'], device=self.device )
         else:
             self.std_pool = "ts"
+
+        if 'feature_w' in parameters:
+            self.feature_w = torch.as_tensor( parameters['feature_w'], device=self.device )
+        else:
+            self.feature_w = torch.as_tensor( 0.0, dtype=torch.float32, device=self.device )
 
         if 'mask_q' in parameters:
             self.mask_q = torch.as_tensor( parameters['mask_q'], device=self.device )
@@ -431,10 +437,10 @@ class cvvdp(vq_metric):
                 Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
 
             if Q_per_ch is None:
-                Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
+                Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], Q_per_ch_block.shape[1], N_frames, Q_per_ch_block.shape[3]), device=self.device)
             
-            ff_end = ff+Q_per_ch_block.shape[1]
-            Q_per_ch[:,ff:ff_end,:] = Q_per_ch_block  
+            ff_end = ff+Q_per_ch_block.shape[2]
+            Q_per_ch[:,:,ff:ff_end,:] = Q_per_ch_block  
 
             if self.do_heatmap:
                 if self.heatmap == "raw":
@@ -495,13 +501,16 @@ class cvvdp(vq_metric):
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, Q_per_ch, base_rho_band, fps):
-        # Q_per_ch[channel,frame,sp_band]
+        # Q_per_ch[feature,channel,frame,sp_band]
 
-        no_channels = Q_per_ch.shape[0]
-        no_frames = Q_per_ch.shape[1]
-        no_bands = Q_per_ch.shape[2]
+        no_features = Q_per_ch.shape[0]
+        no_channels = Q_per_ch.shape[1]
+        no_frames = Q_per_ch.shape[2]
+        no_bands = Q_per_ch.shape[3]
 
         per_ch_w = self.get_ch_weights( no_channels )
+
+        feature_w = (2 ** self.feature_w).view(-1,1,1,1)
 
         # if no_frames>1: # If video
         #     per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
@@ -509,13 +518,14 @@ class cvvdp(vq_metric):
         # else: # If image
         #     per_ch_w = 1
 
+        Q_ft = self.lp_norm(Q_per_ch*feature_w, 1.0, dim=0, keepdim=False, normalize=False) # sum across features
+
         # Weights for the spatial bands
         per_sband_w = torch.ones( (no_channels,1,no_bands), dtype=torch.float32, device=self.device)
         per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
 
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
-
-        Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
+        Q_sc = self.lp_norm(Q_ft*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
 
         is_image = (no_frames==1)
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
@@ -620,19 +630,19 @@ class cvvdp(vq_metric):
             if is_baseband:
                 D = (torch.abs(T_f-R_f) * S)
             else:
-                # dimensions: [channel,frame,height,width]
+                # dimensions: [feature,channel,frame,height,width]
                 D = self.apply_masking_model(T_f, R_f, S)
 
             if Q_per_ch_block is None:
-                Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
+                Q_per_ch_block = torch.empty((D.shape[0], all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
 
             #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
 
-            Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
+            Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
-            if self.std_pool[1]=='S':
-                std_ws = 2**self.std_w[1]
-                Q_per_ch_block[:,:,bb] += std_ws*torch.std(D, dim=(-2,-1))
+            # if self.std_pool[1]=='S':
+            #     std_ws = 2**self.std_w[1]
+            #     Q_per_ch_block[:,:,bb] += std_ws*torch.std(D, dim=(-2,-1))
 
             if self.do_heatmap:
 
@@ -738,6 +748,8 @@ class cvvdp(vq_metric):
         # T - test contrast tensor T[channel,frame,width,height]
         # R - reference contrast tensor
         # S - sensitivity
+        # 
+        # returns: D[feature_dim,channel,frame,width,height]
 
         if self.masking_model == "kulikowski":
             zero_tens = torch.as_tensor(0., device=T.device)
@@ -823,12 +835,16 @@ class cvvdp(vq_metric):
 
             if self.masking_model.endswith( "transducer-texture" ):
 
-                if T_p.shape[-2] <= self.tex_pad_size or T_p.shape[-1] <= self.tex_pad_size:
-                    D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))
-                else:
-                    T_t = self.cm_transd(T_p)
-                    R_t = self.cm_transd(R_p)
+                D = torch.empty([3] + list(T_p.shape), dtype=T_p.dtype, device=T_p.device)
 
+                T_t = self.cm_transd(T_p)
+                R_t = self.cm_transd(R_p)
+
+                D[0,...] = torch.abs(T_t-R_t)
+
+                if T_p.shape[-2] <= self.tex_pad_size or T_p.shape[-1] <= self.tex_pad_size:
+                    D[1:2,...] = 0.0
+                else:
                     mu_T = self.tex_blur.forward(T_t)
                     mu_R = self.tex_blur.forward(R_t)
 
@@ -843,7 +859,8 @@ class cvvdp(vq_metric):
                     #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
                     #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
 
-                    D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
+                    D[1,...] = torch.abs(mu_T-mu_R)
+                    D[2,...] = torch.abs(sigma_T_sq-sigma_R_sq)
 
             else: # similarity
                 C2 = self.similarity_c
