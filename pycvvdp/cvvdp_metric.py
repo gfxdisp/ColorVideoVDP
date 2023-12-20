@@ -141,6 +141,7 @@ class cvvdp(vq_metric):
         if "texture" in self.masking_model:
             tex_blur_sigma = 4
             self.tex_blur = GaussianBlur(int(tex_blur_sigma*4)+1, tex_blur_sigma)
+            self.tex_pad_size = int(tex_blur_sigma*2)
 
         self.csf = parameters['csf']
         self.local_adapt = parameters['local_adapt'] # Local adaptation: 'simple' or or 'gpyr'
@@ -822,24 +823,27 @@ class cvvdp(vq_metric):
 
             if self.masking_model.endswith( "transducer-texture" ):
 
-                T_t = self.cm_transd(T_p)
-                R_t = self.cm_transd(R_p)
+                if T_p.shape[-2] <= self.tex_pad_size or T_p.shape[-1] <= self.tex_pad_size:
+                    D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))
+                else:
+                    T_t = self.cm_transd(T_p)
+                    R_t = self.cm_transd(R_p)
 
-                mu_T = self.tex_blur.forward(T_t)
-                mu_R = self.tex_blur.forward(R_t)
+                    mu_T = self.tex_blur.forward(T_t)
+                    mu_R = self.tex_blur.forward(R_t)
 
-                mu_T_sq = mu_T * mu_T
-                mu_R_sq = mu_R * mu_R
-                #mu_TR = mu_T * mu_R
+                    mu_T_sq = mu_T * mu_T
+                    mu_R_sq = mu_R * mu_R
+                    #mu_TR = mu_T * mu_R
 
-                sigma_T_sq = (self.tex_blur.forward(T_t * T_t) - mu_T_sq).clamp(min=0.)
-                sigma_R_sq = (self.tex_blur.forward(R_t * R_t) - mu_R_sq).clamp(min=0.)
-                #sigma_TR = compensation * (gaussian_filter(X * Y, win) - mu1_mu2)
+                    sigma_T_sq = (self.tex_blur.forward(T_t * T_t) - mu_T_sq).clamp(min=0.)
+                    sigma_R_sq = (self.tex_blur.forward(R_t * R_t) - mu_R_sq).clamp(min=0.)
+                    #sigma_TR = compensation * (gaussian_filter(X * Y, win) - mu1_mu2)
 
-                #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
-                #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
+                    #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
+                    #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
 
-                D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
+                    D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
 
             else: # similarity
                 C2 = self.similarity_c
