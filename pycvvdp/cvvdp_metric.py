@@ -140,7 +140,7 @@ class cvvdp(vq_metric):
         self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
         if "texture" in self.masking_model:
-            tex_blur_sigma = 4
+            tex_blur_sigma = 8
             self.tex_blur = GaussianBlur(int(tex_blur_sigma*4)+1, tex_blur_sigma)
             self.tex_pad_size = int(tex_blur_sigma*2)
 
@@ -733,7 +733,7 @@ class cvvdp(vq_metric):
         p = self.mask_p
         q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-        M = self.mask_pool(safe_pow(torch.abs(C_p),q))
+        M = self.phase_uncertainty_no_c(self.mask_pool(safe_pow(torch.abs(C_p),q)))
 
         return 2 * pow_neg( C_p, p ) / (1 + M)
 
