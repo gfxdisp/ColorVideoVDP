@@ -140,7 +140,7 @@ class cvvdp(vq_metric):
         self.sensitivity_correction = torch.as_tensor( parameters['sensitivity_correction'], device=self.device ) # Correct CSF values in dB. Negative values make the metric less sensitive.
         self.masking_model = parameters['masking_model']
         if "texture" in self.masking_model:
-            tex_blur_sigma = 8
+            tex_blur_sigma = 6
             self.tex_blur = GaussianBlur(int(tex_blur_sigma*4)+1, tex_blur_sigma)
             self.tex_pad_size = int(tex_blur_sigma*2)
 
@@ -173,7 +173,7 @@ class cvvdp(vq_metric):
         if 'feature_w' in parameters:
             self.feature_w = torch.as_tensor( parameters['feature_w'], device=self.device )
         else:
-            self.feature_w = torch.as_tensor( 0.0, dtype=torch.float32, device=self.device )
+            self.feature_w = torch.as_tensor( [], dtype=torch.float32, device=self.device )
 
         if 'mask_q' in parameters:
             self.mask_q = torch.as_tensor( parameters['mask_q'], device=self.device )
@@ -510,7 +510,8 @@ class cvvdp(vq_metric):
 
         per_ch_w = self.get_ch_weights( no_channels )
 
-        feature_w = (2 ** self.feature_w).view(-1,1,1,1)
+        # The first element is always 1
+        feature_w = torch.cat( (torch.as_tensor( 1., dtype=torch.float32, device=self.device).unsqueeze(0), 2 ** self.feature_w) ).view(-1,1,1,1)
 
         # if no_frames>1: # If video
         #     per_ch_w = self.ch_weights[0:no_channels].view(-1,1,1)
@@ -854,7 +855,7 @@ class cvvdp(vq_metric):
 
                     sigma_T_sq = (self.tex_blur.forward(T_t * T_t) - mu_T_sq).clamp(min=0.)
                     sigma_R_sq = (self.tex_blur.forward(R_t * R_t) - mu_R_sq).clamp(min=0.)
-                    #sigma_TR = compensation * (gaussian_filter(X * Y, win) - mu1_mu2)
+                    #sigma_TR = (self.tex_blur.forward(T_t * R_t) - mu_TR).clamp(min=0.)
 
                     #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
                     #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
