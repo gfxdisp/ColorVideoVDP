@@ -856,6 +856,7 @@ class cvvdp(vq_metric):
         elif self.masking_model in ["smooth_clamp_cont", "min_mutual_masking_perc_norm2", "fvvdp_ch_gain"]:
 
             if self.masking_model == "fvvdp_ch_gain":
+                num_ch = T.shape[0]
                 ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
                 T = T*S*ch_gain
                 R = R*S*ch_gain
