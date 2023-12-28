@@ -853,9 +853,16 @@ class cvvdp(vq_metric):
 
             assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
 
-        elif self.masking_model == "min_mutual_masking_perc_norm2":
-            T = T*S
-            R = R*S
+        elif self.masking_model in ["smooth_clamp_cont", "min_mutual_masking_perc_norm2", "fvvdp_ch_gain"]:
+
+            if self.masking_model == "fvvdp_ch_gain":
+                ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                T = T*S*ch_gain
+                R = R*S*ch_gain
+            else:
+                T = T*S
+                R = R*S
+
             M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
 
             # Cross-channel masking
