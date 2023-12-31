@@ -939,7 +939,7 @@ class cvvdp(vq_metric):
                     q = torch.stack( [q_sust, q_sust, q_sust, q_trans], dim=0 ).view(4,1,1,1)
 
             if self.masking_model == "smooth_clamp_cont":
-                R = torch.div( self.smooth_clamp_cont(G, p), 1. + self.smooth_clamp_cont(G_mask, q) )
+                R = torch.div( self.smooth_clamp_cont(G, p), 1. + safe_pow(G_mask, q) )
             else:
                 R = torch.div(safe_pow(G,p), 1. + safe_pow(G_mask, q))
         return R
