@@ -897,6 +897,12 @@ class cvvdp(vq_metric):
         elif self.dclamp_type == "soft":
             max_v = 10**self.dclamp_par
             Dc = max_v * D / (max_v + D)
+        elif self.dclamp_type == "none":
+            Dc = D
+        elif self.dclamp_type == "per_channel":
+            num_ch = D.shape[0]
+            max_v = 10**(self.dclamp_par[:num_ch,...].view(-1,1,1,1))
+            Dc = max_v * D / (max_v + D)
         else:
             raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
 
