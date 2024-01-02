@@ -795,18 +795,20 @@ class cvvdp(vq_metric):
                 D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
             elif self.masking_model.endswith( "mutual" ):
 
-                M_mm = self.phase_uncertainty_no_c(torch.min( torch.abs(T_p), torch.abs(R_p) ))
+                M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
                 p = self.mask_p
                 q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
                 M = self.mask_pool(safe_pow(torch.abs(M_mm),q))
 
-                D_band = safe_pow(torch.abs(T_p - R_p),p)
-                k_c = self.k_c
-                D_clamped = k_c*D_band / (k_c + D_band)
-                D = D_clamped / (1 + M)
+                #D_band = safe_pow(torch.abs(T_p - R_p),p)
+                # k_c = self.k_c
+                # D_clamped = k_c*D_band / (k_c + D_band)
+                #D = D_clamped / (1 + M)
+                D_u = safe_pow(torch.abs(T_p - R_p),p) / (1 + M)
+                D = self.clamp_diffs( D_u )
 
-            if self.masking_model.endswith( "mutual-old" ):
+            elif self.masking_model.endswith( "mutual-old" ):
 
                 M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
                 p = self.mask_p
@@ -821,7 +823,7 @@ class cvvdp(vq_metric):
                 k_c = self.k_c                
                 D = k_c*D_m / (k_c + D_m)
 
-            if self.masking_model.endswith( "transducer-texture" ):
+            elif self.masking_model.endswith( "transducer-texture" ):
 
                 if T_p.shape[-2] <= self.tex_pad_size or T_p.shape[-1] <= self.tex_pad_size:
                     D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))
