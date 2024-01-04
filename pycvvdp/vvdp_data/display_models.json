@@ -23,7 +23,7 @@
 
   "standard_hdr_linear": {
     "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
-    "colorspace": "BT.2020-linear",
+    "colorspace": "BT.709-linear",
     "resolution": [3840, 2160], 
     "viewing_distance_meters":  0.7472,  
     "diagonal_size_inches": 30,   
@@ -32,9 +32,20 @@
     "E_ambient": 10,
     "source": "none" },
 
+  "standard_hdr_linear_dark": {
+      "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed in a dark room (0 lux), seen from 2 x display height", 
+      "colorspace": "BT.709-linear",
+      "resolution": [3840, 2160], 
+      "viewing_distance_meters":  0.7472,  
+      "diagonal_size_inches": 30,   
+      "max_luminance": 1500,   
+      "contrast": 1000000,
+      "E_ambient": 0,
+      "source": "none" },
+  
   "standard_hdr_linear_zoom": {
       "name": "30-inch 4K HDR monitor, peak luminance 4000 cd/m^2, viewed under low light levels (10 lux), seen from very close to spot super-resolution artifacts", 
-      "colorspace": "BT.2020-linear",
+      "colorspace": "BT.709-linear",
       "resolution": [3840, 2160], 
       "viewing_distance_meters":  0.25,  
       "diagonal_size_inches": 30,   

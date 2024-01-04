@@ -778,7 +778,7 @@ class cvvdp(vq_metric):
             num_ch = T.shape[0]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
-                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1., 1.8, 0.11, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
                 C_t = 1/S
                 T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
                 R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*ch_gain + 1, zero_tens )
@@ -787,7 +787,7 @@ class cvvdp(vq_metric):
                     T_p = T * S
                     R_p = R * S
                 else:
-                    ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
                     T_p = T * S * ch_gain
                     R_p = R * S * ch_gain
 
@@ -859,7 +859,9 @@ class cvvdp(vq_metric):
 
             if self.masking_model == "fvvdp_ch_gain":
                 num_ch = T.shape[0]
-                ch_gain = torch.reshape( torch.as_tensor( [1, 0.45, 0.125, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                #print( f"max T[0] = {T[0,...].max()}; \tT[1] = {T[1,...].max()/0.610649}" )
+                #print( f"mean S[0] = {S[0,...].mean()}; \tS[1] = {S[1,...].mean()}; \tS[2] = {S[2,...].mean()}" )
                 T = T*S*ch_gain
                 R = R*S*ch_gain
             else:
