@@ -152,9 +152,6 @@ class cvvdp(vq_metric):
         if 'ce_g' in parameters:
             self.ce_g = torch.as_tensor( parameters['ce_g'], device=self.device )
 
-        if 'similarity_c' in parameters:
-            self.similarity_c = torch.as_tensor( parameters['similarity_c'], device=self.device )
-
         if 'k_c' in parameters:
             self.k_c = torch.as_tensor( parameters['k_c'], device=self.device )
 
@@ -193,7 +190,7 @@ class cvvdp(vq_metric):
         if self.baseband_weight.numel()<4:
             self.baseband_weight = self.baseband_weight.repeat(4)
         self.dclamp_type = parameters['dclamp_type']  # clamping mode: soft or hard
-        self.dclamp_par = torch.as_tensor( parameters['dclamp_par'], device=self.device ) # Clamping of difference values
+        self.d_max = torch.as_tensor( parameters['d_max'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
 
         self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
@@ -723,9 +720,11 @@ class cvvdp(vq_metric):
         p = self.mask_p
         q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-        M = self.phase_uncertainty_no_c(self.mask_pool(safe_pow(torch.abs(C_p),q)))
+        M = self.phase_uncertainty(self.mask_pool(safe_pow(torch.abs(C_p),q)))
 
-        return 2 * pow_neg( C_p, p ) / (1 + M)
+        D_max = 10**self.d_max
+
+        return D_max * pow_neg( C_p, p ) / (0.2 + M)
 
     # a differentiable sign function
     def diff_sign(self, x):
@@ -848,10 +847,13 @@ class cvvdp(vq_metric):
                     D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
 
             else: # similarity
-                C2 = self.similarity_c
-                T_p_m = self.mask_pool(torch.abs(T_p))
-                R_p_m = self.mask_pool(torch.abs(R_p))
-                D = 1 - (2*torch.abs(T_p)*torch.abs(R_p)+C2)/(T_p_m*T_p_m + R_p_m*R_p_m + C2)
+                T_p_m = self.phase_uncertainty(self.mask_pool(torch.abs(T_p)))
+                R_p_m = self.phase_uncertainty(self.mask_pool(torch.abs(R_p)))
+    
+                D_max = 10**self.d_max
+                epsilon = D_max-1
+
+                D = D_max - D_max*(2*torch.abs(T_p)*torch.abs(R_p)+epsilon)/(T_p_m*T_p_m + R_p_m*R_p_m + epsilon)
 
             assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
 
@@ -897,15 +899,15 @@ class cvvdp(vq_metric):
 
     def clamp_diffs(self,D):
         if self.dclamp_type == "hard":
-            Dc = torch.clamp(D, max=(10**self.dclamp_par))
+            Dc = torch.clamp(D, max=(10**self.d_max))
         elif self.dclamp_type == "soft":
-            max_v = 10**self.dclamp_par
+            max_v = 10**self.d_max
             Dc = max_v * D / (max_v + D)
         elif self.dclamp_type == "none":
             Dc = D
         elif self.dclamp_type == "per_channel":
             num_ch = D.shape[0]
-            max_v = 10**(self.dclamp_par[:num_ch,...].view(-1,1,1,1))
+            max_v = 10**(self.d_max[:num_ch,...].view(-1,1,1,1))
             Dc = max_v * D / (max_v + D)
         else:
             raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
@@ -955,7 +957,7 @@ class cvvdp(vq_metric):
         return R
 
     def smooth_clamp_cont( self, C, p ):
-        max_v = 10**self.dclamp_par
+        max_v = 10**self.d_max
         C_clamped = torch.div( (max_v*(C**p)+1), (max_v + C**p) )
         return C_clamped
 
