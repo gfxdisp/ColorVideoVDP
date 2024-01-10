@@ -656,7 +656,8 @@ class cvvdp(vq_metric):
             for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
                 M[cc,...] = torch.sum( C * xcm_weights[:,cc], dim=0, keepdim=True )
         else:
-            M = C
+            cm_weights = torch.reshape( (2**self.xcm_weights), (4,1,1,1) )[:num_ch,...]
+            M = C * cm_weights
         return M
 
     def ce_overconstancy(self, C, S):
@@ -691,29 +692,6 @@ class cvvdp(vq_metric):
 
         return D
 
-    def transd_watson_solomon(self, C, S):
-        num_ch = C.shape[0]
-        gain = torch.reshape( torch.as_tensor( [1., 0.45, 0.125, 1.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
-        C_p = C * S * gain
-
-        M = self.mask_pool(torch.abs(C_p))
-
-        p = self.mask_p
-        q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
-
-        return 2 * pow_neg( C_p, p ) / (1 + M**q)
-
-    def transd_watson_solomon_fixed(self, C, S):
-        num_ch = C.shape[0]
-        gain = torch.reshape( torch.as_tensor( [1., 0.45, 0.125, 1.], device=C.device), (4, 1, 1, 1) )[:num_ch,...]
-        C_p = C * S * gain
-
-        p = self.mask_p
-        q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
-        M = self.mask_pool(torch.abs(C_p)**q)
-
-        return 2 * pow_neg( C_p, p ) / (1 + M)
-
     def cm_transd(self, C_p):
         num_ch = C_p.shape[0]
 
@@ -738,42 +716,7 @@ class cvvdp(vq_metric):
         # R - reference contrast tensor
         # S - sensitivity
 
-        if self.masking_model == "kulikowski":
-            zero_tens = torch.as_tensor(0., device=T.device)
-
-            num_ch = T.shape[0]
-            gain = torch.reshape( torch.as_tensor( [1., 1.8, 0.11, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...]
-
-            C_t = 1/S
-            T = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*gain + 1, zero_tens )
-            R = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*gain + 1, zero_tens )
-            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
-
-            M = self.mask_pool(M_pu)
-            D = self.mask_func_perc_norm( torch.abs(T-R), M )
-
-            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
-
-        elif self.masking_model == "overconstancy-transd":
-            D = torch.abs( self.transd_overconstancy(T,S) - self.transd_overconstancy(R,S) )
-
-        elif self.masking_model == "overconstancy":
-            T = self.ce_overconstancy(T, S)
-            R = self.ce_overconstancy(R, S)
-            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
-
-            M = self.mask_pool(M_pu)
-            D = self.mask_func_perc_norm( torch.abs(T-R), M )
-
-            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
-
-        elif self.masking_model == "watson-solomon":
-            D = torch.abs( self.transd_watson_solomon(T,S) - self.transd_watson_solomon(R,S) )
-
-        elif self.masking_model == "watson-solomon-fixed":
-            D = torch.abs( self.transd_watson_solomon_fixed(T,S) - self.transd_watson_solomon_fixed(R,S) )
-
-        elif self.masking_model in [ "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
+        if self.masking_model in [ "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
             num_ch = T.shape[0]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
@@ -790,7 +733,9 @@ class cvvdp(vq_metric):
                     T_p = T * S * ch_gain
                     R_p = R * S * ch_gain
 
-            if self.masking_model.endswith( "transducer" ):
+            if self.masking_model.endswith( "none" ):
+                D = self.clamp_diffs(torch.abs(T_p-R_p))
+            elif self.masking_model.endswith( "transducer" ):
                 D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
             elif self.masking_model.endswith( "mutual" ):
 
