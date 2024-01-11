@@ -318,7 +318,7 @@ class cvvdp(vq_metric):
             # Determine how much memory we have
             total = torch.cuda.get_device_properties(self.device).total_memory
             allocated = torch.cuda.memory_allocated(self.device)
-            mem_avail = total-allocated-1000000000  # Total available - 1G
+            mem_avail = total-allocated-1500000000  # Total available - 1.5G
 
             # Estimate how much we need for processing (may be inaccurate - to be improved)
             pix_cnt = width*height
