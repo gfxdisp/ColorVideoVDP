@@ -27,7 +27,7 @@ classdef cvvdp
                 options.ppd (1,1) {mustBeNumeric} = -1
                 options.heatmap {mustBeMember(options.heatmap, {'none', 'raw', 'threshold', 'supra-threshold'})} = 'none'
                 options.verbose (1,1) = false
-                options.config_paths {mustBeText} = []
+                options.config_paths {mustBeText} = ''
             end
             
             if isa( img_test, 'double' )
