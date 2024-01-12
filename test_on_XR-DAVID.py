@@ -48,7 +48,7 @@ TST_FILEs = glob.glob(media_folder + "/" + video + '_' + distortion + '.mp4')
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
-config_paths = [media_folder, "../metric_configs/cvvdp_mult_transducer_texture/cvvdp_parameters.json"]
+config_paths = [media_folder, "../metric_configs/cvvdp_no_masking/cvvdp_parameters.json"]
 #config_paths = [media_folder]
 
 cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=config_paths)
