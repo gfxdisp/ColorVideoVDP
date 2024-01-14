@@ -100,7 +100,7 @@ for tt, subsampling in enumerate(ss_type): # For each type of subsampling
         #print( q_str )
 
 
-mplots = [ {'ylabel': 'Quality [JOD]', 'ylim': (4, 10), 'metrics': ['cvvdp'] }, 
+mplots = [ {'ylabel': 'Quality [JOD]', 'ylim': (5.5, 10), 'metrics': ['cvvdp'] }, 
            {'ylabel': 'SSIM', 'ylim': (0.4, 1), 'metrics': ['ssim-lum', 'ssim-rgb'] } ]
 
 M = len(mplots) #len(Q[0]) # The number of metrics

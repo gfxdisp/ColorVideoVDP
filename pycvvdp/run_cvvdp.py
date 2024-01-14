@@ -98,7 +98,7 @@ def main():
     args = parse_args()
 
     if args.quiet:
-        log_level = logging.WARNING
+        log_level = logging.ERROR
     else:        
         log_level = logging.DEBUG if args.verbose else logging.INFO
         

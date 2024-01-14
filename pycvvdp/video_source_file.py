@@ -427,8 +427,9 @@ class video_source_matlab( video_source_array ):
     def get_content( self, mat_struct ):
         for v_name in mat_struct:
             var = mat_struct[v_name]
-            if isinstance( var, np.ndarray ) and var.ndim > 1 and var.ndim < 4:
-                return var
+            # We need a heuristic here - image needs to have more than 10 pixels - otherwise it is confused with other variables
+            if isinstance( var, np.ndarray ) and var.ndim > 1 and var.ndim < 4 and var.size>10:
+                return var.astype(np.single) if var.dtype == np.double else var
 
         raise RuntimeError( 'Cannot find image or video data in the .mat file' )
 
