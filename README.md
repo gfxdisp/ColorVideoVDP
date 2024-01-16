@@ -205,6 +205,7 @@ There is no native implementation of ColorVideoVDP in Matlab, but you can use a 
 * v0.4.0 (10/January/2024) 
   - An improved masking model
   - Better predictions for temporal distortions
+  - Matlab wrapper
 
 * v0.3.0 (04/Sep/2023) - First public release
 

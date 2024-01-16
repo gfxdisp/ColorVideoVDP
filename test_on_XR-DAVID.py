@@ -64,4 +64,4 @@ for tst_fname in TST_FILEs:
 
     print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
 
-#    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )
+    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )

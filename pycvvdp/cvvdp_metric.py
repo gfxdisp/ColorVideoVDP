@@ -627,6 +627,9 @@ class cvvdp(vq_metric):
 
             Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
+            # if bb>6:
+            #     Q_per_ch_block[:,:,bb] = 0
+
             if self.std_pool[1]=='S':
                 std_ws = 2**self.std_w[1]
                 Q_per_ch_block[:,:,bb] += std_ws*torch.std(D, dim=(-2,-1))
@@ -1054,7 +1057,9 @@ class cvvdp(vq_metric):
         Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
         ch_no = Q_per_ch.shape[0]    
 
-        Q_per_ch[:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1,1)
+        is_image = (Q_per_ch.shape[1]==1)
+
+        Q_per_ch[:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1)
         Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
         dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
 
@@ -1073,7 +1078,7 @@ class cvvdp(vq_metric):
         if not has_matplotlib:
             raise RuntimeError( 'matplotlib is missing. Please install it before exporting distograms.')
             
-        fig, axs = plt.subplots(nrows=ch_no, figsize=(base_size*frame_no/60+0.5, base_size))
+        fig, axs = plt.subplots(nrows=ch_no, figsize=(base_size*frame_no/60+1, base_size))
 
         ch_labels = ["A-sust", "RG", "YV", "A-trans"]
         cmap = plt.colormaps["plasma"]
@@ -1085,15 +1090,20 @@ class cvvdp(vq_metric):
             axs[kk].yaxis.set_major_locator(ticker.FixedLocator(range(0,len(band_labels)*2,2)))
             axs[kk].yaxis.set_minor_locator(ticker.MultipleLocator(1.0))
             axs[kk].set_yticklabels(band_labels)
-            if kk==(ch_no-1):
+            if kk==(ch_no-1) and not is_image:
                 axs[kk].xaxis.set_major_formatter(lambda x, pos: str(int(x/fps*1000)))
                 axs[kk].set_xlabel( 'Time [ms]')
                 axs[kk].xaxis.set_minor_locator(ticker.MultipleLocator(1.0))
             else:
                 axs[kk].set_xticks([])
 
-        plt.subplots_adjust(bottom=0.1, right=0.9, top=0.9)
-        cax = plt.axes([0.925, 0.1, 0.025, 0.8])
+        if is_image:
+            plt.subplots_adjust(bottom=0.1, right=0.5, top=0.9)
+            cax = plt.axes([0.725, 0.1, 0.125, 0.8])
+        else:
+            plt.subplots_adjust(bottom=0.1, right=0.9, top=0.9)
+            cax = plt.axes([0.925, 0.1, 0.025, 0.8])
+        
         plt.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, jod_max), cmap=cmap), cax=cax, cmap=cmap)
 
         # fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=cmap),
