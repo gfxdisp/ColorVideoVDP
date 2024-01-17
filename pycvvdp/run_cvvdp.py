@@ -14,6 +14,8 @@ import re
 
 import pycvvdp
 
+import shlex
+
 #from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
 # from pyfvvdp.visualize_diff_map import visualize_diff_map
 import pycvvdp.utils as utils
@@ -72,7 +74,7 @@ def np2img(np_srgb, imgfile):
 # -----------------------------------
 # Command-line Arguments
 # -----------------------------------
-def parse_args():
+def parse_args(arg_list=None):
     parser = argparse.ArgumentParser(description="Evaluate ColourVideoVDP on a set of videos")
     parser.add_argument("-t", "--test", type=str, nargs='+', required = False, help="list of test images/videos")
     parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
@@ -91,12 +93,14 @@ def parse_args():
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
-    args = parser.parse_args()
+    parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
+    if arg_list is not None:
+        args = parser.parse_args(arg_list)
+    else:
+        args = parser.parse_args()
     return args
 
-def main():
-    args = parse_args()
-
+def run_on_args(args):
     if args.quiet:
         log_level = logging.ERROR
     else:        
@@ -270,6 +274,23 @@ def main():
 
     #     del test_vid
     #     torch.cuda.empty_cache()
+
+def main():
+    args = parse_args()
+
+    if args.interactive:
+        #print( "Running in an interactive mode" )
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                break
+
+            #print( shlex.split(line) )
+            args = parse_args(shlex.split(line))
+            run_on_args(args)
+    else:
+        run_on_args(args)
+
 
 if __name__ == '__main__':
     main()
