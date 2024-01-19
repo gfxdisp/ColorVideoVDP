@@ -1,5 +1,12 @@
-# v0.? (?)
+# v0.4 (19/01/2024)
+* A new calibration with a small improvement in performance
+* Improved predictions for supra-threshold contrast across color directions
+* Improved masking model
 * Added Matlab wrapper
+* CLI now has --interactive mode to process multiple images/video without restarting PyTorch
+* Fixed distogram generation for images
+* "--quiet" flag now ensures that no warning messages end up in the stdout
+* CSF updated to the latest castleCSF fit
 
 # v0.3 (05/09/2023)
 * Added value range checks when the metric is running on HDR data (to avoid passing relative values)
