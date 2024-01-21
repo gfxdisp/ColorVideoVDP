@@ -1,4 +1,4 @@
-# Command-line interface for ColourVideoVDP. 
+# Command-line interface for ColorVideoVDP. 
 
 import os, sys
 import os.path
@@ -75,7 +75,7 @@ def np2img(np_srgb, imgfile):
 # Command-line Arguments
 # -----------------------------------
 def parse_args(arg_list=None):
-    parser = argparse.ArgumentParser(description="Evaluate ColourVideoVDP on a set of videos")
+    parser = argparse.ArgumentParser(description="Evaluate ColorVideoVDP on a set of videos")
     parser.add_argument("-t", "--test", type=str, nargs='+', required = False, help="list of test images/videos")
     parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
     parser.add_argument("--device", type=str,  default='cuda:0', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda:0', 'cuda:1', ...]")
@@ -92,7 +92,7 @@ def parse_args(arg_list=None):
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
-    parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
+    parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and color conversion. Use custom pytorch code by default (faster and less memory).")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
     if arg_list is not None:
         args = parser.parse_args(arg_list)

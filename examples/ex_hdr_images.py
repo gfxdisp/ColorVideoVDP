@@ -21,7 +21,7 @@ L_peak = 4000   # Peak luminance of an HDR display
 # mapped to absolute amount of light emitted from the display. For that, 
 # we map the peak value in the image to the peak value of the display,
 # then we increase the brightness by 2 stops (*4). This is an arbitrary 
-# choise (of colour grading/tone mapping), and different mapping could be used. 
+# choise (of color grading/tone mapping), and different mapping could be used. 
 I_ref = I_ref/I_ref.max() * L_peak * 4
 
 # Add Gaussian noise of 20% contrast
@@ -41,7 +41,7 @@ metric = pycvvdp.cvvdp(display_name='standard_hdr_linear', display_photometry=di
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.
 # Channels can be in any order, but the order must be specified as a dim_order parameter. 
-# Here the dimensions are (Height,Width,Colour)
+# Here the dimensions are (Height,Width,Color)
 Q_JOD_noise, stats_noise = metric.predict( I_test_noise, I_ref, dim_order="HWC" )
 noise_str = f'Noise - Quality: {Q_JOD_noise:.3f} JOD'
 print( noise_str )

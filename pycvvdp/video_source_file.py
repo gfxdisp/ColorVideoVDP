@@ -1,4 +1,4 @@
-# Classes for reading images or videos from files so that they can be passed to FovVideoVDP frame-by-frame
+# Classes for reading images or videos from files so that they can be passed to ColorVideoVDP frame-by-frame
 
 from asyncio.log import logger
 import os
@@ -13,10 +13,6 @@ import scipy.io as sio
 
 import logging
 from video_source import *
-
-# for debugging only
-# from gfxdisp.pfs import pfs
-# from gfxdisp.pfs.pfs_torch import pfs_torch
 
 try:
     # This may fail if OpenEXR is not installed. To install,
@@ -168,7 +164,7 @@ class video_reader:
 
 
 '''
-Decode frames to Yuv, perform upsampling and colour conversion with pytorch (on the GPU)
+Decode frames to Yuv, perform upsampling and color conversion with pytorch (on the GPU)
 '''
 class video_reader_yuv_pytorch(video_reader):
     def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
@@ -378,7 +374,7 @@ class video_source_video_file(video_source_dm):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
 
-        I = self.apply_dm_and_colour_transform(frame_t, colorspace)
+        I = self.apply_dm_and_color_transform(frame_t, colorspace)
 
         return I
 
@@ -483,7 +479,7 @@ class video_source_file(video_source):
         elif extension in image_extensions:
             assert os.path.splitext(reference_fname)[1].lower() in image_extensions, 'Test is an image, but reference is a video'
             # if color_space_name=='auto':
-            #     color_space_name='sRGB' # TODO: detect the right colour space
+            #     color_space_name='sRGB' # TODO: detect the right color space
             img_test = load_image_as_array(test_fname)
             img_reference = load_image_as_array(reference_fname)
             if not full_screen_resize is None:
@@ -497,7 +493,7 @@ class video_source_file(video_source):
                     logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
             else:
                 if self.vs.dm_photometry.EOTF == "linear":
-                    logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
+                    logging.warning('A display model with linear color space should not be used with display-encoded SDR images.')
 
         else:
             assert os.path.splitext(reference_fname)[1].lower() not in image_extensions, 'Test is a video, but reference is an image'

@@ -7,9 +7,9 @@ from pycvvdp.vq_metric import *
 
 
 """
-Plain PSNR-RGB metric. Operates on display-encoded values. If HDR/linear colour is encountered, it will be 
-PU21-encoded. The display model is used only for images in linear colour spaces. Usage is same as 
-the FovVideoVDP metric (see pytorch_examples).
+Plain PSNR-RGB metric. Operates on display-encoded values. If HDR/linear color is encountered, it will be 
+PU21-encoded. The display model is used only for images in linear color spaces. Usage is same as 
+the ColorVideoVDP metric (see pytorch_examples).
 """
 class psnr_rgb(vq_metric):
 
@@ -24,7 +24,7 @@ class psnr_rgb(vq_metric):
             self.device = device
 
         self.set_display_model( display_name=display_name, display_photometry=display_photometry, config_paths=config_paths )
-        self.color_space = color_space # input content colour space
+        self.color_space = color_space # input content color space
 
 
     '''
@@ -55,7 +55,7 @@ class psnr_rgb(vq_metric):
 
 
 """
-PU21-PSNR-Y metric. Usage is same as the FovVideoVDP metric (see pytorch_examples).
+PU21-PSNR-Y metric. Usage is same as the ColorVideoVDP metric (see pytorch_examples).
 """
 class pu_psnr_y(vq_metric):
 
@@ -70,11 +70,11 @@ class pu_psnr_y(vq_metric):
             self.device = device
 
         self.set_display_model( display_name=display_name, display_photometry=display_photometry, config_paths=config_paths )
-        self.color_space = color_space # input content colour space
+        self.color_space = color_space # input content color space
 
         self.pu = PU()
         self.max_I = self.pu.encode(torch.as_tensor(100)) # 100 nit should correspond to white on an SDR display
-        self.metric_colorspace = 'Y' # colour space in which the metric operates
+        self.metric_colorspace = 'Y' # color space in which the metric operates
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.

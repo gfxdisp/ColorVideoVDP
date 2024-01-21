@@ -1,6 +1,6 @@
-# ColourVideoVDP configuration files
+# ColorVideoVDP configuration files
 
-This directory contains configurations files and look-up tables used by ColourVideoVDP.
+This directory contains configurations files and look-up tables used by ColorVideoVDP.
 
 Editing those files in the installation directory is not recommended. Instead, create a separate directory with the files that should be altered and then pass `--config-dir <your_directory>` when invoking `cvvdp` from the command line. You can also set an environment variable `CVVDP_PATH` with such a directory. When searching for the configuration files, ColorVideoVDP will check the directories in the following order: 
 * The directory passed as `--config-dir <your_directory>`
@@ -9,14 +9,14 @@ Editing those files in the installation directory is not recommended. Instead, c
 
 ## cvvdp_parameters.json
 
-This file contains the parameters from ColourVideoVDP calibration. 
+This file contains the parameters from ColorVideoVDP calibration. 
 
 ## display_models.json
 
 Contains a list of available display models. Each display models specifies:
 * Display geometry: its dimensions and resolution
 * Display photometric characteristic: its peak luminance, black level, reflectivity
-* Input color space and EOTF: name listed in colorspaces.json. Each colorspace specifies its primaries and an EOTF used to tranform display-encoded values into linear colour.
+* Input color space and EOTF: name listed in colorspaces.json. Each colorspace specifies its primaries and an EOTF used to tranform display-encoded values into linear color.
 
 Each entry contains the following fields:
 

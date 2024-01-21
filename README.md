@@ -1,4 +1,4 @@
-# ColorVideoVDP: A visible difference predictor for colour images and videos
+# ColorVideoVDP: A visible difference predictor for color images and videos
 
 **[BETA RELEASE]**
 
@@ -9,7 +9,7 @@ This metric is unique because it is the first color-aware metric that accounts f
 The main features:
 * models chromatic and achromatic contrast sensitivity using a novel contrast sensitivity model (castleCSF), allowing us to predict distortions in color and luminance;
 * models spatio-temporal sensitivity so that it can predict visibility of artifacts like waveguide nonuniformity and other temporally varying artifacts;
-* works with colorimetrically calibrated content, both SDR and HDR (any colour space);
+* works with colorimetrically calibrated content, both SDR and HDR (any color space);
 * can predict a single number quality correlate, a distortion map or a visualization of an error over time and visual channels (distogram). 
 
 ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#example-usage).
@@ -17,7 +17,6 @@ ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-ena
 The details of the metric will be available in our upcoming paper:
 
 > ColorVideoVDP: A Visible Difference Predictor for Images and Video.
-> Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.
 > Paper in preparation.
 
 If you use the metric in your research, please cite the paper above. 
@@ -34,11 +33,6 @@ conda activate cvvdp
 3. Install [ffmpeg](https://ffmpeg.org/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg
-```
-
-4. Obtain the ColourVDP codebase, by extracting a `.zip` file provided or cloning from Github:
-```bash
-git clone git@github.com:gfxdisp/ColorVideoVDP.git   # skip if a .zip is provided or you use Github GUI
 ```
 
 5. Finally, install ColorVideoVDP with PyPI:
@@ -93,7 +87,7 @@ If you run the metric from Python code, the display photometry and geometry can 
 
 * HDR video files encoded using PQ EOTF function (SMPTE ST 2084). Pass the video files as `--test` and `--ref` arguments and specify `--display standard_hdr_pq`.
 
-* OpenEXR images. The images *MUST* contain absolute linear colour values (colour graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package, which is required to read `.exr` files. To install, run:
+* OpenEXR images. The images *MUST* contain absolute linear color values (color graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package, which is required to read `.exr` files. To install, run:
 ```bash
 conda install -c conda-forge openexr-python   # or "sudo apt install openxr" on Linux machines
 pip install pyexr
@@ -144,12 +138,6 @@ To predict quality with ColorVideoVDP (shown below), run:
 cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold --distogram
 ```
 
-|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-ref.gif) | Quality | **TODO:** adjust heatmaps |
-| :---: | :---: | :---: | :---: |
-| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 9.2140 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-noise-supra.gif) |
-| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 5.4020 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
-| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 5.6020 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
-
 ## Visualization
 
 In addition to the single-valued quality scored in the JOD units, ColorVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
@@ -163,9 +151,9 @@ Both distogram and heatmap will be saved in the current directory and the filena
 
 ## Configuration files
 
-Configuration files contain a list of available display models (`display_models.json`), colour spaces (`color_spaces.json`) and the parameters of the metric (`cvvdp_parameters.json`). Those are located by default in `pycvvdp/vvdp_data` folder. Different locations could be specified with the `--config-paths` argument or the `CVVDP_PATH` environment variable. 
+Configuration files contain a list of available display models (`display_models.json`), color spaces (`color_spaces.json`) and the parameters of the metric (`cvvdp_parameters.json`). Those are located by default in `pycvvdp/vvdp_data` folder. Different locations could be specified with the `--config-paths` argument or the `CVVDP_PATH` environment variable. 
 
-If you want to use a different colour space or display model, make a copy of the corresponding file in another directory, add your custom entry, and then pass the path to either the directory or the file as the `--config-paths` argument.
+If you want to use a different color space or display model, make a copy of the corresponding file in another directory, add your custom entry, and then pass the path to either the directory or the file as the `--config-paths` argument.
 
 You can also use a different metric calibration file by passing a path to another `cvvdp_parameters.json` file. 
 

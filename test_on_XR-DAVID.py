@@ -1,4 +1,4 @@
-# This example shows how to use python interface to run FovVideoVDP directly on video files
+# This example shows how to use python interface to run ColorVideoVDP directly on video files
 import os
 import glob
 from tabnanny import verbose

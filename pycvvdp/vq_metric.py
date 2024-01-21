@@ -12,11 +12,11 @@ class vq_metric:
         The two supported datatypes are float16 and uint8.
     dim_order - a string with the order of dimensions of test_cont and reference_cont. The individual characters denote
         B - batch
-        C - colour channel
+        C - color channel
         F - frame
         H - height
         W - width
-        Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - colour image; "FCHW" - colour video
+        Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - color image; "FCHW" - color video
         The default order is "BCFHW". The processing can be a bit faster if data is provided in that order. 
     frame_padding - the metric requires at least 250ms of video for temporal processing. Because no previous frames exist in the
         first 250ms of video, the metric must pad those first frames. This options specifies the type of padding to use:
