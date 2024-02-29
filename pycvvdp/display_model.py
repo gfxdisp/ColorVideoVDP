@@ -75,7 +75,8 @@ class vvdp_display_photometry:
         if not source_colorspace in colorspaces:
             raise RuntimeError( "Unknown color space: \"" + source_colorspace + "\"" )
 
-        self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
+        if 'RGB2X' in colorspaces[source_colorspace]: # luminance will not have colour space primaries
+            self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
         self.EOTF = colorspaces[source_colorspace]['EOTF']
 
 
@@ -206,7 +207,7 @@ class vvdp_display_photometry:
 class vvdp_display_photo_eotf(vvdp_display_photometry): 
     # Display model with several EOTF, to simulate both SDR and HDR displays
     #
-    # dm = fvvdp_display_photo_eotf( Y_peak, contrast, EOTF, gamma, E_ambient, k_refl )
+    # dm = vvdp_display_photo_eotf( Y_peak, contrast, EOTF, gamma, E_ambient, k_refl )
     #
     # Parameters (default value shown in []):
     # Y_peak - display peak luminance in cd/m^2 (nit), e.g. 200 for a typical
@@ -215,7 +216,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     #          1000:1
     # source_colorspace - color space from colorspaces.json. colorspace entry includes EOTF, 
     #          but it can be overriden using EOTF parameter.
-    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2
+    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2. 
+    #        This parameter will overwrite the EOTF attribute in the JSON file with corresponding 'source_colorspace'.
     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
     #         office
     # k_refl - [0.005] reflectivity of the display screen

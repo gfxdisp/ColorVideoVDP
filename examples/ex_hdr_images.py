@@ -1,4 +1,3 @@
-from ipaddress import collapse_addresses
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,8 +7,8 @@ import pycvvdp
 
 '''
 Results of current version (for reference):
-Noise - Quality: 9.201 JOD
-Blur - Quality: 8.449 JOD
+Noise - Quality: 9.450 JOD
+Blur - Quality: 8.696 JOD
 '''
 
 I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'nancy_church.hdr'))
