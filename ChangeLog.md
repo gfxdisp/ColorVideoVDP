@@ -7,6 +7,7 @@
 * Fixed distogram generation for images
 * "--quiet" flag now ensures that no warning messages end up in the stdout
 * CSF updated to the latest castleCSF fit
+* added 'luminance' color space to handle luminance-only data
 
 # v0.3 (05/09/2023)
 * Added value range checks when the metric is running on HDR data (to avoid passing relative values)
