@@ -3,9 +3,6 @@
 import torch
 from pycvvdp.interp import interp1
 
-# For debugging only
-# from gfxdisp.pfs.pfs_torch import *
-
 def luminance_NCHW(x):
     if x.shape[1] == 3: # NC***
         y = (

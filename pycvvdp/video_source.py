@@ -10,7 +10,7 @@ from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 #from pycvvdp.colorspace import ColorTransform
 
 """
-fvvdp_video_source_* objects are used to supply test/reference frames to FovVideoVDP. 
+fvvdp_video_source_* objects are used to supply test/reference frames to ColorVideoVDP. 
 Those could be comming from memory or files. The subclasses of this abstract class implement
 reading the frames and converting them to the approprtate format. 
 """
@@ -27,7 +27,7 @@ class video_source:
     def get_frames_per_second(self) -> int:
         pass
     
-    # Get a test video frame in the selected colorspace. See display_model.py->linear_2_target_colourspace
+    # Get a test video frame in the selected colorspace. See display_model.py->linear_2_target_colorspace
     # for the list of available color spaces. 
     # You can also pass:
     # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return 
@@ -74,7 +74,7 @@ class video_source:
 
 
 """
-Function for changing the order of dimensions, for example, from "WHC" (width, height, colour) to "BCHW" (batch, colour, height, width)
+Function for changing the order of dimensions, for example, from "WHC" (width, height, color) to "BCHW" (batch, color, height, width)
 If a dimension is missing in in_dims, it will be added as a singleton dimension
 """
 def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
@@ -138,7 +138,7 @@ class video_source_dm( video_source ):
         else:
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
 
-    def apply_dm_and_colour_transform(self, frame, target_colorspace):
+    def apply_dm_and_color_transform(self, frame, target_colorspace):
 
         if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
 
@@ -161,13 +161,13 @@ class video_source_dm( video_source ):
                 I = self.PU.encode(I_lin) / PU_max # White diffuse of 100 nit will be mapped to 1
 
         else: # If one of the standard linear color spaces is requested
-            I = self.dm_photometry.source_2_target_colourspace(frame, target_colorspace)
+            I = self.dm_photometry.source_2_target_colorspace(frame, target_colorspace)
 
             # L_lin = self.dm_photometry.forward( frame )
 
             # is_color = (frame.shape[-4]==3)
             # if is_color:
-            #     I = self.color_trans.rgb2colourspace(L_lin, colorspace)
+            #     I = self.color_trans.rgb2colorspace(L_lin, colorspace)
             # else:
             #     I = L_lin
 
@@ -179,7 +179,7 @@ class video_source_dm( video_source ):
 """
 This video source supplies frames from either Pytorch tensors and Numpy arrays. It also applies a photometric display model.
 
-A batch of videos should be stored as a tensor or numpy array. Ideally, the tensor should have the dimensions BCFHW (batch, colour, frame, height, width).If tensor is stored in another formay, you can pass the order of dimsions as "dim_order" parameter. If any dimension is missing, it will
+A batch of videos should be stored as a tensor or numpy array. Ideally, the tensor should have the dimensions BCFHW (batch, color, frame, height, width).If tensor is stored in another formay, you can pass the order of dimsions as "dim_order" parameter. If any dimension is missing, it will
 be added as a singleton dimension. 
 
 This class is for display-encoded (gamma-encoded) content that will be processed by a display model to produce linear  absolute luminance emitted from a display.
@@ -191,7 +191,7 @@ class video_source_array( video_source_dm ):
     # dim_order - a string with the order of the dimensions. 'BCFHW' is the default.
     # display_model - object that implements fvvdp_display_photometry
     #   class
-    # color_space_name - name of the colour space (see
+    # color_space_name - name of the color space (see
     #   fvvdp_data/color_spaces.json)
     def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30', config_paths=[], ):
 
@@ -219,7 +219,7 @@ class video_source_array( video_source_dm ):
                 reference_video = reference_video.astype(np.int16)
             reference_video = torch.tensor(reference_video)
 
-        # Change the order of dimension to match BFCHW - batch, frame, colour, height, width
+        # Change the order of dimension to match BFCHW - batch, frame, color, height, width
         test_video = reshuffle_dims( test_video, in_dims=dim_order, out_dims="BCFHW" )
         reference_video = reshuffle_dims( reference_video, in_dims=dim_order, out_dims="BCFHW" )
 
@@ -229,11 +229,11 @@ class video_source_array( video_source_dm ):
             raise RuntimeError( 'When passing video sequences, you must set ''frames_per_second'' parameter' )
 
         # if C == 4:
-        #     logging.warning('Input media has 4 colour channels, ignoring the alpha channel to run cvvdp.')
+        #     logging.warning('Input media has 4 color channels, ignoring the alpha channel to run cvvdp.')
         #     test_video = test_video[:,:3]
         #     reference_video = reference_video[:,:3]
         if C not in (1, 3):
-            raise RuntimeError( 'The content must have either 1 or 3 colour channels.' )
+            raise RuntimeError( 'The content must have either 1 or 3 color channels.' )
 
         self.fps = fps
         self.is_video = (fps>0)
@@ -287,7 +287,7 @@ class video_source_array( video_source_dm ):
         else:
             raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
 
-        I = self.apply_dm_and_colour_transform(frame, colorspace)
+        I = self.apply_dm_and_color_transform(frame, colorspace)
         
         return I
 

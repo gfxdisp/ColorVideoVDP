@@ -32,9 +32,6 @@ from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
-# For debugging only
-# from gfxdisp.pfs.pfs_torch import pfs_torch
-
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from third_party.cpuinfo import cpuinfo
@@ -44,7 +41,6 @@ from interp import interp1, interp3, interp1dim2
 import pycvvdp.utils as utils
 
 #from utils import *
-#from fvvdp_test import FovVideoVDP_Testbench
 
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
@@ -70,7 +66,7 @@ def pow_neg( x:Tensor, p ):
     return (torch.max(x,min_v) ** p) + (torch.max(-x,min_v) ** p) - min_v**p
 
 """
-ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
+ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
@@ -120,7 +116,7 @@ class cvvdp(vq_metric):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
         self.parameters_file = utils.config_files.find( "cvvdp_parameters.json", config_paths )
-        logging.debug( f"Loading ColourVideoVDP parameters from '{self.parameters_file}'" )
+        logging.debug( f"Loading ColorVideoVDP parameters from '{self.parameters_file}'" )
         parameters = utils.json2dict(self.parameters_file)
 
         #all common parameters between Matlab and Pytorch, loaded from the .json file
@@ -239,18 +235,18 @@ class cvvdp(vq_metric):
         self.lpyr = None
 
     '''
-    Predict image/video quality using FovVideoVDP.
+    Predict image/video quality using ColorVideoVDP.
 
     test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames. 
         Depending on the display model (display_photometry), the pixel values should be either display encoded, or absolute linear.
         The two supported datatypes are float16 and uint8.
     dim_order - a string with the order of dimensions of test_cont and reference_cont. The individual characters denote
         B - batch
-        C - colour channel
+        C - color channel
         F - frame
         H - height
         W - width
-        Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - colour image; "FCHW" - colour video
+        Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - color image; "FCHW" - color video
         The default order is "BCFHW". The processing can be a bit faster if data is provided in that order. 
     frame_padding - the metric requires at least 250ms of video for temporal processing. Because no previous frames exist in the
         first 250ms of video, the metric must pad those first frames. This options specifies the type of padding to use:
@@ -346,7 +342,7 @@ class cvvdp(vq_metric):
         if self.contrast=="log":
             met_colorspace='logLMS_DKLd65'
         else:
-            met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+            met_colorspace='DKLd65' # This metric uses DKL colorspace with d65 whitepoint
 
         for ff in range(0, N_frames, block_N_frames):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
@@ -416,7 +412,7 @@ class cvvdp(vq_metric):
                 for cc in range(all_ch): # Iterate over chromatic and temporal channels
                     # 1D filter over time (over frames)
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1]) 
-                    sw_ch = 0 if cc==3 else cc # colour channel in the sliding window
+                    sw_ch = 0 if cc==3 else cc # color channel in the sliding window
                     for fi in range(cur_block_N_frames):
                         R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
                         R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
@@ -1007,7 +1003,7 @@ class cvvdp(vq_metric):
             standard_str = f'custom-display: {self.display_name}'
 
         L_black, L_refl = self.display_photometry.get_black_level()
-        return f'"ColourVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
+        return f'"ColorVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
                f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
                f'Lblack={L_black:.4g}, Lrefl={L_refl:.4g} [cd/m^2], ({standard_str})"' 
 

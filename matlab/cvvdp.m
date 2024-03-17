@@ -1,5 +1,5 @@
 classdef cvvdp
-    % A wrapper class to run ColourVideoVDP from Matlab
+    % A wrapper class to run ColorVideoVDP from Matlab
     %
     % Example:
     % v = cvvdp( 'cvvdp' ); % the string must be a name of conda

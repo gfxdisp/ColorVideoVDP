@@ -5,15 +5,12 @@ with open("README.md", "r", encoding="utf8") as fh:
 
 setup(
     name='pycvvdp',
-    version='0.1.0',
+    version='0.4.0',
     description='PyTorch code for \'ColorVideoVDP\': a full-reference' \
                 'visual quality metric that predicts the perceptual' \
                 'difference between pairs of images or videos.',
     long_description=long_description,
-    url='https://github.com/mantiuk/ColourVideoVDP',
     long_description_content_type='text/markdown',
-    author='Rafał K. Mantiuk',
-    author_email='mantiuk@gmail.com',
     license='Creative Commons Attribution-NonCommercial 4.0 International Public License',
     packages=['pycvvdp', 'pycvvdp/third_party'],
     package_data={'pycvvdp': ['csf_cache/*.mat', 'vvdp_data/*.json']},

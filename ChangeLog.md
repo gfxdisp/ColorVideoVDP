@@ -17,7 +17,7 @@
 * Better handling of paths to configuration files
 
 # v0.2
-* Updated ColourVideoVDP model with cross-channel masking and more advanced pooling, different calibration and better prediction accuracy.
+* Updated ColorVideoVDP model with cross-channel masking and more advanced pooling, different calibration and better prediction accuracy.
 * Added distograms
 * Changed handling of paths to configuration files
 

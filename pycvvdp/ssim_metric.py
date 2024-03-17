@@ -10,9 +10,9 @@ def get_luma(img):
     return 0.212656*img[...,0,:,:,:] + 0.715158 * img[...,1,:,:,:] + 0.072186 * img[...,2,:,:,:]
 
 """
-Plain SSIM metric, computed on the luma channel. Operates on display-encoded values. If HDR/linear colour is encountered, it will be 
-PU21-encoded. The display model is used only for images in linear colour spaces. Usage is same as 
-the FovVideoVDP metric (see pytorch_examples).
+Plain SSIM metric, computed on the luma channel. Operates on display-encoded values. If HDR/linear color is encountered, it will be 
+PU21-encoded. The display model is used only for images in linear color spaces. Usage is same as 
+the ColorVideoVDP metric (see pytorch_examples).
 """
 class ssim_metric(vq_metric):
 
@@ -27,7 +27,7 @@ class ssim_metric(vq_metric):
             self.device = device
 
         self.set_display_model( display_name=display_name, display_photometry=display_photometry )
-        self.color_space = color_space # input content colour space
+        self.color_space = color_space # input content color space
         self.ssim = SSIM(channel=1, data_range=1.)
 
 
