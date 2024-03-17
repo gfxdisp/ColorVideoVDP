@@ -78,9 +78,17 @@ class video_reader:
         self.color_space = video_stream['color_space'] if ('color_space' in video_stream) else 'unknown'
         self.color_transfer = video_stream['color_transfer'] if ('color_transfer' in video_stream) else 'unknown'
         self.in_pix_fmt = video_stream['pix_fmt']
-        num_frames = int(video_stream['nb_frames'])
         avg_fps_num, avg_fps_denom = [float(x) for x in video_stream['r_frame_rate'].split("/")]
         self.avg_fps = avg_fps_num/avg_fps_denom
+
+        if 'nb_frames' in video_stream: 
+            num_frames = int(video_stream['nb_frames'])
+        else:
+            # Metadata may not contain total number of frames - this is the case of some VP9 videos
+            duration_text = video_stream['tags']['DURATION']
+            hrs, mins, secs = map(float, duration_text.split(':'))
+            duration = (hrs * 60 + mins) * 60 + secs
+            num_frames = int(np.floor(duration * self.avg_fps))
 
         if frames==-1:
             self.frames = num_frames

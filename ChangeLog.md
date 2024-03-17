@@ -1,3 +1,6 @@
+# v0.5 (?)
+* Now can handle videos that do not contain the number of frames in the meta-data
+
 # v0.4 (19/01/2024)
 * A new calibration with a small improvement in performance
 * Improved predictions for supra-threshold contrast across color directions

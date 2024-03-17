@@ -73,7 +73,7 @@ class vvdp_display_photometry:
         colorspaces = utils.json2dict(colorspaces_file)
 
         if not source_colorspace in colorspaces:
-            raise RuntimeError( "Unknown color space: \"" + source_colorspace + "\"" )
+            raise RuntimeError( f'Color space: "{source_colorspace}" not found in "{colorspaces_file}"' )
 
         self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
         self.EOTF = colorspaces[source_colorspace]['EOTF']
