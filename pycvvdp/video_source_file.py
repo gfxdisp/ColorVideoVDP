@@ -2,12 +2,14 @@
 
 from asyncio.log import logger
 import os
+from turtle import color
 import imageio.v2 as io
 import numpy as np
 from torch.functional import Tensor
 import torch
 import ffmpeg
 import re
+import math
 
 import scipy.io as sio
 
@@ -293,7 +295,7 @@ Use ffmpeg to read video frames, one by one.
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, ignore_framerate_mismatch=False ):
 
         fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -320,7 +322,7 @@ class video_source_video_file(video_source_dm):
         #     else:
         #         color_space_name="sRGB"
 
-        if self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
+        if not ignore_framerate_mismatch and self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
             logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
             raise RuntimeError( "Inconsistent frame rates" )
 
@@ -346,7 +348,7 @@ class video_source_video_file(video_source_dm):
             return (self.test_vidr.height, self.test_vidr.width, self.frames )
 
     # Return the frame rate of the video
-    def get_frames_per_second(self) -> int:
+    def get_frames_per_second(self):
         return self.test_vidr.avg_fps
     
     # Get a pair of test and reference video frames as a single-precision luminance map
@@ -386,6 +388,59 @@ class video_source_video_file(video_source_dm):
 
         return I
 
+
+# Floor function that should be robust to the floating point precision issues
+def safe_floor(x):
+    x_f = math.floor(x)
+    return x_f if (x-x_f)<(1-1e-6) else x_f+1
+
+'''
+This video source will resample the frames over time and can handle test and reference videos that have different frame rates. 
+It currently handles only constant fps video. 
+'''
+class video_source_temp_resample_file(video_source_video_file):
+
+    max_fps = 160 # upsample to at most this FPS
+
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize, 
+                         resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
+
+
+        test_fps = self.test_vidr.avg_fps
+        ref_fps = self.reference_vidr.avg_fps
+
+        # First check if we can find an integer resampling rate
+        if test_fps % 1 == 0 and ref_fps % 1 == 0:
+            gcd = math.gcd(int(test_fps),int(ref_fps))
+            self.resample_fps = min( test_fps * ref_fps/gcd, __class__.max_fps )
+        else:
+            self.resample_fps = __class__.max_fps
+
+        frames_resampled = min( int( self.test_vidr.frames*self.resample_fps/test_fps ), int( self.reference_vidr.frames*self.resample_fps/ref_fps ) )
+        self.frames = frames_resampled if frames==-1 else frames
+
+        logger.info( f"Resampling videos to {self.resample_fps} frames per second. {self.frames} will be processed." )
+
+        self.cache_ind = [-1, -1]
+        self.cache_frame = [None, None]
+    
+    # Return the frame rate of the video
+    def get_frames_per_second(self):
+        return self.resample_fps
+
+    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+
+        frame_ind = int(safe_floor(frame/self.resample_fps * vid_reader.avg_fps))
+
+        ce = 0 if vid_reader == self.test_vidr else 1
+
+        if self.cache_ind[ce] == frame_ind:  # if quering the same frame in the source video, return the cache entry
+            return self.cache_frame[ce]
+        else:
+            self.cache_ind[ce] = frame_ind
+            self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
+            return self.cache_frame[ce]            
 
 '''
 The same functionality as to fvvdp_video_source_video_file, but preloads all the frames and stores in the CPU memory - allows for random access.
