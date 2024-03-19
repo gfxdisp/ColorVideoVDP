@@ -156,14 +156,36 @@ class vvdp_display_photometry:
     # the colorimetric values of light emmitted from the display and then into the target colour
     # space used by a metric.
     def source_2_target_colourspace(self, I_src, target_colorspace):        
-        # Apply forward display model to get absolute linear values
-        I_lin = self.forward( I_src )
 
-        is_color = (I_src.shape[-4]==3)
-        if is_color:
-            I_target = self.linear_2_target_colourspace(I_lin, target_colorspace)
+
+        if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
+
+            # Special case - if PQ, we still want to use PU21, as it should be marginally better
+            if self.is_input_display_encoded() and not (isinstance( self, vvdp_display_photo_eotf) and self.EOTF == 'PQ'):
+                I_target = I_src # no need to do anything
+            else:
+                # Otherwise, we need to PU-encode the frame
+                if not hasattr( self, "PU" ):
+                    self.PU = utils.PU()
+
+                if target_colorspace == 'display_encoded_01':
+                    PU_max = self.PU.encode(torch.as_tensor(10000.0))
+                elif target_colorspace == 'display_encoded_100nit':
+                    PU_max = self.PU.encode(torch.as_tensor(100.0)) # White diffuse of 100 nit will be mapped to 1
+                else:
+                    PU_max = self.PU.encode(torch.as_tensor(self.dm_photometry.get_peak_luminance()))
+                
+                I_lin = self.forward( I_src )
+                I_target = self.PU.encode(I_lin) / PU_max 
         else:
-            I_target = I_lin
+            # Apply forward display model to get absolute linear values
+            I_lin = self.forward( I_src )
+
+            is_color = (I_src.shape[-4]==3)
+            if is_color:
+                I_target = self.linear_2_target_colourspace(I_lin, target_colorspace)
+            else:
+                I_target = I_lin
 
         return I_target
 
