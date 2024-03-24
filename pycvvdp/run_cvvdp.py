@@ -21,6 +21,7 @@ import shlex
 import pycvvdp.utils as utils
 
 from pycvvdp.ssim_metric import ssim_metric
+from pycvvdp.dm_preview import dm_preview_metric
 
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
@@ -87,7 +88,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
@@ -188,6 +189,9 @@ def run_on_args(args):
     else:
         display_geometry = pycvvdp.vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
 
+    out_dir = "." if args.output_dir is None else args.output_dir
+    os.makedirs(out_dir, exist_ok=True)
+
     for mm in args.metric:
         if mm == 'cvvdp':
             fv = pycvvdp.cvvdp( display_photometry=display_photometry,
@@ -210,6 +214,8 @@ def run_on_args(args):
             if args.heatmap:
                 logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
             metrics.append( ssim_metric(device=device) )
+        elif mm == 'dm-preview' or mm == 'dm-preview-exr':            
+            metrics.append( dm_preview_metric(output_exr=mm.endswith("-exr"), device=device) )
         else:
             raise RuntimeError( f"Unknown metric {mm}")
 
@@ -218,8 +224,6 @@ def run_on_args(args):
             logging.info( 'When reporting metric results, please include the following information:' )
             logging.info( info_str )
 
-    out_dir = "." if args.output_dir is None else args.output_dir
-    os.makedirs(out_dir, exist_ok=True)
 
     for kk in range( max(N_test, N_ref) ): # For each test and reference pair
         test_file = args.test[min(kk,N_test-1)]
@@ -237,6 +241,11 @@ def run_on_args(args):
                                                 preload=preload,
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
+
+                base, ext = os.path.splitext(os.path.basename(test_file))            
+                base_fname = os.path.join(out_dir, base)
+                mm.set_base_fname(base_fname)
+
                 Q_pred, stats = mm.predict_video_source(vs)
                 if args.quiet:
                     print( "{Q:0.4f}".format(Q=Q_pred) )
@@ -244,7 +253,6 @@ def run_on_args(args):
                     units_str = f" [{mm.quality_unit()}]"
                     print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
 
-                base, ext = os.path.splitext(os.path.basename(test_file))            
 
                 if args.features and not stats is None:
                     if mm == 'pu-psnr':

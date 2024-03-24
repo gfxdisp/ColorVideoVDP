@@ -41,6 +41,20 @@ def lms2006_to_dkld65( img ):
         ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
     return ABC
 
+def lin2pq( L ):
+    """ Convert from absolute linear values (between 0.005 and 10000) to PQ-encoded values V (between 0 and 1)
+    """
+    Lmax = 10000
+    #Lmin = 0.005
+    n    = 0.15930175781250000
+    m    = 78.843750000000000
+    c1   = 0.83593750000000000
+    c2   = 18.851562500000000
+    c3   = 18.687500000000000
+    im_t = (torch.clip(L,0,Lmax)/Lmax) ** n
+    V  = ((c2*im_t + c1) / (1+c3*im_t)) ** m
+    return V
+
 def pq2lin( V ):
     """ Convert from PQ-encoded values V (between 0 and 1) to absolute linear values (between 0.005 and 10000)
     """
@@ -209,7 +223,7 @@ class vvdp_display_photometry:
                 rgb2abc = torch.as_tensor( LMS2006_to_DKLd65, dtype=RGB_lin.dtype, device=RGB_lin.device) @ torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif target_colorspace=="RGB709":
                 rgb2abc = torch.as_tensor( XYZ_to_RGB709, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
-            elif target_colorspace=="RGB2020":
+            elif target_colorspace=="RGB2020" or target_colorspace=="RGB2020pq":
                 rgb2abc = torch.as_tensor( XYZ_to_RGB2020, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif target_colorspace=="logLMS_DKLd65":
                 rgb2abc = torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
@@ -223,6 +237,8 @@ class vvdp_display_photometry:
 
             if target_colorspace=="logLMS_DKLd65":
                 ABC = lms2006_to_dkld65( torch.log10(ABC) )
+            elif target_colorspace=="RGB2020pq":
+                ABC = lin2pq(ABC)
 
             return ABC
 

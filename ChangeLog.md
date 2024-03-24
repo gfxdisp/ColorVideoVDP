@@ -1,3 +1,6 @@
+# v0.5 (?)
+* Added `--metric dm-preview` for debugging of the display model
+
 # v0.4 (19/01/2024)
 * A new calibration with a small improvement in performance
 * Improved predictions for supra-threshold contrast across color directions

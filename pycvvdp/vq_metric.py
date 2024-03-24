@@ -55,3 +55,9 @@ class vq_metric:
         else:
             self.display_photometry = display_photometry
             self.display_name = "unspecified"
+
+    '''
+    Set the base name and path for any extra debuging info or outputs that a metric may produce. 
+    '''
+    def set_base_fname( self, base_fname ):
+        self.base_fname = base_fname
