@@ -155,7 +155,7 @@ class vvdp_display_photometry:
     # the colorimetric values of light emmitted from the display and then into the target color
     # space used by a metric.
     def source_2_target_colorspace(self, I_src, target_colorspace):        
-        # Apply forward display model to get absolute linear values
+        # Apply EOTF to get absolute linear values
         I_lin = self.forward( I_src )
 
         is_color = (I_src.shape[-4]==3)
