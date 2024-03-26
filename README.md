@@ -182,10 +182,10 @@ To check which `cvvdp_parameters.json` file is used, run `cvvdp` with `--verbose
 
 A command-line argument `--metric` can be used to specify one more more metric to run. The available options are:
 
-* cvvdp - ColorVideoVDP
-* pu-psnr-rgb - PSNR calculated on PU21-encoded RGB values (see [PU21](https://github.com/gfxdisp/PU21) for more info on PU21 encoding).
-* pu-psnr-y - PSNR calculated on PU21-encoded luminance values
-* dm-preview or dm-preview-exr - a fake metric that outputs either HDR h.265 (.mp4) video or OpenEXR with the output of the display model. It can be used to check or debug the display model. 
+* `cvvdp` - ColorVideoVDP
+* `pu-psnr-rgb` - PSNR calculated on PU21-encoded RGB values (see [PU21](https://github.com/gfxdisp/PU21) for more info on PU21 encoding).
+* `pu-psnr-y` - PSNR calculated on PU21-encoded luminance values
+* `dm-preview` or `dm-preview-exr` - a fake metric that outputs either HDR h.265 (.mp4) video (`dm-preview`) or OpenEXR frames (`dm-preview-exr`) with the output of the display model. It can be used to check or debug the display model. Use `--output-dir` to specify the directory in which the files should be written.
 
 ## Low-level Python interface
 ColorVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class.

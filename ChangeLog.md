@@ -1,4 +1,4 @@
-# v0.5 (?)
+# v0.4.1 (?)
 * Added `--metric dm-preview` for debugging of the display model
 
 # v0.4 (19/01/2024)
