@@ -48,8 +48,9 @@ class dm_preview_metric(vq_metric):
             colorspace = 'RGB709'
         else:
             colorspace = 'RGB2020pq'
-            test_vw = VideoWriter(self.base_fname + "-test.mp4", hdr_mode=True, codec='h265')
-            ref_vw = VideoWriter(self.base_fname + "-reference.mp4", hdr_mode=True, codec='h265')
+            fps = vid_source.get_frames_per_second()
+            test_vw = VideoWriter(self.base_fname + "-test.mp4", hdr_mode=True, fps=fps, codec='h265')
+            ref_vw = VideoWriter(self.base_fname + "-reference.mp4", hdr_mode=True, fps=fps, codec='h265')
 
         for ff in range(N_frames):
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=colorspace)

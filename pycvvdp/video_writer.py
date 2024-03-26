@@ -33,12 +33,12 @@ class VideoWriter:
                 if self.codec == 'h265':
                     self.process = (ffmpeg
                             .input('pipe:', format='rawvideo', pix_fmt='rgb48le', s='{}x{}'.format(W, H), r=self.fps, colorspace="bt2020nc", color_primaries="bt2020", color_trc="smpte2084")
-                            .output(self.fname, pix_fmt='yuv420p10le', crf=12, vcodec='libx265', **{'x265-params': 'hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(0,0)B(0,0)R(0,0)WP(0,0)L(0,0):max-cll=0,0', 'preset': 'fast'} )
+                            .output(self.fname, pix_fmt='yuv420p10le', crf=12, vcodec='libx265', **{'x265-params': 'hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(0,0)B(0,0)R(0,0)WP(0,0)L(0,0):max-cll=0,0'} )
                             .overwrite_output()
+                            .global_args( '-loglevel', 'info' if self.verbose else 'warning')
                             .global_args( '-hide_banner')
                             .global_args( '-preset', 'fast' )
-                            .global_args( '-loglevel', 'info' if self.verbose else 'quiet')
-                            .run_async(pipe_stdin=True)
+                            .run_async(pipe_stdin=True, quiet=not self.verbose)
                             )
                 elif self.codec == 'vp9':
                     self.process = (ffmpeg
