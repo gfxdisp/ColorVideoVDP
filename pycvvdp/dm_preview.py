@@ -68,7 +68,7 @@ class dm_preview_metric(vq_metric):
             test_vw.close()
             ref_vw.close()
 
-        return -1, None
+        return torch.as_tensor(-1, device=self.device), None
 
     def short_name(self):
         return "dm-preview"
