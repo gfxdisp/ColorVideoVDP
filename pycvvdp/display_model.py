@@ -41,6 +41,20 @@ def lms2006_to_dkld65( img ):
         ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
     return ABC
 
+def lin2pq( L ):
+    """ Convert from absolute linear values (between 0.005 and 10000) to PQ-encoded values V (between 0 and 1)
+    """
+    Lmax = 10000
+    #Lmin = 0.005
+    n    = 0.15930175781250000
+    m    = 78.843750000000000
+    c1   = 0.83593750000000000
+    c2   = 18.851562500000000
+    c3   = 18.687500000000000
+    im_t = (torch.clip(L,0,Lmax)/Lmax) ** n
+    V  = ((c2*im_t + c1) / (1+c3*im_t)) ** m
+    return V
+
 def pq2lin( V ):
     """ Convert from PQ-encoded values V (between 0 and 1) to absolute linear values (between 0.005 and 10000)
     """
@@ -75,7 +89,8 @@ class vvdp_display_photometry:
         if not source_colorspace in colorspaces:
             raise RuntimeError( f'Color space: "{source_colorspace}" not found in "{colorspaces_file}"' )
 
-        self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
+        if 'RGB2X' in colorspaces[source_colorspace]: # luminance will not have colour space primaries
+            self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
         self.EOTF = colorspaces[source_colorspace]['EOTF']
 
 
@@ -155,14 +170,35 @@ class vvdp_display_photometry:
     # the colorimetric values of light emmitted from the display and then into the target color
     # space used by a metric.
     def source_2_target_colorspace(self, I_src, target_colorspace):        
-        # Apply EOTF to get absolute linear values
-        I_lin = self.forward( I_src )
 
-        is_color = (I_src.shape[-4]==3)
-        if is_color:
-            I_target = self.linear_2_target_colorspace(I_lin, target_colorspace)
+        if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
+
+            # Special case - if PQ, we still want to use PU21, as it should be marginally better
+            if self.is_input_display_encoded() and not (isinstance( self, vvdp_display_photo_eotf) and self.EOTF == 'PQ'):
+                I_target = I_src # no need to do anything
+            else:
+                # Otherwise, we need to PU-encode the frame
+                if not hasattr( self, "PU" ):
+                    self.PU = utils.PU()
+
+                if target_colorspace == 'display_encoded_01':
+                    PU_max = self.PU.encode(torch.as_tensor(10000.0))
+                elif target_colorspace == 'display_encoded_100nit':
+                    PU_max = self.PU.encode(torch.as_tensor(100.0)) # White diffuse of 100 nit will be mapped to 1
+                else:
+                    PU_max = self.PU.encode(torch.as_tensor(self.dm_photometry.get_peak_luminance()))
+                
+                I_lin = self.forward( I_src )
+                I_target = self.PU.encode(I_lin) / PU_max 
         else:
-            I_target = I_lin
+            # Apply forward display model to get absolute linear values
+            I_lin = self.forward( I_src )
+
+            is_color = (I_src.shape[-4]==3)
+            if is_color:
+                I_target = self.linear_2_target_colorspace(I_lin, target_colorspace)
+            else:
+                I_target = I_lin
 
         return I_target
 
@@ -186,7 +222,7 @@ class vvdp_display_photometry:
                 rgb2abc = torch.as_tensor( LMS2006_to_DKLd65, dtype=RGB_lin.dtype, device=RGB_lin.device) @ torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif target_colorspace=="RGB709":
                 rgb2abc = torch.as_tensor( XYZ_to_RGB709, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
-            elif target_colorspace=="RGB2020":
+            elif target_colorspace=="RGB2020" or target_colorspace=="RGB2020pq":
                 rgb2abc = torch.as_tensor( XYZ_to_RGB2020, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
             elif target_colorspace=="logLMS_DKLd65":
                 rgb2abc = torch.as_tensor( XYZ_to_LMS2006, dtype=RGB_lin.dtype, device=RGB_lin.device) @ rgb2xyz
@@ -200,13 +236,15 @@ class vvdp_display_photometry:
 
             if target_colorspace=="logLMS_DKLd65":
                 ABC = lms2006_to_dkld65( torch.log10(ABC) )
+            elif target_colorspace=="RGB2020pq":
+                ABC = lin2pq(ABC)
 
             return ABC
 
 class vvdp_display_photo_eotf(vvdp_display_photometry): 
     # Display model with several EOTF, to simulate both SDR and HDR displays
     #
-    # dm = fvvdp_display_photo_eotf( Y_peak, contrast, EOTF, gamma, E_ambient, k_refl )
+    # dm = vvdp_display_photo_eotf( Y_peak, contrast, EOTF, gamma, E_ambient, k_refl )
     #
     # Parameters (default value shown in []):
     # Y_peak - display peak luminance in cd/m^2 (nit), e.g. 200 for a typical
@@ -215,7 +253,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     #          1000:1
     # source_colorspace - color space from colorspaces.json. colorspace entry includes EOTF, 
     #          but it can be overriden using EOTF parameter.
-    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2
+    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2. 
+    #        This parameter will overwrite the EOTF attribute in the JSON file with corresponding 'source_colorspace'.
     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
     #         office
     # k_refl - [0.005] reflectivity of the display screen

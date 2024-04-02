@@ -424,7 +424,7 @@ class video_source_temp_resample_file(video_source_video_file):
         frames_resampled = min( int( self.test_vidr.frames*self.resample_fps/test_fps ), int( self.reference_vidr.frames*self.resample_fps/ref_fps ) )
         self.frames = frames_resampled if frames==-1 else frames
 
-        logger.info( f"Resampling videos to {self.resample_fps} frames per second. {self.frames} will be processed." )
+        logger.info( f"Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
 
         self.cache_ind = [-1, -1]
         self.cache_frame = [None, None]

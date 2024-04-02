@@ -140,36 +140,7 @@ class video_source_dm( video_source ):
 
     def apply_dm_and_color_transform(self, frame, target_colorspace):
 
-        if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
-
-            # Special case - if PQ, we still want to use PU21, as it should be marginally better
-            if self.dm_photometry.is_input_display_encoded() and not (isinstance( self.dm_photometry, vvdp_display_photo_eotf) and self.dm_photometry.EOTF == 'PQ'):
-                I = frame # no need to do anything
-            else:
-                # Otherwise, we need to PU-encode the frame
-                if not hasattr( self, "PU" ):
-                    self.PU = utils.PU()
-
-                if target_colorspace == 'display_encoded_01':
-                    PU_max = self.PU.encode(torch.as_tensor(10000.0))
-                elif target_colorspace == 'display_encoded_100nit':
-                    PU_max = self.PU.encode(torch.as_tensor(100.0))
-                else:
-                    PU_max = self.PU.encode(torch.as_tensor(self.dm_photometry.get_peak_luminance()))
-                
-                I_lin = self.dm_photometry.forward( frame )
-                I = self.PU.encode(I_lin) / PU_max # White diffuse of 100 nit will be mapped to 1
-
-        else: # If one of the standard linear color spaces is requested
-            I = self.dm_photometry.source_2_target_colorspace(frame, target_colorspace)
-
-            # L_lin = self.dm_photometry.forward( frame )
-
-            # is_color = (frame.shape[-4]==3)
-            # if is_color:
-            #     I = self.color_trans.rgb2colorspace(L_lin, colorspace)
-            # else:
-            #     I = L_lin
+        I = self.dm_photometry.source_2_target_colorspace(frame, target_colorspace)
 
         self.check_if_valid(I, target_colorspace)
         return I
