@@ -322,8 +322,12 @@ class video_source_video_file(video_source_dm):
         #     else:
         #         color_space_name="sRGB"
 
+        if full_screen_resize is None and (self.test_vidr.src_width != self.reference_vidr.src_width or self.test_vidr.src_height != self.reference_vidr.src_height):
+            logging.error(f"Test and reference videos have different resolutions: test is [{self.test_vidr.src_width}x{self.test_vidr.src_height}], reference is [{self.reference_vidr.src_width}x{self.reference_vidr.src_height}] fps. To compare these videos, add '--full-screen-resize' parameter." )
+            raise RuntimeError( "Inconsistent resolutions" )
+
         if not ignore_framerate_mismatch and self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
-            logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
+            logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps. To compare these videos, add '--temp-resample' parameter." )
             raise RuntimeError( "Inconsistent frame rates" )
 
 
