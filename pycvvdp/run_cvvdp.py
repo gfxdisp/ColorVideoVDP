@@ -88,7 +88,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr', 'dm-preview-sbs', 'dm-preview-exr-sbs'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
@@ -214,8 +214,8 @@ def run_on_args(args):
             if args.heatmap:
                 logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
             metrics.append( ssim_metric(device=device) )
-        elif mm == 'dm-preview' or mm == 'dm-preview-exr':            
-            metrics.append( dm_preview_metric(output_exr=mm.endswith("-exr"), device=device) )
+        elif mm.startswith( 'dm-preview' ):
+            metrics.append( dm_preview_metric(output_exr=("exr" in mm), side_by_side=("sbs" in mm), device=device) )
         else:
             raise RuntimeError( f"Unknown metric {mm}")
 
