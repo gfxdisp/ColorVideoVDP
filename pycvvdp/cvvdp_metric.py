@@ -264,12 +264,14 @@ class cvvdp(vq_metric):
 
         return self.predict_video_source(test_vs)
 
-
+    '''
+    Compute a loss function between test and reference images/videos. Used as an optimization term in which the loss is minimized. 
+    '''
     def loss(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0):
 
         test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
         (Q_jod, stats) = self.predict_video_source(test_vs)
-        return (10.-Q_jod) * test_cont.numel()
+        return (10.-Q_jod)
 
 
     '''

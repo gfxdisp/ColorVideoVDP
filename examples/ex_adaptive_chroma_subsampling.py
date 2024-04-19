@@ -1,16 +1,16 @@
+# This is an example showing how ColorVideoVDP can be used as a loss function
+# 
+# 
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-import ex_utils as utils
 import pycvvdp
-import time
 import imageio.v2 as io
 
 from torchvision.transforms import GaussianBlur
 
 debug = False
-save_results = False
 
 class ImageRecovery(torch.nn.Module):
     def __init__(self, ref_img, initialization="random"):
@@ -48,7 +48,7 @@ def srgb2ycbcr( X ):
 
 def reduce_chroma( I ):
     Y = srgb2ycbcr(I)
-    return torch.diff(Y[1,:,:],dim=-1).abs().sum() + torch.diff(Y[1,:,:],dim=-2).abs().sum() + torch.diff(Y[2,:,:],dim=-1).abs().sum() + torch.diff(Y[2,:,:],dim=-2).abs().sum()
+    return torch.diff(Y[1,:,:],dim=-1).abs().mean() + torch.diff(Y[1,:,:],dim=-2).abs().mean() + torch.diff(Y[2,:,:],dim=-1).abs().mean() + torch.diff(Y[2,:,:],dim=-2).abs().mean()
 
 I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 # patch_sz=256
@@ -56,25 +56,17 @@ I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.p
 
 T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/(2**16-1)
 
-model = ImageRecovery( T_ref, initialization="blurred" )
+model = ImageRecovery( T_ref, initialization="same" )
 model.to(device)
 
-#optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0, weight_decay=0, dampening=0)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
-#cvvdp.masking_model = 'mult-none'
 
-#loss_fn = torch.nn.MSELoss( reduction='sum' )
-
-loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
-
-# + 0.1*torch.sum((pred - y)**2)
-#cvvdp.loss( pred, y, dim_order="CHW") + 10 *
-# torch.sum((pred - y)**2) + 0.1 * 
+loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW") + 100*reduce_chroma(pred)
 
 plt.ion()
-fig, ax = plt.subplots(1, 2, figsize=(16, 8))
+fig, ax = plt.subplots(1, 3, figsize=(18, 6))
 
 for kk in range(1001):
     print( f"Iteration {kk}" )
@@ -83,29 +75,33 @@ for kk in range(1001):
     loss = loss_fn(pred, T_ref)
 
     if kk % 20 == 0:
-           
+        Ycbcr = srgb2ycbcr(pred.detach())
+        if kk==0:
+            rng_cb = (Ycbcr[1,:,:].min().item(), Ycbcr[1,:,:].max().item())
+            rng_cr = (Ycbcr[2,:,:].min().item(), Ycbcr[2,:,:].max().item())
+            
         opt_img = pred.detach().permute((1,2,0)).cpu().numpy()
         ax[0].imshow( opt_img )
-        ax[0].set_title( "Optimized" )
-        ax[1].imshow( (I_ref/256).astype(np.uint8) )
-        ax[1].set_title( "Target" )
+        ax[1].imshow( Ycbcr[1,:,:].cpu().numpy(), vmin=rng_cb[0], vmax=rng_cb[1] )
+        ax[1].set_title( 'Cb' )
+        ax[2].imshow( Ycbcr[2,:,:].cpu().numpy(), vmin=rng_cr[0], vmax=rng_cr[1] )
+        ax[2].set_title( 'Cr' )
 
         fig.suptitle( f"Iteration {kk}: loss {loss.item()}" )
         
-        for pp in range(2):
+        for pp in range(3):
             ax[pp].set_xticks([])        
             ax[pp].set_yticks([])        
 
-        # plt.tight_layout()
+        plt.tight_layout()
 
-        if save_results and kk % 100 == 0:
-            io.imwrite( f'reconstructed_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
+        if kk % 100 == 0:
+            plt.savefig( f'adaptive_chroma_channels_i{kk:04d}.png' )
+            io.imwrite( f'adaptive_chroma_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
 
         fig.canvas.draw()
         fig.canvas.flush_events()
  
-    #time.sleep(0.1)
-
     # Backpropagation
     loss.backward()
     optimizer.step()

@@ -1,5 +1,6 @@
 # v0.4.1 (?)
 * Added `--metric dm-preview` for debugging of the display model
+* Added a `loss` method to cvvdp and `examples/ex_adaptive_chroma_subsampling.py`
 
 # v0.4 (19/01/2024)
 * A new calibration with a small improvement in performance
