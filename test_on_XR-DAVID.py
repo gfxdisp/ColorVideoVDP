@@ -7,7 +7,10 @@ import time
 import pycvvdp
 import logging
 
-display_name = 'eizo_CG3146-XR-DAVID'
+import torch
+
+#display_name = 'eizo_CG3146-XR-DAVID'
+display_name = 'standard_4k'
 
 # media_folder = 'S:\\Datasets\\XR-DAVID\\cache'
 # ref_file = os.path.join(media_folder, 'Bonfire_reference_1920x1080_10b_444_709_30fps.yuv')
@@ -51,17 +54,20 @@ logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 config_paths = [media_folder, "../metric_configs/cvvdp_no_masking/cvvdp_parameters.json"]
 #config_paths = [media_folder]
 
-cvvdp = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=config_paths)
-cvvdp.debug = True
+device = torch.device('cpu')
+
+#metric = pycvvdp.cvvdp(display_name=display_name, heatmap="raw", config_paths=config_paths)
+metric = pycvvdp.pu_psnr_rgb2020(display_name=display_name, device=device)
+metric.debug = True
 
 for tst_fname in TST_FILEs:
 
     vs = pycvvdp.video_source_file( tst_fname, ref_file, display_photometry=display_name, frames=60, verbose=False, config_paths=config_paths )
 
     start = time.time()
-    Q_JOD_static, stats_static = cvvdp.predict_video_source( vs )
+    Q_JOD_static, stats_static = metric.predict_video_source( vs )
     end = time.time()
 
-    print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_fname, Q_JOD_static, end-start) )
+    print( f'Quality for {tst_fname}: {Q_JOD_static:.3f} {metric.quality_unit()} (took {end-start:.4f} secs to compute)' )
 
-    cvvdp.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )
+    #metric.export_distogram( stats_static, video + '_' + distortion + '_distogram.pdf', jod_max=10, base_size=3.5 )
