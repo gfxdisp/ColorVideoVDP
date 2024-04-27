@@ -14,9 +14,9 @@ ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-ena
 
 The metric is explaines in details in:
 
-> ColorVideoVDP: A Visible Difference Predictor for Images and Video.
-> Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.
-> In SIGGRAPH 2024 Technical Papers, Article 129
+> ColorVideoVDP: A visual difference predictor for image, video and display distortions.\
+> Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.\
+> In SIGGRAPH 2024 Technical Papers, Article 129\
 > https://doi.org/10.1145/3658144
 
 If you use the metric in your research, please cite the paper above. 
@@ -67,6 +67,7 @@ See [Command line interface](#command-line-interface) for further details. Color
     - [Visualization](#visualization)
     - [Configuration files](#configuration-files)
     - [Other metrics](#other-metrics)
+    - [Display model preview](#display-model-preview)
     - [Python interface](#python-interface)
     - [Loss function](#loss-function)
     - [Matlab interface](#matlab-interface)
@@ -145,11 +146,11 @@ To predict quality with ColorVideoVDP (shown below), run:
 cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --display standard_fhd --heatmap supra-threshold --distogram
 ```
 
-|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-ref.gif) | Quality | **TODO:** adjust heatmaps |
+|Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports//ferris-ref.gif) | Quality | Heatmaps |
 | :---: | :---: | :---: | :---: |
-| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 9.2140 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-noise-supra.gif) |
-| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 5.4020 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-sat-supra.gif) |
-| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 5.6020 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/fovvideovdp/html_reports/github_examples/cvvdp/heatmaps/ferris-wb-supra.gif) |
+| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 8.87 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/ferris-test-noise_heatmap.gif) |
+| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports//ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.55 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-sat_heatmap.gif) |
+| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 5.59 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-wb_heatmap.gif) |
 
 ## Visualization
 
