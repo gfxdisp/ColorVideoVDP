@@ -1,3 +1,9 @@
+# This example tests ColorVideoVDP performance as a loss function. It is inspired by the analysis presented in Sec. 3 of https://doi.org/10.1007/s11263-020-01419-7
+#
+# The code will optimize for pixel values in an image so that they match the pixel values in a reference image (no network, direct reconstruction). 
+# The optimization will success in reconstructing the reference image if the initialization is sufficiently close to the reference images. A random 
+# initialization will cause the optimization to get stuck in a local minimum. 
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -57,21 +63,20 @@ I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.p
 T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/(2**16-1)
 
 model = ImageRecovery( T_ref, initialization="blurred" )
+#model = ImageRecovery( T_ref, initialization="random" )
+
 model.to(device)
 
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0, weight_decay=0, dampening=0)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
-#cvvdp.masking_model = 'mult-none'
 
-#loss_fn = torch.nn.MSELoss( reduction='sum' )
-
+# Use a "pure" cvvdp loss only if the initialization is close to the reference image (e.g., "blurred" passed to ImageRecovery above)
 loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
 
-# + 0.1*torch.sum((pred - y)**2)
-#cvvdp.loss( pred, y, dim_order="CHW") + 10 *
-# torch.sum((pred - y)**2) + 0.1 * 
+# A Mixture of cvvdp loss and L2 works better with random initialization
+# loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW") + 100*torch.mean((pred - y)**2)
 
 plt.ion()
 fig, ax = plt.subplots(1, 2, figsize=(16, 8))

@@ -12,7 +12,7 @@ The main features:
 
 ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#example-usage).
 
-The metric is explaines in details in:
+The metric is explained in details in:
 
 > ColorVideoVDP: A visual difference predictor for image, video and display distortions.\
 > Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.\
@@ -148,7 +148,7 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 
 |Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-ref.gif) | Quality | Heatmaps |
 | :---: | :---: | :---: | :---: |
-| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmap/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 8.87 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-noise_heatmap.gif) |
+| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 8.87 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-noise_heatmap.gif) |
 | Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.55 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-sat_heatmap.gif) |
 | Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 5.59 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-wb_heatmap.gif) |
 
@@ -220,7 +220,7 @@ More examples can be found in these [example scripts](examples).
 
 ## Loss function
 
-ColorVideoVDP can be used as a differentiable loss function in PyTorch. Use `cvvdp.loss` function for that. Examples of how to use ColorVideoVDP as a loss can be found in [examples/ex_adaptive_chroma_subsampling.py](examples/ex_adaptive_chroma_subsampling.py) and [examples/ex_image_recovery.py](examples/ex_image_recovery.py).
+ColorVideoVDP can be used as a differentiable loss function in PyTorch. Use `cvvdp.loss` function for that. Examples of how to use ColorVideoVDP as a loss can be found in [examples/ex_adaptive_chroma_subsampling.py](examples/ex_adaptive_chroma_subsampling.py) and [examples/ex_image_reconstruction.py](examples/ex_image_reconstruction.py).
 
 A few caveats:
 * Similarly as many perceptual losses, ColorVideoVDP may disrupt the convexity of the loss landscape making the convergence slower or impossible.
@@ -235,7 +235,7 @@ There is no native implementation of ColorVideoVDP in Matlab, but you can use a 
 # Release notes
 
 * v0.4.1 (27/April/2024) 
-  - Added `loss` function to cvvdp and examples showing how to use it in `examples/ex_adaptive_chroma_subsampling.py` and `examples/ex_image_recovery.py`.
+  - Added `loss` function to cvvdp and examples showing how to use it in `examples/ex_adaptive_chroma_subsampling.py` and `ex_image_reconstruction.py`.
   - Added `--metric dm-preview` for previewing or debugging of the display model
 
 * v0.4.0 (19/January/2024) 
