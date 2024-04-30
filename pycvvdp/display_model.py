@@ -552,23 +552,27 @@ class vvdp_display_geometry:
             raise RuntimeError( 'Display model not found' )
 
         model = models[display_name]
+
         assert "resolution" in model
 
         inches_to_meters = 0.0254
 
         W, H = model["resolution"]
 
-        if "fov_diagonal" in model: fov_diagonal = model["fov_diagonal"]
-        else:                       fov_diagonal = None
+        if "pixels_per_degree" in model:
+            obj = vvdp_display_geometry( (W, H), ppd=model["pixels_per_degree"])
+        else:
+            if "fov_diagonal" in model: fov_diagonal = model["fov_diagonal"]
+            else:                       fov_diagonal = None
 
-        if   "viewing_distance_meters" in model: distance_m = model["viewing_distance_meters"]
-        elif "viewing_distance_inches" in model: distance_m = model["viewing_distance_inches"] * inches_to_meters
-        else:                                    distance_m = None
+            if   "viewing_distance_meters" in model: distance_m = model["viewing_distance_meters"]
+            elif "viewing_distance_inches" in model: distance_m = model["viewing_distance_inches"] * inches_to_meters
+            else:                                    distance_m = None
 
-        if   "diagonal_size_meters" in model: diag_size_inch = model["diagonal_size_meters"] / inches_to_meters
-        elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"] 
-        else:                                 diag_size_inch = None
+            if   "diagonal_size_meters" in model: diag_size_inch = model["diagonal_size_meters"] / inches_to_meters
+            elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"] 
+            else:                                 diag_size_inch = None
 
-        obj = vvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
+            obj = vvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
         return obj
 

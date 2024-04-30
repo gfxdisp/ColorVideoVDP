@@ -22,6 +22,7 @@ Each entry contains the following fields:
 
 * `name` - descriptive name
 * `resolution` [res_x, res_y] - display resolution in pixels
+* `pixels_per_degree` (optional) - specify the visual resolution in pixels per degree. If present, `viewing_distance_meters` and `diagonal_size_inches` are ignored. You still need to provide the `resolution`.
 * `colorspace` - the name of a color space, listed in colorspaces.json - see below 
 * `viewing_distance_meters` - viewing distance in meters
 * `diagonal_size_inches` - viewing distance in inches
