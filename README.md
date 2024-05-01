@@ -1,5 +1,9 @@
 # ColorVideoVDP: A visible difference predictor for colour images and videos
 
+[Web page](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/) | [Paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2024_ColorVideoVDP.pdf)
+
+![ColorVideoVDP graphical abstract](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/2024_cvvdp_graph_abstract_larger.gif)
+
 ColorVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR, SSIM, and DeltaE 2000 it is aimed at comparing a ground truth reference against a distorted (e.g. blurry, noisy, color-shifted) version. 
 
 This metric is unique because it is the first color-aware metric that accounts for spatial and temporal aspects of vision. 
