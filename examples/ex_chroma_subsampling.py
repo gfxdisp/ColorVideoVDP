@@ -29,18 +29,6 @@ I_ref_np16 = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_fac
 patch_sz = 256 # Use only a portion of the image
 I_ref = I_ref_np16[-patch_sz:,-patch_sz:,:].astype(np.float32) / np.iinfo(I_ref_np16.dtype).max
 
-<<<<<<< HEAD
-# I_ref = reshuffle_dims( torch.as_tensor(I_ref_np), "HWC", "CFHW" )
-# ct = ColorTransform()
-# I_DKL = ct.rgb2colorspace(I_ref, "DKLd65")
-
-# sigma = 4
-# GB = tt.GaussianBlur(math.ceil(sigma*3)*2+1, sigma)
-# for cc in range(1, 3):
-#     I_DKL[cc,:,:,:] = GB(I_DKL[cc,:,:,:])
-
-=======
->>>>>>> main
 epsilon = 1e-4 # to avoid div by 0
 I_Yxy = utils.im_ctrans( utils.im_ctrans( I_ref, 'srgb', 'rgb709' ) + epsilon, 'rgb709', 'Yxy' )
 I_YCbCr = utils.srgb2ycbcr(I_ref)

@@ -1,5 +1,6 @@
 # v0.4.2 (?)
 * Now can handle videos that do not contain the number of frames in the meta-data
+* Added `--temp-resample` option that allows to compare videos of different frame rates
 
 # v0.4.1 (27/04/2024)
 * Added `--metric dm-preview` for debugging of the display model

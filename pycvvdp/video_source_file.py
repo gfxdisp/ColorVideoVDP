@@ -81,21 +81,21 @@ class video_reader:
         self.avg_fps = avg_fps_num/avg_fps_denom
 
         if 'nb_frames' in video_stream: 
-            num_frames = int(video_stream['nb_frames'])
+            frames_in_vstream = int(video_stream['nb_frames'])
         else:
             # Metadata may not contain total number of frames - this is the case of some VP9 videos
-            duration_text = video_stream['tags']['DURATION']
-            hrs, mins, secs = map(float, duration_text.split(':'))
-            duration = (hrs * 60 + mins) * 60 + secs
-            num_frames = int(np.floor(duration * self.avg_fps))
+            if 'tags' in video_stream and 'DURATION' in video_stream['tags']:
+                duration_text = video_stream['tags']['DURATION']
+                hrs, mins, secs = map(float, duration_text.split(':'))
+                duration = (hrs * 60 + mins) * 60 + secs
+                frames_in_vstream = int(np.floor(duration * self.avg_fps))
+            else:
+                frames_in_vstream = -1; # Unspecified number of frames
 
         if frames==-1:
-            self.frames = num_frames
+            self.frames = frames_in_vstream
         else:    
-            # if num_frames < frames:
-            #     err_str = 'Expecting {needed_frames} frames but only {available_frames} available in the file \"{file}\"'.format( needed_frames=frames, available_frames=num_frames, file=vidfile)
-            #     raise RuntimeError( err_str )
-            self.frames = min( num_frames, frames ) # Use at most as many frames as passed in "frames" argument
+            self.frames = frames if frames_in_vstream==-1 else min( frames_in_vstream, frames ) # Use at most as many frames as passed in "frames" argument
 
         self._setup_ffmpeg(vidfile, resize_fn, resize_height, resize_width, verbose)
         self.curr_frame = -1
@@ -126,7 +126,7 @@ class video_reader:
 
     def get_frame(self):
         in_bytes = self.process.stdout.read(self.frame_bytes )
-        if not in_bytes or self.curr_frame == self.frames:
+        if not in_bytes or (self.frames!=-1 and self.curr_frame == self.frames):
             return None
         in_frame = np.frombuffer(in_bytes, self.dtype)
         self.curr_frame += 1
@@ -304,7 +304,19 @@ class video_source_video_file(video_source_dm):
         self.reference_vidr = self.reader(reference_fname, frames, resize_fn=full_screen_resize, resize_width=fs_width, resize_height=fs_height, verbose=verbose)
         self.test_vidr = self.reader(test_fname, frames, resize_fn=full_screen_resize, resize_width=fs_width, resize_height=fs_height, verbose=verbose)
 
-        self.frames = self.test_vidr.frames if frames==-1 else frames
+        if self.test_vidr.frames == -1 and self.reference_vidr.frames == -1:
+            logging.error( "Neither test nor reference video contains meta-data with the number of frames. You need to specify it with '--nframes' argument" )
+            raise RuntimeError("Unknown number of frames")
+
+        if ignore_framerate_mismatch: # We cannot use the logic below if we have fps mismatch. video_source_temp_resample_file will handle that.
+            if self.test_vidr.frames == -1:
+                self.frames = self.reference_vidr.frames
+            elif self.self.reference_vidr.frames == -1:
+                self.frames = self.test_vidr.frames
+            else:
+                self.frames = min(self.test_vidr.frames,self.reference_vidr.frames)
+                if self.test_vidr.frames != self.reference_vidr.frames:
+                    logging.warning( f"Test and reference videos contain different number of frames ({self.test_vidr.frames} and {self.test_vidr.frames}). Comparing {self.frames} frames.")
 
         for vr in [self.test_vidr, self.reference_vidr]:
             if vr == self.test_vidr:
@@ -315,7 +327,7 @@ class video_source_video_file(video_source_dm):
                 rs_str = ""
             else:
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {vr.avg_fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
+            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {vr.avg_fps}, pixfmt: {vr.in_pix_fmt}, frames: {vr.frames if vr.frames!=-1 else 'unknown'}" )
 
         # if color_space_name=='auto':
         #     if self.test_vidr.color_space=='bt2020nc':
@@ -408,7 +420,7 @@ class video_source_temp_resample_file(video_source_video_file):
     max_fps = 160 # upsample to at most this FPS
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
-        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize, 
+        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=-1, full_screen_resize=full_screen_resize, 
                          resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
 
 
@@ -422,10 +434,18 @@ class video_source_temp_resample_file(video_source_video_file):
         else:
             self.resample_fps = __class__.max_fps
 
-        frames_resampled = min( int( self.test_vidr.frames*self.resample_fps/test_fps ), int( self.reference_vidr.frames*self.resample_fps/ref_fps ) )
+        test_frames_resampled = int( self.test_vidr.frames*self.resample_fps/test_fps )
+        ref_frames_resampled = int( self.reference_vidr.frames*self.resample_fps/ref_fps )
+        if self.test_vidr.frames==-1:
+            frames_resampled = ref_frames_resampled
+        elif self.reference_vidr.frames==-1:
+            frames_resampled = test_frames_resampled
+        else:
+            frames_resampled = min( test_frames_resampled, ref_frames_resampled )
+
         self.frames = frames_resampled if frames==-1 else frames
 
-        logger.info( f"Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
+        logger.info( f"Test fps: {test_fps}; reference fps: {ref_fps}. Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
 
         self.cache_ind = [-1, -1]
         self.cache_frame = [None, None]
