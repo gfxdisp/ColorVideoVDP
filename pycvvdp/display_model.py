@@ -187,7 +187,7 @@ class vvdp_display_photometry:
                 elif target_colorspace == 'display_encoded_100nit':
                     PU_max = self.PU.encode(torch.as_tensor(100.0)) # White diffuse of 100 nit will be mapped to 1
                 else:
-                    PU_max = self.PU.encode(torch.as_tensor(self.dm_photometry.get_peak_luminance()))
+                    PU_max = self.PU.encode(torch.as_tensor(self.get_peak_luminance()))
                 
                 I_lin = self.forward( I_src )
                 I_target = self.PU.encode(I_lin) / PU_max 
