@@ -1,10 +1,10 @@
-<<<<<<< HEAD
-# v0.5 (?)
+# v0.4.2 (?)
 * Now can handle videos that do not contain the number of frames in the meta-data
-=======
-# v0.4.1 (?)
+
+# v0.4.1 (27/04/2024)
 * Added `--metric dm-preview` for debugging of the display model
->>>>>>> main
+* Added a `loss` method to cvvdp and `examples/ex_adaptive_chroma_subsampling.py`
+* Added "pixels_per_degree" as an optional field in `display_models.json`
 
 # v0.4 (19/01/2024)
 * A new calibration with a small improvement in performance

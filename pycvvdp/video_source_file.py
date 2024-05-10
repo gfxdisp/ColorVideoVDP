@@ -27,6 +27,7 @@ except ImportError as e:
     # See https://github.com/imageio/imageio/issues/517
     pyexr_imported = False
 
+# Load an image (SDR or HDR) into Numpy array
 def load_image_as_array(imgfile):
     ext = os.path.splitext(imgfile)[1].lower()
     if ext == '.exr':

@@ -51,6 +51,15 @@ def get_interpolants_v0(x_q, x, device):
 
     return imin, imax, ifrc
 
+# works only with uniformly sampled LUTs
+def get_interpolants_quick(x_q, x):
+    ind = ((x_q-x[0])/(x[-1]-x[0])*(x.numel()-1)).clamp(0,x.shape[0] - 1)
+    ifrc = torch.frac(ind)
+    imin = ind.to(dtype=torch.int32)
+    imax = (imin+1).clamp(max=x.shape[0] - 1)    
+    return imin, imax, ifrc
+
+
 def interp3(x, y, z, v, x_q, y_q, z_q):
     shp = x_q.shape
     x_q = x_q.flatten()
@@ -78,6 +87,18 @@ def interp1(x, v, x_q):
     filtered = v[imin] * (1.0-ifrc) + v[imax] * (ifrc) 
 
     return filtered.reshape(shp)
+
+# A quick interpolation for uniformly spaces samples
+def interp1q(x, v, x_q):
+    shp = x_q.shape
+    x_q = x_q.flatten()
+
+    imin, imax, ifrc = get_interpolants_quick(x_q, x)
+
+    filtered = v[imin] * (1.0-ifrc) + v[imax] * (ifrc) 
+
+    return filtered.reshape(shp)
+
 
 
 # Performs 1-d interpolation on the 2nd dimension of tensor 'v' (hard coded as I do not know how to do it otherwise)

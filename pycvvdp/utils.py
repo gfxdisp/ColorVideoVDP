@@ -3,6 +3,10 @@ import torch
 import numpy as np
 import json
 import torch.nn.functional as Func
+import math
+from functools import cache
+
+from pycvvdp.interp import interp1, interp1q
 #from PIL import Image
 
 from pycvvdp.third_party.loadmat import loadmat
@@ -197,16 +201,33 @@ class PU():
 
         self.peak = self.p[6]*(((self.p[0] + self.p[1]*L_max**self.p[3])/(1 + self.p[2]*L_max**self.p[3]))**self.p[4] - self.p[5])
 
-    def encode(self, Y):
+    def _encode_direct(self, Y):
         '''
         Convert from linear (optical) values Y to encoded (electronic) values V
         '''
         # epsilon = 1e-5
         # if (Y < (self.L_min - epsilon)).any() or (Y > (self.L_max + epsilon)).any():
         #     print( 'Values passed to encode are outside the valid range' )
-
         Y = Y.clip(self.L_min, self.L_max)
-        V = self.p[6]*(((self.p[0] + self.p[1]*Y**self.p[3])/(1 + self.p[2]*Y**self.p[3]))**self.p[4] - self.p[5])
+        Y_p = Y**self.p[3]
+        V = self.p[6]*(((self.p[0] + self.p[1]*Y_p)/(1 + self.p[2]*Y_p))**self.p[4] - self.p[5])
+        return V
+
+    @cache
+    def _get_encode_lut(self, device):
+        Y_lut = torch.linspace(math.log10(self.L_min), math.log10(self.L_max), 2048, device=device)
+        V_lut = self._encode_direct(10**Y_lut)
+        return (Y_lut, V_lut)
+
+    def encode(self, Y):
+        '''
+        Convert from linear (optical) values Y to encoded (electronic) values V
+        '''
+        if True or Y.numel()<100: # Interpolation seems slower than directly computing the values
+            V = self._encode_direct(Y)
+        else:
+            (Y_lut, V_lut) = self._get_encode_lut(Y.device)
+            V = interp1q( Y_lut, V_lut, torch.log10(Y.clamp(self.L_min, self.L_max)) )
         return V
 
     def decode(self, V):
