@@ -65,9 +65,9 @@ classdef cvvdp
             end                
             
             cmd = [ 'conda activate ', obj.conda_env, '; cvvdp --test "', test_file, '" --ref "', ref_file, '" --display ', display, ppd_arg, heatmap_arg ]; 
-            if ~options.verbose
-                cmd = [cmd, ' --quiet'];
-            end
+%             if ~options.verbose
+%                 cmd = [cmd, ' --quiet'];
+%             end
             if ~isempty( options.config_paths )
                 cmd = [cmd, ' --config-paths ', options.config_paths];
             end
@@ -89,11 +89,9 @@ classdef cvvdp
             else
                 if options.verbose
                     fwrite( 2, cmdout );
-                    jod_res = regexp( cmdout, "cvvdp=[\d\.]*", "match" );
-                    jod = str2double(jod_res{1}(7:end));
-                else
-                    jod = str2double(cmdout);
                 end
+                jod_res = regexp( cmdout, "cvvdp=[\d\.]*", "match" );
+                jod = str2double(jod_res{1}(7:end));
             end
 
             if ~strcmp(options.heatmap, 'none')
