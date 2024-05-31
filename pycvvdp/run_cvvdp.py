@@ -109,6 +109,10 @@ def run_on_args(args):
         
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
+    if args.verbose:
+        import platform
+        logging.debug( f'Platform: {platform.platform()}' )
+
     if args.display == "?":
         pycvvdp.vvdp_display_photometry.list_displays(args.config_paths)
         return

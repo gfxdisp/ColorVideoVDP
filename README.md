@@ -75,6 +75,7 @@ See [Command line interface](#command-line-interface) for further details. Color
     - [Python interface](#python-interface)
     - [Loss function](#loss-function)
     - [Matlab interface](#matlab-interface)
+- [How to report bugs/issues?](#how-to-report-bugs-issues)
 - [Release notes](#release-notes)
 
 ## Display specification
@@ -235,6 +236,12 @@ A few caveats:
 ## Matlab interface
 
 There is no native implementation of ColorVideoVDP in Matlab, but you can use a wrapper that can be found in the [matlab](matlab/) directory.
+
+# How to report bugs/issues?
+
+Please use "Issues" tab in GitHub. 
+
+When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
 
