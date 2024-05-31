@@ -10,11 +10,15 @@ classdef cvvdp
 
     properties
         conda_env
+        device = []
     end
 
     methods
-        function obj = cvvdp(conda_env)
+        function obj = cvvdp(conda_env, device)
             obj.conda_env = conda_env;
+            if exist( 'device', 'var' )
+                obj.device = device;
+            end
         end
 
         function [jod, heatmap] = cmp(obj, img_test, img_ref, display, options )
@@ -67,9 +71,14 @@ classdef cvvdp
             if ~isempty( options.config_paths )
                 cmd = [cmd, ' --config-paths ', options.config_paths];
             end
+            if ~isempty(obj.device)
+                cmd = [cmd, ' --device ', obj.device];
+            end
 
             if ispc()
                 cmd = [ '"%PROGRAMFILES%\Git\bin\sh.exe" -l -c ''', cmd, '''' ];
+            elseif ismac()
+                cmd = [ '/bin/bash -l -c ''', cmd, '''' ];
             else
                 cmd = [ '/usr/bin/bash -l -c ''', cmd, '''' ];
             end
