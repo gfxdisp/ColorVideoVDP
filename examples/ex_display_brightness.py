@@ -1,3 +1,10 @@
+# This examples shows how the visibiliy of distortions changes with display brightness. 
+# As the peak luminance of the simulated display is increased, the distortion (noise) 
+# becomes more visible and the quality is decreased.
+
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

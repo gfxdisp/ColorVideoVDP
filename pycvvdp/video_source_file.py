@@ -31,6 +31,11 @@ except ImportError as e:
 
 # Load an image (SDR or HDR) into Numpy array
 def load_image_as_array(imgfile):
+    if not os.path.isfile(imgfile):
+        msg = f"File '{imgfile}' not found"
+        logger.error( msg )
+        raise FileNotFoundError( msg )
+
     ext = os.path.splitext(imgfile)[1].lower()
     if ext == '.exr':
         if not pyexr_imported:

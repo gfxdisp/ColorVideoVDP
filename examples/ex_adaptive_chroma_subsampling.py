@@ -1,6 +1,10 @@
 # This is an example showing how ColorVideoVDP can be used as a loss function to adaptively reduce chromatic details in YCbCr color space. 
 # It will reproduce example from Fig. 21 in ColorVideoVDP paper (https://doi.org/10.1145/3658144). 
 # See Section 6.3 in that paper for the full explanation. 
+
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

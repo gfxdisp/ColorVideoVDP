@@ -1,3 +1,9 @@
+# This example shows how the quality predictions change depending on the viewing distance. 
+# As the viewing distances increases, the noise becomes less visible and the quality increases. 
+
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
 import os
 import numpy as np
 import ex_utils as utils

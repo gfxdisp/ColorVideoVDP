@@ -2,6 +2,10 @@
 # It will reproduce example from Fig. 20 in ColorVideoVDP paper (https://doi.org/10.1145/3658144). 
 # See Section 6.1 in that paper for the full explanation. 
 
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
+
 import os
 import numpy as np
 import matplotlib
