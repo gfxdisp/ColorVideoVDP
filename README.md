@@ -34,12 +34,12 @@ conda activate cvvdp
 
 2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0.
 
-3. Install [ffmpeg](https://ffmpeg.org/). The easiest option is to install using conda,
+3. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
 ```bash
-conda install ffmpeg
+conda install ffmpeg conda-forge::freeimage
 ```
 
-4. Obtain the ColourVDP codebase, by extracting a `.zip` file provided or cloning from Github:
+4. Obtain the ColourVDP codebase, by cloning the repository:
 ```bash
 git clone git@github.com:gfxdisp/ColorVideoVDP.git   # skip if a .zip is provided or you use Github GUI
 ```
