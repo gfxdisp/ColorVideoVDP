@@ -7,6 +7,9 @@ classdef cvvdp
     % img_ref = imread( '../example_media/wavy_facade.png' );
     % img_test = imnoise( img_ref, 'gaussian', 0, 0.001 );
     % v.cmp( img_test, img_ref, 'standard_fhd' )
+    %
+    % The arguments and options passed to this class reflect those that are
+    % passed to `cvvdp` command line - check `cvvdp --help` for more information on those. 
 
     properties
         conda_env
@@ -14,7 +17,11 @@ classdef cvvdp
     end
 
     methods
-        function obj = cvvdp(conda_env, device)
+        function obj = cvvdp(conda_env, device) 
+            % conda_env - the name of the conda environment with installed
+            %             cvvdp
+            % device - device to run cvvdp on: 'cpu', 'mps', 'cuda:0', 'cuda:1', ...
+
             obj.conda_env = conda_env;
             if exist( 'device', 'var' )
                 obj.device = device;
@@ -69,7 +76,7 @@ classdef cvvdp
 %                 cmd = [cmd, ' --quiet'];
 %             end
             if ~isempty( options.config_paths )
-                cmd = [cmd, ' --config-paths ', options.config_paths];
+                cmd = [cmd, ' --config-paths "', options.config_paths, '"'];
             end
             if ~isempty(obj.device)
                 cmd = [cmd, ' --device ', obj.device];
