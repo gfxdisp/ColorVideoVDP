@@ -66,7 +66,7 @@ classdef cvvdp
 
             if ~strcmp(options.heatmap, 'none')
                 tmp_dir = fileparts( test_file );
-                heatmap_arg = [ ' --heatmap ', options.heatmap, ' --output-dir ', strrep(tmp_dir, '\', '/') ];
+                heatmap_arg = [ ' --heatmap ', options.heatmap, ' --output-dir "', strrep(tmp_dir, '\', '/'), '"' ];
             else
                 heatmap_arg = '';
             end                
