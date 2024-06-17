@@ -7,3 +7,4 @@ imageio==2.19.5
 matplotlib==3.5.3
 PyEXR==0.3.10
 torchvision==0.13.0
+pandas=2.1.3
