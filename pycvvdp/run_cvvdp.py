@@ -31,6 +31,11 @@ def expand_wildcards(filestrs):
     for filestr in filestrs:
         if "*" in filestr:
             curlist = glob.glob(filestr)
+            # Sort the files before feeding since glob is returing arbitary
+            # order, thus it can be actually comparing frame 2 with frame 80.
+            # We sort it with classic OS order so we will be good.
+            # Read more: https://docs.python.org/3/library/glob.html
+            curlist = sorted(curlist)
             files = files + curlist
         else:
             files.append(filestr)
