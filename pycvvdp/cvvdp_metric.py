@@ -607,6 +607,10 @@ class cvvdp(vq_metric):
 
         if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
+        if self.dump_channels:
+            self.dump_channels.dump_lpyr(lpyr, B_bands, 2)
+
+
         # if self.do_heatmap:
         #     Dmap_pyr_bands, Dmap_pyr_gbands = self.heatmap_pyr.decompose( torch.zeros([1,1,height,width], dtype=torch.float, device=self.device))
 
