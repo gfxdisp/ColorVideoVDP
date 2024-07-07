@@ -30,6 +30,9 @@ from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
 from pycvvdp.vq_metric import *
+
+from pycvvdp.dump_channels import DumpChannels
+
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
@@ -100,6 +103,8 @@ class cvvdp(vq_metric):
         self.load_config(config_paths)
         if calibrated_ckpt is not None:
             self.update_from_checkpoint(calibrated_ckpt)
+
+        self.dump_channels = DumpChannels()
 
         # if self.mask_s > 0.0:
         #     self.mask_p = self.mask_q + self.mask_s
@@ -358,6 +363,9 @@ class cvvdp(vq_metric):
         else:
             met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
 
+        if self.dump_channels:
+            self.dump_channels.open(vid_source.get_frames_per_second())
+
         for ff in range(0, N_frames, block_N_frames):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
@@ -431,6 +439,9 @@ class cvvdp(vq_metric):
                         R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
                         R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
 
+            if self.dump_channels:
+                self.dump_channels.dump_temp_ch(R)
+
             if self.use_checkpoints:
                 # Used for training
                 Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, use_reentrant=False)
@@ -472,6 +483,9 @@ class cvvdp(vq_metric):
         stats['width'] = width
         stats['height'] = height
         stats['N_frames'] = N_frames
+
+        if self.dump_channels:
+            self.dump_channels.close()
 
         if self.do_heatmap:            
             stats['heatmap'] = heatmap
