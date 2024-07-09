@@ -29,7 +29,7 @@ def expand_wildcards(filestrs):
     files = []
     for filestr in filestrs:
         if "*" in filestr:
-            curlist = glob.glob(filestr)
+            curlist = sorted( glob.glob(filestr) )
             files = files + curlist
         else:
             files.append(filestr)
