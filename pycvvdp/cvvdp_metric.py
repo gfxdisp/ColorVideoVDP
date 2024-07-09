@@ -1017,7 +1017,7 @@ class cvvdp(vq_metric):
             standard_str = f'custom-display: {self.display_name}'
 
         L_black, L_refl = self.display_photometry.get_black_level()
-        return f'"ColourVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
+        return f'"ColorVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
                f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
                f'Lblack={L_black:.4g}, Lrefl={L_refl:.4g} [cd/m^2], ({standard_str})"' 
 

@@ -1,4 +1,7 @@
-# This example shows how to run cvvdp on a pair of images that contain only luminance
+# This example shows how to run ColorVideoVDP on a pair of images that contain only luminance
+
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
 
 import os
 import numpy as np

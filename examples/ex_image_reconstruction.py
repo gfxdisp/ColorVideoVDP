@@ -4,6 +4,10 @@
 # The optimization will success in reconstructing the reference image if the initialization is sufficiently close to the reference images. A random 
 # initialization will cause the optimization to get stuck in a local minimum. 
 
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

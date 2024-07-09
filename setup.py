@@ -25,6 +25,7 @@ setup(
                       'torchvision>=0.9.2',
                       'ffmpeg>=1.4',
                       'imageio>=2.19.5',
+                      'matplotlib>=3.8.0'
                      ],
 
     classifiers=[
