@@ -202,7 +202,7 @@ This functionality is useful if you suspect that video/images are incorrectly lo
 You can also alternative versions of this debug "metric":
 * `--metric dm-preview-exr` - when processing video, OpenEXR frames will be written instead of a video file. 
 * `--metric dm-preview-sbs` - instead of creating two separate files, one for reference and one for test, put those in the same frame side-by-side. 
-* `--metric dm-preview-exr` - the two above combined
+* `--metric dm-preview-exr-sbs` - the two above combined
 
 ## Python interface
 ColorVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class.
@@ -228,10 +228,10 @@ More examples can be found in these [example scripts](examples).
 ColorVideoVDP can be used as a differentiable loss function in PyTorch. Use `cvvdp.loss` function for that. Examples of how to use ColorVideoVDP as a loss can be found in [examples/ex_adaptive_chroma_subsampling.py](examples/ex_adaptive_chroma_subsampling.py) and [examples/ex_image_reconstruction.py](examples/ex_image_reconstruction.py).
 
 A few caveats:
-* Similarly as many perceptual losses, ColorVideoVDP may disrupt the convexity of the loss landscape making the convergence slower or impossible.
-* Because of that, it is advisable that ColorVideoVDP is used in combination with well-behaved losses, such as L1 or L2.
-* Alternatively, ColorVideoVDP can be used at the latter training stage after the L1 or L2 solution has almost converged. 
-* The optimization will work much better on lower-dimensional problems in which only a few parameters are optimized. 
+* Similarly as many perceptual losses, ColorVideoVDP may disrupt the convexity of the loss landscape making the convergence slower or impossible.
+* Because of that, it is advisable that ColorVideoVDP is used in combination with well-behaved losses, such as L1 or L2.
+* Alternatively, ColorVideoVDP can be used at the latter training stage after the L1 or L2 solution has almost converged. 
+* The optimization will work much better on lower-dimensional problems in which only a few parameters are optimized. 
 
 ## Matlab interface
 
