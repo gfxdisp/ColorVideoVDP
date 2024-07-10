@@ -8,6 +8,7 @@ import logging
 import glob
 import ffmpeg
 import numpy as np
+import pandas as pd
 import torch
 import imageio.v2 as imageio
 import re
@@ -83,6 +84,7 @@ def parse_args(arg_list=None):
     parser.add_argument("--heatmap", type=str, default="none", help="type of difference map (none, raw, threshold, supra-threshold).")
     parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
+    parser.add_argument("-s", "--save", action='store_true', default=True, help="generate CSV data of metrics which is computed.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
@@ -227,6 +229,11 @@ def run_on_args(args):
         if not info_str is None:
             logging.info( 'When reporting metric results, please include the following information:' )
             logging.info( info_str )
+        # Create a dict for storing the quality metrics
+        if args.save:
+            metrics_data = {}
+            for this_metric in metrics:
+                metrics_data[this_metric.short_name()] = []
 
 
     for kk in range( max(N_test, N_ref) ): # For each test and reference pair
@@ -257,6 +264,8 @@ def run_on_args(args):
                     units_str = f" [{mm.quality_unit()}]"
                     print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
 
+                if args.save:
+                    metrics_data[mm.short_name()].append(Q_pred.item())
 
                 if args.features and not stats is None:
                     if mm == 'pu-psnr':
@@ -286,6 +295,14 @@ def run_on_args(args):
 
     #     del test_vid
     #     torch.cuda.empty_cache()
+
+    # Save the Quality metrics to the output folder
+    # TODO: Support saving to JSON and XML
+    if args.save:
+        dest_name = os.path.join(out_dir, base + "_metrics.csv")
+        metrics_data = pd.DataFrame(metrics_data)
+        metrics_data.insert(0, 'Frame Number', range(len(metrics_data)))
+        metrics_data.to_csv(dest_name, index=False, float_format='%.6f')
 
 def main():
     args = parse_args()
