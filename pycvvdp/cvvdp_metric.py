@@ -104,7 +104,7 @@ class cvvdp(vq_metric):
         if calibrated_ckpt is not None:
             self.update_from_checkpoint(calibrated_ckpt)
 
-        self.dump_channels = DumpChannels()
+        self.dump_channels = DumpChannels( dump_temp_ch=False, dump_lpyr=True, dump_diff=False )
 
         # if self.mask_s > 0.0:
         #     self.mask_p = self.mask_q + self.mask_s
@@ -608,7 +608,7 @@ class cvvdp(vq_metric):
         if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
         if self.dump_channels:
-            self.dump_channels.dump_lpyr(lpyr, B_bands, 2)
+            self.dump_channels.dump_lpyr(lpyr, B_bands)
 
 
         # if self.do_heatmap:
@@ -671,10 +671,20 @@ class cvvdp(vq_metric):
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
                 self.heatmap_pyr.set_lband(bb, D_chr)
 
+            if self.dump_channels:
+                width = R.shape[-1]
+                height = R.shape[-2]
+                t_int = self.image_int if is_image else 1.0
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
+                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w)
+
         if self.do_heatmap:
             heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
         else:
             heatmap_block = None
+
+        if self.dump_channels:
+            self.dump_channels.dump_diff()
 
         return Q_per_ch_block, heatmap_block
 
