@@ -1,3 +1,5 @@
+* Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
+
 # v0.4.1 (27/04/2024)
 * Added `--metric dm-preview` for debugging of the display model
 * Added a `loss` method to cvvdp and `examples/ex_adaptive_chroma_subsampling.py`

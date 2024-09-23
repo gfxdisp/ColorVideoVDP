@@ -1,8 +1,11 @@
 # Dump intermediate channel data for debugging and visualization
 import torch
 import math
+import os
+import logging
 
-from gfxdisp.pfs.pfs_torch import pfs_torch
+# For debugging only
+#from gfxdisp.pfs.pfs_torch import pfs_torch
 
 from pycvvdp.video_writer import VideoWriter
 from pycvvdp.lpyr_dec import lpyr_dec_2
@@ -25,27 +28,37 @@ def ceil8(x):
     return int(math.ceil(x/8))*8
 
 class DumpChannels:
-    def __init__(self, dump_temp_ch=True, dump_lpyr=True, dump_diff=True):
+    def __init__(self, dump_temp_ch=True, dump_lpyr=True, dump_diff=True, output_dir=None):
         self.vw_channels = None
         self.do_dump_temp_ch = dump_temp_ch
         self.do_dump_lpyr = dump_lpyr
         self.do_dump_diff = dump_diff
+        self.output_dir = output_dir if output_dir else "."
 
     def open(self, fps):
+
+        assert fps>0, "This feature currently works only on video"
+
         if self.do_dump_temp_ch:
-            self.vw_channels = VideoWriter( "temp_channels.mp4", fps=fps )
+            fname = os.path.join( self.output_dir, "temp_channels.mp4" )
+            logging.info( f"Writing temporal channels to '{fname}'" )
+            self.vw_channels = VideoWriter( fname, fps=fps, verbose=False )
         else:
             self.vw_channels = None
 
         self.max_V = None
 
         if self.do_dump_lpyr:
-            self.vw_lpyr = VideoWriter( "lpyr.mp4", fps=fps )
+            fname = os.path.join( self.output_dir, "lpyr.mp4" )
+            logging.info( f"Writing Laplacian pyramids to '{fname}'" )
+            self.vw_lpyr = VideoWriter( fname, fps=fps )
         else:
             self.vw_lpyr = None
 
         if self.do_dump_diff:
-            self.vw_diff = VideoWriter( "diff.mp4", fps=fps )
+            fname = os.path.join( self.output_dir, "diff.mp4" )
+            logging.info( f"Writing visual differences to '{fname}'" )
+            self.vw_diff = VideoWriter( fname, fps=fps )
             self.diff_pyr = None
         else:
             self.vw_diff = None
