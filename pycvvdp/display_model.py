@@ -79,6 +79,34 @@ def srgb2lin( p ):
     L = torch.where(p > 0.04045, ((p + 0.055) / 1.055)**2.4, p/12.92)
     return L
 
+
+# Convert pixel values to linear using the Rec. 2100 HLG non-linearity
+#
+# rgb_d = hlg2lin( rgb, gamma )
+#
+# rgb   - pixel values (between 0 and 1)
+# rgb_d - relative linear RGB (or luminance), normalized to the range 0-1
+def hlg2lin( rgb, gamma ):
+    # using formula from table 5 of
+    # https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2100-1-201706-S!!PDF-E.pdf
+
+    a = 0.17883277
+    b = 1 - 4 * a
+    c = 0.5 - a * math.log(4 * a)
+
+    # inverse OETF
+    rgb_s = torch.where(
+        rgb <= 0.5,
+        torch.pow(rgb, 2) / 3.0,
+        (torch.exp((rgb - c) / a) + b) / 12.0
+    )
+
+    # apply OOTF
+    Y_s = 0.2627 * rgb_s[:, 0] + 0.6780 * rgb_s[:, 1] + 0.0593 * rgb_s[:, 2]
+    rgb_d = (Y_s ** (gamma - 1)).unsqueeze(1) * rgb_s
+
+    return rgb_d
+
 class vvdp_display_photometry:
 
     def __init__( self, source_colorspace='sRGB', config_paths=[] ):
@@ -308,6 +336,11 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
             L = pq2lin( V ).clip(0.005, self.Y_peak) + Y_black + Y_refl #TODO: soft clipping
         elif self.EOTF=='linear':
             L = V.clip(max(0.005, Y_black), self.Y_peak) + Y_refl #TODO: soft clipping
+        elif self.EOTF=='HLG':
+            gamma = 1.2
+            if self.Y_peak > 1000:
+                gamma = 1.2 + 0.42 * math.log10(self.Y_peak / 1000) - 0.07623 * math.log10(self.E_ambient / 5)
+            L = (self.Y_peak-Y_black)*hlg2lin(V, gamma) + Y_black + Y_refl
         elif self.EOTF[0].isnumeric(): # if the first char is numeric -> gamma
             gamma = float(self.EOTF)
             L = (self.Y_peak-Y_black)*torch.pow(V, gamma) + Y_black + Y_refl

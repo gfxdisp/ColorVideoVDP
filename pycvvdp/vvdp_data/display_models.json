@@ -21,6 +21,17 @@
       "E_ambient": 10,
       "source": "none" },
 
+  "standard_hdr_hlg": {
+    "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height",
+    "colorspace": "BT.2020-HLG",
+    "resolution": [3840, 2160],
+    "viewing_distance_meters":  0.7472,
+    "diagonal_size_inches": 30,
+    "max_luminance": 1500,
+    "contrast": 1000000,
+    "E_ambient": 10,
+    "source": "none" },
+
   "standard_hdr_linear": {
     "name": "30-inch 4K HDR monitor, peak luminance 1500 cd/m^2, viewed under low light levels (10 lux), seen from 2 x display height", 
     "colorspace": "BT.709-linear",
@@ -122,6 +133,52 @@
     "min_luminance": 0.0004, 
     "E_ambient": 250, 
     "source": "https://www.displaymate.com/iPhone_12Pro_ShootOut_1P.htm"
+  },
+
+  "iphone_14_pro": {
+    "name": "iPhone 14 Pro - Horizontal",
+    "resolution": [2532, 1170],
+    "viewing_distance_inches":  20,
+    "diagonal_size_inches": 6.1,
+    "max_luminance": 1025,
+    "min_luminance": 0.0004,
+    "E_ambient": 250,
+    "source": "https://www.displaymate.com/iPhone_14Pro_ShootOut_1P.htm"
+  },
+
+  "iphone_14_pro_vert": {
+    "name": "iPhone 14 Pro - Vertical",
+    "resolution": [1170, 2532],
+    "viewing_distance_inches":  20,
+    "diagonal_size_inches": 6.1,
+    "max_luminance": 1025,
+    "min_luminance": 0.0004,
+    "E_ambient": 250,
+    "source": "https://www.displaymate.com/iPhone_14Pro_ShootOut_1P.htm"
+  },
+
+  "iphone_14_pro_hdr": {
+    "name": "iPhone 15 Pro HDR - Horizontal",
+    "colorspace": "BT.2020-HLG",
+    "resolution": [2532, 1170],
+    "viewing_distance_inches":  20,
+    "diagonal_size_inches": 6.1,
+    "max_luminance": 1590,
+    "min_luminance": 0.0004,
+    "E_ambient": 10,
+    "source": "https://www.displaymate.com/iPhone_14Pro_ShootOut_1P.htm"
+  },
+
+  "iphone_14_pro_hdr_vert": {
+    "name": "iPhone 14 Pro HDR - Vertical",
+    "colorspace": "BT.2020-HLG",
+    "resolution": [1170, 2532],
+    "viewing_distance_inches":  20,
+    "diagonal_size_inches": 6.1,
+    "max_luminance": 1590,
+    "min_luminance": 0.0004,
+    "E_ambient": 10,
+    "source": "https://www.displaymate.com/iPhone_14Pro_ShootOut_1P.htm"
   },
 
   "ipad_pro_12_9": {
