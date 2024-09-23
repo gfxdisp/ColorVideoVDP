@@ -22,6 +22,7 @@ import pycvvdp.utils as utils
 
 from pycvvdp.ssim_metric import ssim_metric
 from pycvvdp.dm_preview import dm_preview_metric
+from pycvvdp.dump_channels import DumpChannels
 
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
@@ -95,6 +96,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
+    parser.add_argument("--dump-channels", nargs='+', choices=['temporal', 'lpyr', 'difference'], default=None, help="Output video/images with intermediate processing stages (for debugging and visualization).")
     if arg_list is not None:
         args = parser.parse_args(arg_list)
     else:
@@ -196,6 +198,11 @@ def run_on_args(args):
     out_dir = "." if args.output_dir is None else args.output_dir
     os.makedirs(out_dir, exist_ok=True)
 
+    if args.dump_channels:
+        dump_channels = DumpChannels( dump_temp_ch=("temporal" in args.dump_channels), dump_lpyr=("lpyr" in args.dump_channels), dump_diff=("difference" in args.dump_channels), output_dir=args.output_dir )
+    else:
+        dump_channels = None
+
     for mm in args.metric:
         if mm == 'cvvdp':
             fv = pycvvdp.cvvdp( display_photometry=display_photometry,
@@ -204,7 +211,8 @@ def run_on_args(args):
                                 device=device,
                                 temp_padding=args.temp_padding,
                                 config_paths=args.config_paths,
-                                quiet=args.quiet )
+                                quiet=args.quiet,
+                                dump_channels=dump_channels )
             metrics.append( fv )
         elif mm == 'pu-psnr-rgb':
             if args.heatmap:

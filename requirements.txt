@@ -7,3 +7,4 @@ ffmpeg>=1.4
 imageio>=2.19.5
 matplotlib>=3.8.0
 PyEXR>=0.3.10
+

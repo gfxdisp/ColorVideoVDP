@@ -33,6 +33,9 @@ from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
 from pycvvdp.vq_metric import *
+
+from pycvvdp.dump_channels import DumpChannels
+
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
@@ -76,7 +79,7 @@ def pow_neg( x:Tensor, p ):
 ColourVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None, dump_channels=None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
@@ -103,6 +106,8 @@ class cvvdp(vq_metric):
         self.load_config(config_paths)
         if calibrated_ckpt is not None:
             self.update_from_checkpoint(calibrated_ckpt)
+
+        self.dump_channels = dump_channels
 
         # if self.mask_s > 0.0:
         #     self.mask_p = self.mask_q + self.mask_s
@@ -364,6 +369,9 @@ class cvvdp(vq_metric):
         else:
             met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
 
+        if self.dump_channels:
+            self.dump_channels.open(vid_source.get_frames_per_second())
+
         for ff in range(0, N_frames, block_N_frames):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
@@ -437,6 +445,9 @@ class cvvdp(vq_metric):
                         R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
                         R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
 
+            if self.dump_channels:
+                self.dump_channels.dump_temp_ch(R)
+
             if self.use_checkpoints:
                 # Used for training
                 Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, use_reentrant=False)
@@ -478,6 +489,9 @@ class cvvdp(vq_metric):
         stats['width'] = width
         stats['height'] = height
         stats['N_frames'] = N_frames
+
+        if self.dump_channels:
+            self.dump_channels.close()
 
         if self.do_heatmap:            
             stats['heatmap'] = heatmap
@@ -599,6 +613,10 @@ class cvvdp(vq_metric):
 
         if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
+        if self.dump_channels:
+            self.dump_channels.dump_lpyr(lpyr, B_bands)
+
+
         # if self.do_heatmap:
         #     Dmap_pyr_bands, Dmap_pyr_gbands = self.heatmap_pyr.decompose( torch.zeros([1,1,height,width], dtype=torch.float, device=self.device))
 
@@ -659,10 +677,20 @@ class cvvdp(vq_metric):
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
                 self.heatmap_pyr.set_lband(bb, D_chr)
 
+            if self.dump_channels:
+                width = R.shape[-1]
+                height = R.shape[-2]
+                t_int = self.image_int if is_image else 1.0
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
+                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w)
+
         if self.do_heatmap:
             heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
         else:
             heatmap_block = None
+
+        if self.dump_channels:
+            self.dump_channels.dump_diff()
 
         return Q_per_ch_block, heatmap_block
 

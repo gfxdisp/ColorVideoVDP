@@ -1,6 +1,7 @@
 # v0.4.? (?)
 * Files are now sorted after the wildcard expansion
 * Updated PU21 encoding parameters so that they are in sync with those in https://github.com/gfxdisp/pu21/
+* Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
 
 # v0.4.1 (27/04/2024)
 * Added `--metric dm-preview` for debugging of the display model
