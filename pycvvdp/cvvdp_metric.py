@@ -1,6 +1,9 @@
 from abc import abstractmethod
 from urllib.parse import ParseResultBytes
-from numpy.lib.shape_base import expand_dims
+try:
+    from numpy import expand_dims
+except ImportErorr:
+    from numpy.lib.shape_base import expand_dims
 import math
 import torch
 from torch.utils import checkpoint
@@ -232,7 +235,10 @@ class cvvdp(vq_metric):
             self.display_name = display_name
         else:
             self.display_photometry = display_photometry
-            self.display_name = "unspecified"
+            if hasattr(display_photometry, 'short_name'):
+                self.display_name = display_photometry.short_name
+            else:
+                self.display_name = "unspecified"
         
         if display_geometry is None:
             self.display_geometry = vvdp_display_geometry.load(display_name, config_paths)

@@ -100,9 +100,9 @@ for kk in range(1001):
 
         plt.tight_layout()
 
-        if save_results and kk % 100 == 0:
+        if save_results and kk % 20 == 0:
             plt.savefig( f'adaptive_chroma_channels_i{kk:04d}.png' )
-            io.imwrite( f'adaptive_chroma_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
+            #io.imwrite( f'adaptive_chroma_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
 
         fig.canvas.draw()
         fig.canvas.flush_events()

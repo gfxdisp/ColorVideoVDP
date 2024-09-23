@@ -30,10 +30,10 @@ def resize_array(img, dsize):
 # For debugging only
 # from gfxdisp.pfs.pfs import pfs
 
-# This is a 16-bit image, convert to float
 I_ref_np16 = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 
 patch_sz = 256 # Use only a portion of the image
+# This is a 16-bit image, convert to float
 I_ref = I_ref_np16[-patch_sz:,-patch_sz:,:].astype(np.float32) / np.iinfo(I_ref_np16.dtype).max
 
 epsilon = 1e-4 # to avoid div by 0

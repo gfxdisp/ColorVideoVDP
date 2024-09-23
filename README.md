@@ -72,6 +72,7 @@ See [Command line interface](#command-line-interface) for further details. Color
     - [Configuration files](#configuration-files)
     - [Other metrics](#other-metrics)
     - [Display model preview](#display-model-preview)
+    - [Interactive mode](#Interactive-mode)
     - [Python interface](#python-interface)
     - [Loss function](#loss-function)
     - [Matlab interface](#matlab-interface)
@@ -202,7 +203,20 @@ This functionality is useful if you suspect that video/images are incorrectly lo
 You can also alternative versions of this debug "metric":
 * `--metric dm-preview-exr` - when processing video, OpenEXR frames will be written instead of a video file. 
 * `--metric dm-preview-sbs` - instead of creating two separate files, one for reference and one for test, put those in the same frame side-by-side. 
-* `--metric dm-preview-exr` - the two above combined
+* `--metric dm-preview-exr-sbs` - the two above combined
+
+## Interactive mode
+
+`cvvdp` will need to initialize PyTorch every time it starts, which will lead to a significant slow down when evaluating many files. To avoid this slowdown, you can start `cvvdp` in interactive mode by passing `--interactive` argument. When started that way, each line on the standard input should contain a complete list of argumens, as you would pass them to `cvvdp` program (but without the `cvvdp`). For example: 
+```bash
+> cvvdp --interactive
+--test example_media/aliasing/ferris-bicubic-bicubic.mp4 --ref example_media/aliasing/ferris-ref.mp4 --display "standard_fhd"
+--test example_media/aliasing/ferris-bicubic-nearest.mp4 --ref example_media/aliasing/ferris-ref.mp4 --display "standard_fhd"
+```
+You can obviously prepare a text file with those argumants and pass that file with the shell redirection `<`. The example above can be also run using wildcards:
+```bash
+cvvdp --test example_media/aliasing/ferris-*-*.mp4 --ref example_media/aliasing/ferris-ref.mp4 --display "standard_fhd"
+```
 
 ## Python interface
 ColorVideoVDP can also be run through the Python interface by instatiating the `pycvvdp.cvvdp` class.
@@ -228,10 +242,10 @@ More examples can be found in these [example scripts](examples).
 ColorVideoVDP can be used as a differentiable loss function in PyTorch. Use `cvvdp.loss` function for that. Examples of how to use ColorVideoVDP as a loss can be found in [examples/ex_adaptive_chroma_subsampling.py](examples/ex_adaptive_chroma_subsampling.py) and [examples/ex_image_reconstruction.py](examples/ex_image_reconstruction.py).
 
 A few caveats:
-* Similarly as many perceptual losses, ColorVideoVDP may disrupt the convexity of the loss landscape making the convergence slower or impossible.
-* Because of that, it is advisable that ColorVideoVDP is used in combination with well-behaved losses, such as L1 or L2.
-* Alternatively, ColorVideoVDP can be used at the latter training stage after the L1 or L2 solution has almost converged. 
-* The optimization will work much better on lower-dimensional problems in which only a few parameters are optimized. 
+* Similarly as many perceptual losses, ColorVideoVDP may disrupt the convexity of the loss landscape making the convergence slower or impossible.
+* Because of that, it is advisable that ColorVideoVDP is used in combination with well-behaved losses, such as L1 or L2.
+* Alternatively, ColorVideoVDP can be used at the latter training stage after the L1 or L2 solution has almost converged. 
+* The optimization will work much better on lower-dimensional problems in which only a few parameters are optimized. 
 
 ## Matlab interface
 
