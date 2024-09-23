@@ -339,6 +339,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         elif self.EOTF=='HLG':
             gamma = 1.2
             if self.Y_peak > 1000:
+                # The correction term "- 0.07623 * math.log10(self.E_ambient / 5)" comes from BBC Research & Development White Paper WHP 369
+                # https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP369.pdf
                 gamma = 1.2 + 0.42 * math.log10(self.Y_peak / 1000) - 0.07623 * math.log10(self.E_ambient / 5)
             L = (self.Y_peak-Y_black)*hlg2lin(V, gamma) + Y_black + Y_refl
         elif self.EOTF[0].isnumeric(): # if the first char is numeric -> gamma
