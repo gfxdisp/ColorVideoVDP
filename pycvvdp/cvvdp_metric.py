@@ -339,7 +339,7 @@ class cvvdp(vq_metric):
             # Determine how much memory we have
             total = torch.cuda.get_device_properties(self.device).total_memory
             allocated = torch.cuda.memory_allocated(self.device)
-            mem_avail = total-allocated-1500000000  # Total available - 1.5G
+            mem_avail = total-allocated-1500000000  # Total available minus 1.5G
 
             # Estimate how much we need for processing (may be inaccurate - to be improved)
             pix_cnt = width*height
@@ -355,7 +355,7 @@ class cvvdp(vq_metric):
                 # More memory required when training. TODO: better way to detect when running with require_grad
                 mem_per_frame = pix_cnt*2000   # Estimated memory required per frame
             else:
-                mem_per_frame = pix_cnt*450   # Estimated memory required per frame
+                mem_per_frame = pix_cnt*500   # Estimated memory required per frame
 
             max_frames = int((mem_avail-mem_const)/mem_per_frame) # how many frames can we fit into memory
 

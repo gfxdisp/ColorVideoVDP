@@ -60,6 +60,23 @@ The test and reference files can be images or videos. The option `--display` spe
 
 See [Command line interface](#command-line-interface) for further details. ColorVideoVDP can be also run directly from Python - see [Low-level Python interface](#low-level-python-interface). 
 
+## Examples
+
+Compare two 30 fps video files stored as PNG frames:
+```bash
+cvvdp --test test_frame_%05d.png --ref reference_frame_%05d.png --display standard_4k --fps 30
+```
+
+The same as above, but use only frames 10, 12, 14, ... Use Matlab's range notation to select frames.
+```bash
+cvvdp --test test_frame_%05d.png --ref reference_frame_%05d.png --display standard_4k --fps 30 --frames 10:2:
+```
+
+Compare two HDR video files. Note that a display model with the right EOTF must be used.
+```bash
+cvvdp --test test_hdr_video.mp4 --ref reference_hdr_video.mp4 --display standard_hdr_pq
+```
+
 **Table of contents**
 - [Display specification](#display-specification)
     - [Custom specification](#custom-display-specification)

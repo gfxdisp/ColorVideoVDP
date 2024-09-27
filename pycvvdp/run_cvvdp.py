@@ -92,6 +92,8 @@ def parse_args(arg_list=None):
     parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr', 'dm-preview-sbs', 'dm-preview-exr-sbs'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
+    parser.add_argument("--fps", type=float, default=None, help='Frames per second. It will overwrite frame rate stores in the video file. Required when passing an array of image files.')
+    parser.add_argument("--frames", type=str, default=None, help='Range of frames specified as first:step:last, first:last, or first: (Matlab notation). Currently works only with frames provided as images.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
@@ -122,6 +124,23 @@ def run_on_args(args):
     if args.test is None or args.ref is None:
         logging.error( "Paths to both test and reference content needs to be specified.")
         return
+
+    # Range of frames to process
+    frame_range = None
+    if not args.frames is None:
+        ss = args.frames.split(':')
+        if len(ss) == 3:
+            sn = [0, 1, 10000] # default values
+        else:
+            sn = [0, 10000]
+        for kk in range(len(ss)):
+            if ss[kk].isnumeric():
+                sn[kk] = int(ss[kk])
+        if len(ss) == 3:
+            frame_range = range(sn[0],(sn[2]+1),sn[1])
+        elif len(ss) <= 2:
+            frame_range = range(sn[0],(sn[1]+1))
+        
 
 
     # Changed option to include MPS support for Macbooks
@@ -250,6 +269,8 @@ def run_on_args(args):
                                                 full_screen_resize=args.full_screen_resize, 
                                                 resize_resolution=display_geometry.resolution, 
                                                 frames=args.nframes,
+                                                fps=args.fps,
+                                                frame_range=frame_range,
                                                 preload=preload,
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )

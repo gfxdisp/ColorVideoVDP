@@ -122,6 +122,42 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
     return T_p.reshape( out_sh )
 
 
+def numpy2torch_frame(np_array, frame, device, dim_order="HWC" ):
+
+    if isinstance( np_array, np.ndarray ):
+        if np_array.dtype == np.uint16:
+            # Torch does not natively support uint16. A workaround is to pack uint16 values into int16.
+            # This will be efficiently transferred and unpacked on the GPU.
+            # logging.info('Test has datatype uint16, packing into int16')
+            np_array = np_array.astype(np.int16)
+        torch_array = torch.tensor(np_array)
+    else:
+        torch_array = np_array # If it is already a tensor
+
+    from_array = reshuffle_dims( torch_array, in_dims=dim_order, out_dims="BCFHW" )
+
+    if from_array.dtype is torch.float32:
+        frame = from_array[:,:,frame:(frame+1),:,:].to(device)
+    elif from_array.dtype is torch.float16:
+        frame = from_array[:,:,frame:(frame+1),:,:].to(device=device, dtype=torch.float32)
+    elif from_array.dtype is torch.int16:
+        # Use int16 to losslessly pack uint16 values
+        # Unpack from int16 by bit masking as described in this thread:
+        # https://stackoverflow.com/a/20766900
+        # logging.info('Found int16 datatype, unpack into uint16')
+        max_value = 2**16 - 1
+        # Cast to int32 to store values >= 2**15
+        frame_int32 = from_array[:,:,frame:(frame+1),:,:].to(device).to(torch.int32)
+        frame_uint16 = frame_int32 & max_value
+        # Finally convert to float in the range [0,1]
+        frame = frame_uint16.to(torch.float32) / max_value
+    elif from_array.dtype is torch.uint8:
+        frame = from_array[:,:,frame:(frame+1),:,:].to(device).to(torch.float32)/255
+    else:
+        raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
+    return frame
+
+
 """
 This video_source uses a photometric display model to convert input content (e.g. sRGB) to luminance maps. 
 """
