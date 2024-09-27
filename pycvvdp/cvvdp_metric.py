@@ -339,6 +339,7 @@ class cvvdp(vq_metric):
             # Determine how much memory we have
             total = torch.cuda.get_device_properties(self.device).total_memory
             allocated = torch.cuda.memory_allocated(self.device)
+            # Torch does not allow us to querry the free memory on the GPU so this is an inaccurate estimate
             mem_avail = total-allocated-1500000000  # Total available minus 1.5G
 
             # Estimate how much we need for processing (may be inaccurate - to be improved)

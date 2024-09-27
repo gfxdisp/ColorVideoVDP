@@ -303,7 +303,7 @@ Use ffmpeg to read video frames, one by one.
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
 
         fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -322,7 +322,8 @@ class video_source_video_file(video_source_dm):
                 rs_str = ""
             else:
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {vr.avg_fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
+            self.fps = vr.avg_fps if fps is None else fps
+            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
 
         # if color_space_name=='auto':
         #     if self.test_vidr.color_space=='bt2020nc':
@@ -357,7 +358,7 @@ class video_source_video_file(video_source_dm):
 
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
-        return self.test_vidr.avg_fps
+        return self.fps
     
     # Get a test (reference) video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
@@ -567,10 +568,12 @@ class video_source_matlab( video_source_array ):
 
         raise RuntimeError( 'Cannot find image or video data in the .mat file' )
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[] ):
+    def __init__( self, test_fname, reference_fname, fps=None, display_photometry='sdr_4k_30', config_paths=[] ):
         test_mat = sio.loadmat(test_fname)
         ref_mat = sio.loadmat(reference_fname)
-        fps = 30 if not 'fps' in test_mat.keys() else float(test_mat['fps'])
+
+        if fps is None:
+            fps = 30 if not 'fps' in test_mat.keys() else float(test_mat['fps'])
 
         test_cnt = self.get_content(test_mat)
         ref_cnt = self.get_content(ref_mat)
@@ -614,7 +617,7 @@ class video_source_file(video_source):
         extension = os.path.splitext(test_fname)[1].lower()
 
         if extension == '.mat':
-            self.vs = video_source_matlab(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths)
+            self.vs = video_source_matlab(test_fname, reference_fname, fps=fps, display_photometry=display_photometry, config_paths=config_paths)
         elif extension in image_extensions:
             assert os.path.splitext(reference_fname)[1].lower() in image_extensions, 'Test is an image, but reference is a video'
             self.vs = video_source_image_frames(test_fname, reference_fname, fps=fps, frame_range=frame_range, display_photometry=display_photometry, config_paths=config_paths, full_screen_resize=full_screen_resize, resize_resolution=resize_resolution, verbose=verbose)
@@ -644,6 +647,7 @@ class video_source_file(video_source):
                                 display_photometry=display_photometry, 
                                 config_paths=config_paths,
                                 frames=frames,   
+                                fps=fps,
                                 full_screen_resize=full_screen_resize, 
                                 resize_resolution=resize_resolution, 
                                 ffmpeg_cc=ffmpeg_cc, 
