@@ -34,6 +34,11 @@ conda activate cvvdp
 
 2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0.
 
+2.a. [optional] If you plan on running on GPU (CUDA) install `pynvml`. 
+```bash
+pip install pynvml
+```
+
 3. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg conda-forge::freeimage

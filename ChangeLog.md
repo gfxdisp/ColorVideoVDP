@@ -3,7 +3,8 @@
 * Updated PU21 encoding parameters so that they are in sync with those in https://github.com/gfxdisp/pu21/
 * Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
 * Added: Support for HLG EOTF (e.g. iPhone HDR video) - thanks to Cosmin Stejerean
-* Added: Processing of videos stores as image frames. New arguments: --fps and --frames
+* Added: Processing of videos stores as image frames. New arguments: '--fps' and '--frames'
+* Fixed: A better memory model for estimating how many frames can be processed at once. Added '--gpu-mem' argument.
 
 # v0.4.1 (27/04/2024)
 * Added `--metric dm-preview` for debugging of the display model
