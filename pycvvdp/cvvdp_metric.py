@@ -219,7 +219,7 @@ class cvvdp(vq_metric):
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
         # other parameters
-        self.debug = True
+        self.debug = False
 
     def update_from_checkpoint(self, ckpt):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
