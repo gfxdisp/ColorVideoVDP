@@ -6,6 +6,7 @@
 * Added: Processing of videos stored as image frames, described using the C-notation `frame_%04d.png`. New arguments: '--fps' and '--frames'
 * Fixed: A better memory model for estimating how many frames can be processed at once on a GPU. Added '--gpu-mem' argument.
 * Added: 'exposure' field in a display model JSON file.
+* Added: `--result` argument to store results in a CSV file.
 * Fixed: Added examples to README.md and improved documentation.
 * Added: ColorVideoVDP logo.
 

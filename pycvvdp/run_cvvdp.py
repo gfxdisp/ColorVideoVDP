@@ -85,6 +85,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
+    parser.add_argument("--result", type=str, default=None, help="write metric prediction results to a CSV file passed as an argument.")
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
@@ -257,10 +258,21 @@ def run_on_args(args):
             logging.info( 'When reporting metric results, please include the following information:' )
             logging.info( info_str )
 
+    if not args.result is None:
+        res_fh = open( args.result, "w" )
+        res_fh.write( 'test, reference' )
+        for mm in metrics:
+            res_fh.write( ', ' + mm.short_name() )
+        res_fh.write( '\n' )
+    else:
+        res_fh = None
+        
 
     for kk in range( max(N_test, N_ref) ): # For each test and reference pair
         test_file = args.test[min(kk,N_test-1)]
         ref_file = args.ref[min(kk,N_ref-1)]
+        if not res_fh is None:
+            res_fh.write( f"{test_file}, {ref_file}" )
         logging.info(f"Predicting the quality of '{test_file}' compared to '{ref_file}'")
         for mm in metrics:
             preload = False if args.temp_padding == 'replicate' else True
@@ -287,6 +299,8 @@ def run_on_args(args):
                 else:
                     units_str = f" [{mm.quality_unit()}]"
                     print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
+                if not res_fh is None:
+                    res_fh.write( f", {Q_pred}" )
 
 
                 if args.features and not stats is None:
@@ -314,6 +328,12 @@ def run_on_args(args):
                     mm.export_distogram( stats, dest_name, jod_max=jod_max )
 
                 del stats
+
+        if not res_fh is None:
+            res_fh.write( "\n" )
+
+    if not res_fh is None:
+        res_fh.close()
 
     #     del test_vid
     #     torch.cuda.empty_cache()

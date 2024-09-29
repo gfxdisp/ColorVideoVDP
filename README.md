@@ -67,9 +67,9 @@ See [Command line interface](#command-line-interface) for further details. Color
 
 ## Examples
 
-Compare all `feris-test-*.mp4` files with the same reference `feris-ref.mp4` using a custom display model:
+Compare all `feris-test-*.mp4` files with the same reference `feris-ref.mp4` using a custom display model, store results in a CSV file `res.csv`:
 ```bash
-cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --verbose --config-paths=display_models_custom.json --display my_display
+cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --config-paths=display_models_custom.json --display my_display --result res.csv
 ```
 where the custom display is described in a JSON file `display_models_custom.json`:
 ```json
