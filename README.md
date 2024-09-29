@@ -86,7 +86,7 @@ where the custom display is described in a JSON file `display_models_custom.json
     "source": "none" } 
 }
 ```
-Note that the file name must be `display_models_*.json`.
+Note that the file name must be `display_models_*.json`. The format of this file is explained [here](pycvvdp/vvdp_data/README.md).
 
 Compare two 30 fps video files stored as PNG frames:
 ```bash
