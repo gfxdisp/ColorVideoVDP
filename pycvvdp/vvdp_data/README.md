@@ -6,6 +6,7 @@ Editing those files in the installation directory is not recommended. Instead, c
 * The directory passed as `--config-paths <your_directory_or_file>`
 * The directory pointed by `CVVDP_PATH`
 * The installation directory (`pyvvdp/vvdp_data`)
+
 You can specify more than one path (separated by a space). If the path is a file, its name must start with the name of the config file and has the same extension, for example `display_models_custom.json`. If the path is a directory, it must contain the config file with the same name as those in `pyvvdp/vvdp_data`. 
 
 ## cvvdp_parameters.json
