@@ -67,6 +67,27 @@ See [Command line interface](#command-line-interface) for further details. Color
 
 ## Examples
 
+Compare all `feris-test-*.mp4` files with the same reference `feris-ref.mp4` using a custom display model:
+```bash
+cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --verbose --config-paths=display_models_custom.json --display my_display
+```
+where the custom display is described in a JSON file `display_models_custom.json`:
+```json
+{
+  "my_display": {
+    "name": "30-inch 4K monitor, peak luminance 200 cd/m^2, viewed under office light levels (250 lux), seen from 2 x display height", 
+    "resolution": [1920, 1080], 
+    "viewing_distance_meters":  1.0,  
+    "diagonal_size_inches": 22,   
+    "max_luminance": 500,   
+    "contrast": 3000,
+    "E_ambient": 100,
+    "k_refl": 0.01,
+    "source": "none" } 
+}
+```
+Note that the file name must be `display_models_*.json`.
+
 Compare two 30 fps video files stored as PNG frames:
 ```bash
 cvvdp --test test_frame_%05d.png --ref reference_frame_%05d.png --display standard_4k --fps 30
@@ -81,6 +102,8 @@ Compare two HDR video files. Note that a display model with the right EOTF must 
 ```bash
 cvvdp --test test_hdr_video.mp4 --ref reference_hdr_video.mp4 --display standard_hdr_pq
 ```
+
+Check [examples](examples/) showing how to call ColorVideoVDP from Python or [matlab](matlab/) showing how to run a Matlab wrapper.
 
 **Table of contents**
 - [Display specification](#display-specification)
