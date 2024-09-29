@@ -2,7 +2,7 @@
 
 [Web page](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/) | [Paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2024_ColorVideoVDP.pdf)
 
-![ColorVideoVDP graphical abstract](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/2024_cvvdp_graph_abstract_larger.gif)
+![ColorVideoVDP logo](imgs/cvvdp_logo_256.png) ![ColorVideoVDP graphical abstract](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/2024_cvvdp_graph_abstract_larger.gif)
 
 ColorVideoVDP is a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos. Similar to popular metrics like PSNR, SSIM, and DeltaE 2000 it is aimed at comparing a ground truth reference against a distorted (e.g. blurry, noisy, color-shifted) version. 
 
@@ -34,6 +34,11 @@ conda activate cvvdp
 
 2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0.
 
+2.a. [optional] If you plan on running on GPU (CUDA) install `pynvml`. 
+```bash
+pip install pynvml
+```
+
 3. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg conda-forge::freeimage
@@ -59,6 +64,46 @@ cvvdp --test test_file --ref ref_file --display standard_fhd
 The test and reference files can be images or videos. The option `--display` specifies a display on which the content is viewed. See [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json) for the available displays.
 
 See [Command line interface](#command-line-interface) for further details. ColorVideoVDP can be also run directly from Python - see [Low-level Python interface](#low-level-python-interface). 
+
+## Examples
+
+Compare all `feris-test-*.mp4` files with the same reference `feris-ref.mp4` using a custom display model, store results in a CSV file `res.csv`:
+```bash
+cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/structure/ferris-ref.mp4 --config-paths=display_models_custom.json --display my_display --result res.csv
+```
+where the custom display is described in a JSON file `display_models_custom.json`:
+```json
+{
+  "my_display": {
+    "name": "30-inch 4K monitor, peak luminance 200 cd/m^2, viewed under office light levels (250 lux), seen from 2 x display height", 
+    "resolution": [1920, 1080], 
+    "viewing_distance_meters":  1.0,  
+    "diagonal_size_inches": 22,   
+    "max_luminance": 500,   
+    "contrast": 3000,
+    "E_ambient": 100,
+    "k_refl": 0.01,
+    "source": "none" } 
+}
+```
+Note that the file name must be `display_models_*.json`. The format of this file is explained [here](pycvvdp/vvdp_data/README.md).
+
+Compare two 30 fps video files stored as PNG frames:
+```bash
+cvvdp --test test_frame_%05d.png --ref reference_frame_%05d.png --display standard_4k --fps 30
+```
+
+The same as above, but use only frames 10, 12, 14, ... Use Matlab's range notation to select frames.
+```bash
+cvvdp --test test_frame_%05d.png --ref reference_frame_%05d.png --display standard_4k --fps 30 --frames 10:2:
+```
+
+Compare two HDR video files. Note that a display model with the right EOTF must be used.
+```bash
+cvvdp --test test_hdr_video.mp4 --ref reference_hdr_video.mp4 --display standard_hdr_pq
+```
+
+Check [examples](examples/) showing how to call ColorVideoVDP from Python or [matlab](matlab/) showing how to run a Matlab wrapper.
 
 **Table of contents**
 - [Display specification](#display-specification)
@@ -258,6 +303,12 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.4.2 (29/September/2024)
+  - Added: Support for HLG EOTF (e.g. iPhone HDR video) - thanks to Cosmin Stejerean
+  - Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
+  - Added: Processing of videos stored as image frames, described using the C-notation `frame_%04d.png`. New arguments: '--fps' and '--frames'
+  - Fixed: A better memory model for estimating how many frames can be processed at once on a GPU. Added '--gpu-mem' argument.
+  - Added: 'exposure' field in a display model JSON file
 
 * v0.4.1 (27/April/2024) 
   - Added `loss` function to cvvdp and examples showing how to use it in `examples/ex_adaptive_chroma_subsampling.py` and `ex_image_reconstruction.py`.

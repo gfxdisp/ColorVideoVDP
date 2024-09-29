@@ -181,14 +181,20 @@ class vvdp_display_photometry:
             E_ambient = model["E_ambient"]
         else:
             E_ambient = 0
-        
+
         # Reflectivity of the display panel
         if "k_refl" in model: 
             k_refl = model["k_refl"]
         else:
             k_refl = 0.005
 
-        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, source_colorspace=colorspace, E_ambient=E_ambient, k_refl=k_refl, name=display_name, config_paths=config_paths)
+        # Exposure
+        if "exposure" in model:
+            exposure = model["exposure"]
+        else:
+            exposure = 1
+
+        obj = vvdp_display_photo_eotf( Y_peak, contrast=contrast, source_colorspace=colorspace, E_ambient=E_ambient, k_refl=k_refl, name=display_name, exposure=exposure, config_paths=config_paths)
         obj.full_name = model["name"]
         obj.short_name = display_name
 
@@ -287,12 +293,13 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
     #         office
     # k_refl - [0.005] reflectivity of the display screen
+    # exposure - [1] exposure of the content. The colour in the linear colour space is multipled by this constant.
     #
     # For more details on the GOG display model, see:
     # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
     #
     # Copyright (c) 2010-2022, Rafal Mantiuk
-    def __init__( self, Y_peak, contrast = 1000, source_colorspace='sRGB', EOTF=None, E_ambient = 0, k_refl = 0.005, name=None, config_paths=[] ):
+    def __init__( self, Y_peak, contrast = 1000, source_colorspace='sRGB', EOTF=None, E_ambient = 0, k_refl = 0.005, exposure=1, name=None, config_paths=[] ):
             
         super().__init__(source_colorspace=source_colorspace, config_paths=config_paths)
         if not EOTF is None: 
@@ -303,6 +310,7 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         self.E_ambient = E_ambient
         self.k_refl = k_refl
         self.name = name    
+        self.exposure = exposure
 
     # Say whether the input frame is display-encoded. False if it is linear. 
     def is_input_display_encoded(self):
@@ -317,7 +325,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
             and self.contrast == other.contrast \
             and self.EOTF == other.EOTF \
             and self.E_ambient == other.E_ambient \
-            and self.k_refl == other.k_refl
+            and self.k_refl == other.k_refl \
+            and self.exposure == other.exposure
 
     # Transforms display-encoded pixel values V, which must be in the range
     # 0-1 into absolute linear colorimetric values emitted from
@@ -331,21 +340,27 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         Y_black, Y_refl = self.get_black_level()
                 
         if self.EOTF=='sRGB':
-            L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black + Y_refl
+            if self.exposure == 1:
+                L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black + Y_refl
+            else:
+                L = (self.Y_peak-Y_black)*(srgb2lin(V)*self.exposure).clip(0., 1.) + Y_black + Y_refl
         elif self.EOTF=='PQ':
-            L = pq2lin( V ).clip(0.005, self.Y_peak) + Y_black + Y_refl #TODO: soft clipping
+            L = (pq2lin( V )*self.exposure).clip(0.005, self.Y_peak) + Y_black + Y_refl #TODO: soft clipping
         elif self.EOTF=='linear':
-            L = V.clip(max(0.005, Y_black), self.Y_peak) + Y_refl #TODO: soft clipping
+            L = (V*self.exposure).clip(max(0.005, Y_black), self.Y_peak) + Y_refl #TODO: soft clipping
         elif self.EOTF=='HLG':
             gamma = 1.2
             if self.Y_peak > 1000:
                 # The correction term "- 0.07623 * math.log10(self.E_ambient / 5)" comes from BBC Research & Development White Paper WHP 369
                 # https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP369.pdf
                 gamma = 1.2 + 0.42 * math.log10(self.Y_peak / 1000) - 0.07623 * math.log10(self.E_ambient / 5)
-            L = (self.Y_peak-Y_black)*hlg2lin(V, gamma) + Y_black + Y_refl
+            if self.exposure == 1:
+                L = (self.Y_peak-Y_black)*hlg2lin(V, gamma) + Y_black + Y_refl
+            else:
+                L = (self.Y_peak-Y_black)*(hlg2lin(V, gamma)*self.exposure).clip(0., 1.) + Y_black + Y_refl
         elif self.EOTF[0].isnumeric(): # if the first char is numeric -> gamma
             gamma = float(self.EOTF)
-            L = (self.Y_peak-Y_black)*torch.pow(V, gamma) + Y_black + Y_refl
+            L = (self.Y_peak-Y_black)*(torch.pow(V, gamma)*self.exposure).clip(0., 1.) + Y_black + Y_refl
         else:
             raise RuntimeError( f"Unknown EOTF '{self.EOTF}'" )        
         return L

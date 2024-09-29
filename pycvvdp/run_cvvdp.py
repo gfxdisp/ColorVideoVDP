@@ -85,6 +85,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
+    parser.add_argument("--result", type=str, default=None, help="write metric prediction results to a CSV file passed as an argument.")
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
@@ -92,6 +93,9 @@ def parse_args(arg_list=None):
     parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr', 'dm-preview-sbs', 'dm-preview-exr-sbs'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
+    parser.add_argument("--fps", type=float, default=None, help='Frames per second. It will overwrite frame rate stores in the video file. Required when passing an array of image files.')
+    parser.add_argument("--frames", type=str, default=None, help='Range of frames specified as first:step:last, first:last, or first: (Matlab notation). Currently works only with frames provided as images.')
+    parser.add_argument("--gpu-mem", type=float, default=None, help='How much GPU memory can we use in GB. Use if CUDA reports out of mem errors, or you want to run multiple instances at the same time.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
@@ -122,6 +126,23 @@ def run_on_args(args):
     if args.test is None or args.ref is None:
         logging.error( "Paths to both test and reference content needs to be specified.")
         return
+
+    # Range of frames to process
+    frame_range = None
+    if not args.frames is None:
+        ss = args.frames.split(':')
+        if len(ss) == 3:
+            sn = [0, 1, 10000] # default values
+        else:
+            sn = [0, 10000]
+        for kk in range(len(ss)):
+            if ss[kk].isnumeric():
+                sn[kk] = int(ss[kk])
+        if len(ss) == 3:
+            frame_range = range(sn[0],(sn[2]+1),sn[1])
+        elif len(ss) <= 2:
+            frame_range = range(sn[0],(sn[1]+1))
+        
 
 
     # Changed option to include MPS support for Macbooks
@@ -212,6 +233,7 @@ def run_on_args(args):
                                 temp_padding=args.temp_padding,
                                 config_paths=args.config_paths,
                                 quiet=args.quiet,
+                                gpu_mem=args.gpu_mem,
                                 dump_channels=dump_channels )
             metrics.append( fv )
         elif mm == 'pu-psnr-rgb':
@@ -236,10 +258,21 @@ def run_on_args(args):
             logging.info( 'When reporting metric results, please include the following information:' )
             logging.info( info_str )
 
+    if not args.result is None:
+        res_fh = open( args.result, "w" )
+        res_fh.write( 'test, reference' )
+        for mm in metrics:
+            res_fh.write( ', ' + mm.short_name() )
+        res_fh.write( '\n' )
+    else:
+        res_fh = None
+        
 
     for kk in range( max(N_test, N_ref) ): # For each test and reference pair
         test_file = args.test[min(kk,N_test-1)]
         ref_file = args.ref[min(kk,N_ref-1)]
+        if not res_fh is None:
+            res_fh.write( f"{test_file}, {ref_file}" )
         logging.info(f"Predicting the quality of '{test_file}' compared to '{ref_file}'")
         for mm in metrics:
             preload = False if args.temp_padding == 'replicate' else True
@@ -250,6 +283,8 @@ def run_on_args(args):
                                                 full_screen_resize=args.full_screen_resize, 
                                                 resize_resolution=display_geometry.resolution, 
                                                 frames=args.nframes,
+                                                fps=args.fps,
+                                                frame_range=frame_range,
                                                 preload=preload,
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
@@ -264,6 +299,8 @@ def run_on_args(args):
                 else:
                     units_str = f" [{mm.quality_unit()}]"
                     print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
+                if not res_fh is None:
+                    res_fh.write( f", {Q_pred}" )
 
 
                 if args.features and not stats is None:
@@ -291,6 +328,12 @@ def run_on_args(args):
                     mm.export_distogram( stats, dest_name, jod_max=jod_max )
 
                 del stats
+
+        if not res_fh is None:
+            res_fh.write( "\n" )
+
+    if not res_fh is None:
+        res_fh.close()
 
     #     del test_vid
     #     torch.cuda.empty_cache()
