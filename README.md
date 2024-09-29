@@ -303,6 +303,12 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.4.2 (29/September/2024)
+  - Added: Support for HLG EOTF (e.g. iPhone HDR video) - thanks to Cosmin Stejerean
+  - Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
+  - Added: Processing of videos stored as image frames, described using the C-notation `frame_%04d.png`. New arguments: '--fps' and '--frames'
+  - Fixed: A better memory model for estimating how many frames can be processed at once on a GPU. Added '--gpu-mem' argument.
+  - Added: 'exposure' field in a display model JSON file
 
 * v0.4.1 (27/April/2024) 
   - Added `loss` function to cvvdp and examples showing how to use it in `examples/ex_adaptive_chroma_subsampling.py` and `ex_image_reconstruction.py`.

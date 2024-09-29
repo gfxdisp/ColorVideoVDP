@@ -32,6 +32,7 @@ Each entry contains the following fields:
 * `contrast` - contrast. for 1000:1 contrast, put there 1000
 * `E_ambient` - the amount of ambient light in lux
 * `k_refl` - reflectivity of the screen, assuming a matte screen. The default is 0.005 (which is 0.5%).
+* `exposure` - the content in a linear colour space is multiplied by the exposure value. The default is 1. This can be used in combination with various HDR file format, which often lack information about the absolute luminance levels. 
 * `source` - comment, typically URL to the source from which the information comes from
 
 ## colorspaces.json
@@ -40,7 +41,7 @@ List of available color spaces and their EOTFs.
 
 Each entry contains the following fields:
 
-* `EOTF` - Non-linearity used to transform display-encoded pixel values (in the input) to linear values - absolute or relative. Select from 'sRGB', 'PQ', or a string with numerical value (e.g. 2.2) for gamma. 
+* `EOTF` - Non-linearity used to transform display-encoded pixel values (in the input) to linear values - absolute or relative. Select from `sRGB`, `PQ`, `HLG` or a string with numerical value (e.g. 2.2) for gamma. 
 * `whitepoint` - currently unused
 * `RGB2X`, `RGB2Y`, `RGB2Z` - three vectors with a 3x3 matric converting from the native source/display color space to CIE XYZ 1931
 * `XYZ2R`, `XYZ2G`, `XYZ2B` - unused

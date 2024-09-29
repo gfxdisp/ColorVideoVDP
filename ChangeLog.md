@@ -1,10 +1,13 @@
-# v0.4.? (?)
+# v0.4.2 (29/09/2024)
 * Files are now sorted after the wildcard expansion
 * Updated PU21 encoding parameters so that they are in sync with those in https://github.com/gfxdisp/pu21/
 * Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
 * Added: Support for HLG EOTF (e.g. iPhone HDR video) - thanks to Cosmin Stejerean
-* Added: Processing of videos stores as image frames. New arguments: '--fps' and '--frames'
-* Fixed: A better memory model for estimating how many frames can be processed at once. Added '--gpu-mem' argument.
+* Added: Processing of videos stored as image frames, described using the C-notation `frame_%04d.png`. New arguments: '--fps' and '--frames'
+* Fixed: A better memory model for estimating how many frames can be processed at once on a GPU. Added '--gpu-mem' argument.
+* Added: 'exposure' field in a display model JSON file.
+* Fixed: Added examples to README.md and improved documentation.
+* Added: ColorVideoVDP logo.
 
 # v0.4.1 (27/04/2024)
 * Added `--metric dm-preview` for debugging of the display model
