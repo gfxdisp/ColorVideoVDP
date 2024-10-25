@@ -1,3 +1,6 @@
+# v0.4.? (?)
+* Interpolation of the CSF is a bit faster now (thanks to Dongyeon)
+
 # v0.4.2 (29/09/2024)
 * Files are now sorted after the wildcard expansion
 * Updated PU21 encoding parameters so that they are in sync with those in https://github.com/gfxdisp/pu21/

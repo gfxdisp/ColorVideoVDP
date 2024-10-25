@@ -1,49 +1,7 @@
 import torch
 import pycvvdp.utils as utils
 
-# from interp import interp1 # deprecated
-
-def linear_interp(x, xp, fp):
-    """
-    Perform linear interpolation for the given input of PyTorch tensors
-    """
-    # Get the indices where xp[j] <= x < xp[j+1]
-    idx = torch.searchsorted(xp, x, right=True) - 1
-    idx = torch.clamp(idx, 0, len(xp) - 2)  # Clamping to avoid index out of bounds
-
-    # Slope for each segment
-    slope = (fp[idx + 1] - fp[idx]) / (xp[idx + 1] - xp[idx])
-
-    # Linear interpolation
-    return fp[idx] + slope * (x - xp[idx])
-
-def batch_interp1d(x, xp, fp):
-    """
-    Perform batch-wise linear interpolation.
-    """
-    # Ensure xp is increasing
-    assert torch.all(xp[1:] >= xp[:-1]), "xp must be in increasing order"
-
-    # Make tensors contiguous to avoid warnings and optimize performance
-    x = x.contiguous()
-    xp = xp.contiguous()
-    fp = fp.contiguous()
-
-    # Find indices of the closest points
-    indices = torch.searchsorted(xp, x) - 1
-    indices = torch.clamp(indices, 0, len(xp) - 2)
-
-    # Gather the relevant points
-    x0 = xp[indices]
-    x1 = xp[indices + 1]
-    y0 = fp[torch.arange(fp.shape[0]), indices]
-    y1 = fp[torch.arange(fp.shape[0]), indices + 1]
-
-    # Compute the slope
-    slope = (y1 - y0) / (x1 - x0)
-
-    # Compute the interpolated values
-    return y0 + slope * (x - x0)
+from interp import interp1q, batch_interp1d
 
 class castleCSF:
 
@@ -83,11 +41,12 @@ class castleCSF:
             logS_r = self.logS_rho[rho_str]
         else:
             N = self.log_L_bkg.numel()
+            logS_r = torch.empty((N), device=self.device)
             logS_r = batch_interp1d(torch.log10(torch.as_tensor(rho, device=self.device, dtype=torch.float32)).expand(N), self.log_rho, logS)
-            self.logS_rho[rho_str] = logS_r
+            self.logS_rho[rho_str] = logS_r        
 
         # Then, interpolate across luminance levels    
-        S = 10**linear_interp( logL_bkg, self.log_L_bkg, logS_r )        
+        S = 10**interp1q( self.log_L_bkg, logS_r, logL_bkg )
 
         return S
 
