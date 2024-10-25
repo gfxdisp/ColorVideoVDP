@@ -1,7 +1,7 @@
 import torch
 import pycvvdp.utils as utils
 
-from interp import interp1
+from interp import interp1q, batch_interp1d
 
 class castleCSF:
 
@@ -42,12 +42,11 @@ class castleCSF:
         else:
             N = self.log_L_bkg.numel()
             logS_r = torch.empty((N), device=self.device)
-            for kk in range(N):
-                logS_r[kk] = interp1( self.log_rho, logS[kk,:], torch.log10(torch.as_tensor(rho, device=self.device, dtype=torch.float32)) )
-            self.logS_rho[rho_str] = logS_r
+            logS_r = batch_interp1d(torch.log10(torch.as_tensor(rho, device=self.device, dtype=torch.float32)).expand(N), self.log_rho, logS)
+            self.logS_rho[rho_str] = logS_r        
 
         # Then, interpolate across luminance levels    
-        S = 10**interp1( self.log_L_bkg, logS_r, logL_bkg )        
+        S = 10**interp1q( self.log_L_bkg, logS_r, logL_bkg )
 
         return S
 
