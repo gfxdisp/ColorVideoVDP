@@ -225,24 +225,6 @@
     "source": "https://www.displaymate.com/OLED_TV2017_ShootOut_1a.htm"
   },
 
-"Artemis_fhd46pt8ppd": {
-      "name": "monitor with given ppd, peak luminance 200 cd/m^2, viewed under office light levels (250 lux)", 
-      "resolution": [1920, 1080], 
-      "pixels_per_degree": 46.8,   
-      "max_luminance": 500,   
-      "contrast": 50,
-      "E_ambient": 250,
-      "source": "none" },
-
-"Artemis_fhd36ppd": {
-      "name": "monitor with given ppd, peak luminance 200 cd/m^2, viewed under office light levels (250 lux)", 
-      "resolution": [1920, 1080], 
-      "pixels_per_degree": 36,   
-      "max_luminance": 500,   
-      "contrast": 50,
-      "E_ambient": 250,
-      "source": "none" },
-
   "eizo_CG3146": {
     "name": "EIZO Prominence CG3146 31\"", 
     "resolution": [4096, 2160], 
