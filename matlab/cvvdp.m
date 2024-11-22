@@ -102,12 +102,29 @@ classdef cvvdp
             end
 
             if ~strcmp(options.heatmap, 'none')
-                heatmap_fn = [ test_file(1:(end-4)), '_heatmap.png' ];
+                % heatmap_fn = [ test_file(1:(end-4)), '_heatmap.png' ];
+                if length(size(img_test)) == 4
+                    heatmap_fn = [ test_file(1:(end-4)), '_heatmap.mp4' ];
+                    isVid = true;
+                else
+                    heatmap_fn = [ test_file(1:(end-4)), '_heatmap.png' ];
+                    isVid = false;
+                end
                 if ~isfile( heatmap_fn )
                     warning( 'cvvdp: Missing heatmap files - something went wrong' )
                     heatmap = [];
                 else
-                    heatmap = imread( heatmap_fn );
+                    if isVid
+                        hmVid = VideoReader( heatmap_fn );
+                        heatmap = zeros(hmVid.Height,hmVid.Width,3,hmVid.NumFrames);
+                        frameCount = 0;
+                        while hasFrame(hmVid)
+                            frameCount = frameCount + 1;
+                            heatmap(:,:,:,frameCount) = double(readFrame(hmVid))/255;
+                        end
+                    else
+                        heatmap = imread( heatmap_fn );
+                    end
                     delete( heatmap_fn );
                 end
             else

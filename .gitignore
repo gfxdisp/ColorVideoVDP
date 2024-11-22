@@ -10,3 +10,8 @@ build/
 features*/
 logs/
 new_config/
+*.mp4
+pycvvdp/vvdp_data/display_models copy.json
+pycvvdp/vvdp_data/display_models.json
+pycvvdp/vvdp_data/display_models.json
+pycvvdp/vvdp_data/display_models.json
