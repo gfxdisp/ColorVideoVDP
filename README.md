@@ -16,7 +16,7 @@ The main features:
 
 ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#example-usage).
 
-The metric is explained in details in:
+The metric is explained in detail in:
 
 > ColorVideoVDP: A visual difference predictor for image, video and display distortions.\
 > Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.\
@@ -34,22 +34,22 @@ conda activate cvvdp
 
 2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0.
 
-2.a. [optional] If you plan on running on GPU (CUDA) install `pynvml`. 
+3. [optional] If you plan on running on GPU (CUDA) install `pynvml`. 
 ```bash
 pip install pynvml
 ```
 
-3. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
+4. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg conda-forge::freeimage
 ```
 
-4. Obtain the ColourVDP codebase, by cloning the repository:
+5. Obtain the ColourVDP codebase, by cloning the repository:
 ```bash
 git clone git@github.com:gfxdisp/ColorVideoVDP.git   # skip if a .zip is provided or you use Github GUI
 ```
 
-5. Finally, install ColorVideoVDP with PyPI:
+6. Finally, install ColorVideoVDP with PyPI:
 ```bash
 cd ColorVideoVDP
 pip install -e .

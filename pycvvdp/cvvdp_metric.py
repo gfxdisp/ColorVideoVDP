@@ -2,7 +2,7 @@ from abc import abstractmethod
 from urllib.parse import ParseResultBytes
 try:
     from numpy import expand_dims
-except ImportErorr:
+except ImportError:
     from numpy.lib.shape_base import expand_dims
 import math
 import torch
