@@ -17,9 +17,9 @@ res = np.load( "per_frame_res_cvvdp.npy", allow_pickle=True )
 
 ## The interpretation of cfb_map values
 
-The values in the `cfb_map` correspond to per-chanel, per-frame and per-band visual differences, pooled across all the pixels, weighted by the learned weights and converted to JOD units. These are the same values as those used to create distograms. No differemce is mapped to 0 and the values increase with larger visual differences. 
+The values in the `cfb_map` correspond to per-chanel, per-frame and per-band visual differences, pooled across all the pixels, weighted by the learned weights and converted to JOD units. These are the same values as those used to create distograms. No difference is mapped to 0 and the values increase with larger visual differences. 
 
-Please note that the reported JOD units are only approximate as there is no data to with per-frame and per-channel JODs that could validate the predictions. Averaging those values will *not* give the final JOD score as ColorVideoVDP uses more complicated pooling strategy, with different p-norms used for different dimensions (see eq. (14) in the ColorVideoVDP paper). 
+Please note that the reported JOD units are only approximate because there is no data to with per-frame and per-channel JODs that could validate those predictions. Averaging those values will *not* give the final JOD score as ColorVideoVDP uses more complicated pooling strategy, with different p-norms used for different dimensions (see eq. (14) in the ColorVideoVDP paper). 
 
 ## File names
 
