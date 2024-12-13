@@ -212,7 +212,9 @@ In addition to the single-valued quality scored in the JOD units, ColorVideoVDP 
 * `threshold` - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
 * `raw` - the difference values between 0 and 10 will be mapped to back to white
 
-The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD degradation to use in the visualization. The default is 10.
+The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD degradation to use in the visualization. The default is 10. 
+
+You can save the per-channel, per-frame and per-band visual difference values used to create distogram in a NumPy `.npy` file by passing `--result-detailed` argument. See [docs/result_detailed.md](docs/result_detailed.md) for the details. 
 
 Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
 

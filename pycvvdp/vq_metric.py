@@ -61,3 +61,10 @@ class vq_metric:
     '''
     def set_base_fname( self, base_fname ):
         self.base_fname = base_fname
+
+    '''
+    Write detailed results, for example, per-frame predictions. 
+    '''
+    def write_results_detailed(self, stats, dest_fname):
+        pass
+

@@ -86,6 +86,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
     parser.add_argument("--result", type=str, default=None, help="write metric prediction results to a CSV file passed as an argument.")
+    parser.add_argument("--result-detailed", type=str, default=None, help="write detailed metric predictions (e.g., per-frame) to a python .npz file.")
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
@@ -302,28 +303,36 @@ def run_on_args(args):
                 if not res_fh is None:
                     res_fh.write( f", {Q_pred}" )
 
+                if not args.result_detailed is None:
+                    fname = args.result_detailed
+                    if max(N_test, N_ref)>1:
+                        fname += '_' + base
+                    if len(metrics)>1:
+                        fname += '_' + mm.short_name()
+                    mm.write_results_detailed( stats, fname )
+                    logging.info( f'Detailed results written to "{fname}.npy"' )
 
                 if args.features and not stats is None:
                     if mm == 'pu-psnr':
                         logging.warning( f'Skipping features as it is not supported by {mm}' )
                         break
                     dest_name = os.path.join(out_dir, base + "_fmap.json")
-                    logging.info("Writing feature map '" + dest_name + "' ...")
+                    logging.info(f'Writing feature map "{dest_name}"...')
                     mm.write_features_to_json(stats, dest_name)
 
                 if do_heatmap and not stats is None:
                     if stats["heatmap"].shape[2]>1: # if it is a video
                         dest_name = os.path.join(out_dir, base + "_heatmap.mp4")
-                        logging.info("Writing heat map '" + dest_name + "' ...")
+                        logging.info(f'Writing heat map "{dest_name}" ...')
                         np2vid(torch.squeeze(stats["heatmap"].permute((2,3,4,1,0)), dim=4).cpu().numpy(), dest_name, vs.get_frames_per_second(), args.verbose)
                     else:
                         dest_name = os.path.join(out_dir, base + "_heatmap.png")
-                        logging.info("Writing heat map '" + dest_name + "' ...")
+                        logging.info(f'Writing heat map "{dest_name}" ...')
                         np2img(torch.squeeze(stats["heatmap"].permute((2,3,4,1,0)), dim=4).cpu().numpy(), dest_name)
 
                 if args.distogram != -1 and not stats is None:
                     dest_name = os.path.join(out_dir, base + "_distogram.png")                    
-                    logging.info("Writing distogram '" + dest_name + "' ...")
+                    logging.info(f'Writing distogram "{dest_name}" ...')
                     jod_max = args.distogram
                     mm.export_distogram( stats, dest_name, jod_max=jod_max )
 

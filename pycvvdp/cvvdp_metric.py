@@ -1096,6 +1096,24 @@ class cvvdp(vq_metric):
         with open(dest_fname, 'w', encoding='utf-8') as f:
             json.dump(fmap, f, ensure_ascii=False, indent=4)
 
+    '''
+    Write detailed results, for example, per-frame predictions. 
+    '''
+    def write_results_detailed(self, stats, dest_fname):
+
+        dmap = self.raw_diffs_to_dmap(stats)
+
+        res_map = { "cfb_map": dmap }
+        for key, value in stats.items():
+            if not key in ["heatmap", "Q_per_ch"]:
+                if torch.is_tensor(value):
+                    res_map[key] = value.cpu().numpy()
+                else:
+                    res_map[key] = value
+
+        np.save( dest_fname, res_map )
+
+
     def save_to_config(self, fname, comment):
         # Save the current parameters to the given file
         assert fname.endswith('.json'), 'Please provide a .json file'
@@ -1118,18 +1136,21 @@ class cvvdp(vq_metric):
         with open(fname, 'w') as f:
             json.dump(parameters, f, indent=4)
 
-
-    # Export the visualization of distortions over time
-    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
-        # Q_per_ch[channel,frame,sp_band]
+    # Convert RAW per-channel,frame,band difference to weighted differences in JODs
+    def raw_diffs_to_dmap(self, stats):
         Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
         ch_no = Q_per_ch.shape[0]    
-
-        is_image = (Q_per_ch.shape[1]==1)
 
         Q_per_ch[:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1)
         Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
         dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
+        return dmap
+
+    # Export the visualization of distortions over time
+    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
+        # Q_per_ch[channel,frame,sp_band]        
+        dmap = self.raw_diffs_to_dmap(stats)
+        is_image = (stats['Q_per_ch'].shape[1]==1)
 
         if jod_max is None:
             jod_max = math.ceil(dmap.max())
@@ -1137,8 +1158,9 @@ class cvvdp(vq_metric):
         dmap /= jod_max
 
         fps = stats['frames_per_second']
-        band_no = Q_per_ch.shape[2]
-        frame_no = Q_per_ch.shape[1]
+        band_no = stats['Q_per_ch'].shape[2]
+        ch_no = stats['Q_per_ch'].shape[0]    
+        frame_no = stats['Q_per_ch'].shape[1]
         rho_band = stats['rho_band']
         band_labels = [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
         band_labels[0] = "BB"
