@@ -46,7 +46,7 @@ def get_args():
     parser.add_argument('--ckpt', default=None, help='PyTorch checkpoint to retrieve weights/parameters.')
     parser.add_argument('-w', '--worker', default=None, type=str, help='WorkerID and the humber of workers in the format k/N, where N is the total number of workers and k=1..N.')
     parser.add_argument('-f', '--features-suffix', default=None, help='suffix to add add to the features diretory name.')
-    parser.add_argument('-c', '--config-dir', default=None, help="A path to cvvdp configuration files: display_models.json, cvvdp_parameters.json and others.")
+    parser.add_argument('-c', '--config-paths', type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument('-d', '--display', default=None, help='Display name to create photometric and geometric models.')
     parser.add_argument('--gpu', type=int,  default=0, help='Select which GPU to use (e.g. 0), default is GPU 0. Pass -1 to run on the CPU.')
     parser.add_argument('--resume', action='store_true', default=False, help='Resume running the metric (skip the conditions that have been already processed).')
@@ -63,8 +63,8 @@ def get_args():
     level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=level)
 
-    if not args.config_dir is None:
-        pycvvdp.utils.config_files.set_config_dir(args.config_dir)
+    # if not args.config_dir is None:
+    #     pycvvdp.utils.config_files.set_config_dir(args.config_dir)
 
     # Display model checks
     assert args.display is not None, 'Please select a display name. You may select a single display from "pycvvdp/vvdp_data/display_models" or include a column titled "display" and pass "--display per-row".'
@@ -82,9 +82,9 @@ def main():
         device = torch.device('cpu')
 
     if args.masking == 'base' and args.pooling == 'base':
-        metric = pycvvdp.cvvdp(quiet=True, device=device, temp_padding='replicate')
+        metric = pycvvdp.cvvdp(quiet=True, device=device, display_name=args.display, temp_padding='replicate', config_paths=args.config_paths)
     else:
-        metric = pycvvdp.cvvdp_nn(quiet=True, device=device, temp_padding='replicate', masking=args.masking, pooling=args.pooling, ckpt=args.ckpt)
+        metric = pycvvdp.cvvdp_nn(quiet=True, device=device, temp_padding='replicate', config_paths=args.config_paths, masking=args.masking, pooling=args.pooling, ckpt=args.ckpt)
 
     if not args.worker is None:
         kn = args.worker.split('/',1)
@@ -125,8 +125,8 @@ def main():
 
         # Some datasets may have different display models for each row
         display = quality_table.loc[kk]['display'] if args.display == 'per-row' else args.display
-        disp_photo = pycvvdp.vvdp_display_photometry.load(display)
-        disp_geom = pycvvdp.vvdp_display_geometry.load(display)
+        disp_photo = pycvvdp.vvdp_display_photometry.load(display, config_paths=args.config_paths)
+        disp_geom = pycvvdp.vvdp_display_geometry.load(display, config_paths=args.config_paths)
         metric.set_display_model(display_photometry=disp_photo, display_geometry=disp_geom)
 
         # Create the video source and run the metric
@@ -136,7 +136,8 @@ def main():
                                         display_photometry=disp_photo,
                                         full_screen_resize=args.full_screen_resize,
                                         resize_resolution=disp_geom.resolution,
-                                        verbose=args.verbose)
+                                        verbose=args.verbose, 
+                                        config_paths=args.config_paths)
 
             with torch.no_grad():
                 _, stats = metric.predict_video_source(vs)

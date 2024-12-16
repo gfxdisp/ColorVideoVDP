@@ -4,7 +4,7 @@ split-column: scene
 train-ratio: 80
 seed: 0
 resume: true
-config_dir: /anfs/gfxdisp/pmh64/nerf
+config_paths: /anfs/gfxdisp/pmh64/nerf
 display: eizo_color_edge
 log-dir: logs/nerf
 num_epochs: 250

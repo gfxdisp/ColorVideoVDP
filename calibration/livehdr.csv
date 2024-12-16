@@ -4,7 +4,7 @@ split-column: content
 train-ratio: 80
 seed: 0
 resume: true
-config_dir: /anfs/gfxdisp/quality_datasets/LIVEHDR
+config_paths: /anfs/gfxdisp/quality_datasets/LIVEHDR
 display: samsung_q90t_qled_livehdr_dark
 full-screen-resize: bilinear
 log-dir: logs/livehdr

@@ -4,7 +4,7 @@ split-column: distortion
 train-ratio: 80
 seed: 0
 resume: true
-config-dir: /anfs/bigdisc/pmh64/XR-DAVID
+config_paths: /anfs/bigdisc/pmh64/XR-DAVID
 display: eizo_CG3146
 log_dir: logs/xr-david
 num_epochs: 200

@@ -1,5 +1,6 @@
 # v0.4.? (?)
 * Interpolation of the CSF is a bit faster now (thanks to Dongyeon)
+* Fixed: Updated broken `calibration/*.py` scripts. Now they use `--config-paths` instead of discontinued `--config-dir`.
 
 # v0.4.2 (29/09/2024)
 * Files are now sorted after the wildcard expansion

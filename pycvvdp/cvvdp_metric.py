@@ -468,7 +468,7 @@ class cvvdp(vq_metric):
 
 
         rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1], fps)
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, rho_band[-1])
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
@@ -549,7 +549,7 @@ class cvvdp(vq_metric):
 
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch, base_rho_band, fps):
+    def do_pooling_and_jods(self, Q_per_ch, base_rho_band):
         # Q_per_ch[channel,frame,sp_band]
 
         no_channels = Q_per_ch.shape[0]
@@ -575,31 +575,20 @@ class cvvdp(vq_metric):
         is_image = (no_frames==1)
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
 
-        if not is_image and self.do_Bloch_int:
-            bfilt_len = int(math.ceil(self.bfilt_duration * fps))
-            Q_in = Q_sc.permute(0,2,1)
-            B_filt = torch.ones( (1,1,bfilt_len), dtype=torch.float32, device=Q_in.device )/float(bfilt_len)
-            Q_bi = torch.nn.functional.conv1d(Q_in,B_filt, padding="valid")
-            if not self.block_channels is None:
-                Q_tc = self.lp_norm(Q_bi[self.block_channels,...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
-            else:
-                Q_tc = self.lp_norm(Q_bi,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
-            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=2, normalize=True)   # Sum across frames
+        if not self.block_channels is None:
+            Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
         else:
-            if not self.block_channels is None:
-                Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
-            else:
-                Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
 
-            if is_image:
-                Q = Q_tc * t_int
+        if is_image:
+            Q = Q_tc * t_int
+        else:
+            if self.std_pool[0]=='T':
+                std_wt = 2**self.std_w[0]
+                Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True) + std_wt*torch.std(Q_tc, dim=1)   # Sum across frames
             else:
-                if self.std_pool[0]=='T':
-                    std_wt = 2**self.std_w[0]
-                    Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True) + std_wt*torch.std(Q_tc, dim=1)   # Sum across frames
-                else:
 #                    assert torch.all(Q_tc>=0) and not Q_tc.isnan().any(), "wrong values"
-                    Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
+                Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
 
         Q = Q.squeeze()
 
@@ -1105,12 +1094,17 @@ class cvvdp(vq_metric):
                 # strings remain the same
                 continue
             elif isinstance(parameters[key], int):
-                parameters[key] = getattr(self, key).item()
+                # integers are never trained
+                #parameters[key] = getattr(self, key).item()                
+                continue
             elif isinstance(parameters[key], float):
-                # np.float32 is not serializable
-                parameters[key] = np.float64(getattr(self, key).item())
+                if torch.is_tensor(getattr(self, key)):
+                    # np.float32 is not serializable
+                    parameters[key] = np.float64(getattr(self, key).item())
+                else:
+                    parameters[key] = np.float64(getattr(self, key))
             elif isinstance(parameters[key], list):
-                parameters[key] = list(getattr(self, 'ch_weights').detach().cpu().numpy().astype(np.float64))
+                parameters[key] = list(getattr(self, key).detach().cpu().numpy().astype(np.float64))
 
         parameters['__comment'] = comment
         parameters['calibration_date'] = date.today().strftime('%d/%m/%Y')
