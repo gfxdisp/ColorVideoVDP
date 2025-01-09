@@ -98,17 +98,35 @@ classdef cvvdp
                     fwrite( 2, cmdout );
                 end
                 jod_res = regexp( cmdout, "cvvdp=[\d\.]*", "match" );
+                
+                % if jod is negative, NaN will be returned, modify the search pattern
+                if length(jod_res{1})<7 
+                    jod_res = regexp( cmdout, "cvvdp=-[\d\.]*", "match" );
+                end
+                
                 jod = str2double(jod_res{1}(7:end));
             end
 
             if ~strcmp(options.heatmap, 'none')
                 heatmap_fn = [ test_file(1:(end-4)), '_heatmap.png' ];
-                if ~isfile( heatmap_fn )
+                heatmap_fn_mp4 = [ test_file(1:(end-4)), '_heatmap.mp4' ];
+
+                if ~isfile( heatmap_fn_png ) && ~isfile( heatmap_fn_mp4 )
                     warning( 'cvvdp: Missing heatmap files - something went wrong' )
                     heatmap = [];
-                else
-                    heatmap = imread( heatmap_fn );
-                    delete( heatmap_fn );
+                elseif isfile( heatmap_fn_png )
+                    heatmap = imread( heatmap_fn_png );
+                    delete( heatmap_fn_png );
+                elseif isfile( heatmap_fn_mp4 )
+                    v_temp = VideoReader( heatmap_fn_mp4 );
+                    heatmap = [];
+                    frame_count = 1;
+                    while hasFrame(v_temp)
+                        raw_frame = double(readFrame(v_temp))/255;
+                        heatmap(:, :, :, frame_count) = raw_frame;
+                        frame_count = frame_count + 1;
+                    end                    
+                    delete( heatmap_fn_mp4 );
                 end
             else
                 heatmap = [];
