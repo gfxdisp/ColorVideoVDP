@@ -1,5 +1,7 @@
 # Calibrate ColourVideoVDP on a new dataset
 
+This is a simplified ColorVideoVDP calibration procedure, which refits a subset of parameters using features extracted from videos. Such calibration is much faster than the full calibration of all ColorVideoVDP parameters and it does not require GPU with large amount of memory. 
+
 ## Prerequisites
 Install additional python libraries:
 ```bash

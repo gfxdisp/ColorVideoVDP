@@ -691,6 +691,9 @@ class cvvdp(vq_metric):
                 # Weights for the channels: sustained, RG, YV, [transient]
                 t_int = self.image_int if is_image else 1.0
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
+                if is_baseband:
+                    per_ch_w *= self.baseband_weight[0:all_ch].view(-1,1,1,1)
+
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
                 self.heatmap_pyr.set_lband(bb, D_chr)
 

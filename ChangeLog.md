@@ -1,6 +1,8 @@
-# v0.4.? (?)
+# v0.4.3 (?)
 * Interpolation of the CSF is a bit faster now (thanks to Dongyeon)
 * Fixed: Updated broken `calibration/*.py` scripts. Now they use `--config-paths` instead of discontinued `--config-dir`.
+* Fixed: Base bands were incorrectly weighted when generating heat maps. 
+* Fixed: Improved Matlab interface - handles negative JODs and video heatmaps (thanks to CaptainS5)
 
 # v0.4.2 (29/09/2024)
 * Files are now sorted after the wildcard expansion
