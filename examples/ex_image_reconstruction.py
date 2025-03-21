@@ -66,8 +66,8 @@ I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.p
 
 T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/(2**16-1)
 
-model = ImageRecovery( T_ref, initialization="blurred" )
-#model = ImageRecovery( T_ref, initialization="random" )
+#model = ImageRecovery( T_ref, initialization="blurred" )
+model = ImageRecovery( T_ref, initialization="random" )
 
 model.to(device)
 
