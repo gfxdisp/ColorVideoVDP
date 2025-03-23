@@ -67,15 +67,20 @@ class cvvdp_feature_pooling(torch.nn.Module):
         # T - test
         # R - reference
         # D - difference
-        # R[channels,frames,width,height]
+        # T[channels,frames,width,height]
+        # F[frames,width,height,channels,stat]
+        
+        dim_order = [1, 2, 3, 0] # put channels as the last dimension
+        mean_T = self.avg_pool( T ).permute(dim_order)
+        var_T = self.avg_pool( T**2 ).permute(dim_order) - mean_T**2
+        mean_R = self.avg_pool( R ).permute(dim_order)
+        var_R = self.avg_pool( R**2 ).permute(dim_order) - mean_R**2
+        mean_D = self.avg_pool( D ).permute(dim_order)
+        var_D = self.avg_pool( D**2 ).permute(dim_order) - mean_D**2
 
-        mean_T = self.avg_pool( T )
-        var_T = self.avg_pool( T**2 ) - mean_T**2
-        mean_R = self.avg_pool( R )
-        var_R = self.avg_pool( R**2 ) - mean_R**2
-        mean_D = self.avg_pool( D )
-        var_D = self.avg_pool( D**2 ) - mean_D**2
-        F = torch.stack( (mean_T, var_T, mean_R, var_R, mean_D, var_D), dim=0 )
+        F = torch.stack( (mean_T, var_T, mean_R, var_R, mean_D, var_D), dim=4 )
+
+        assert(not F.isnan().any())
 
         return F
 
@@ -92,7 +97,7 @@ class cvvdp_ml(cvvdp):
                          calibrated_ckpt=calibrated_ckpt, dump_channels=dump_channels, gpu_mem=gpu_mem)
 
         dropout = 0.1        
-        hidden_dims = 48
+        hidden_dims = 24
         num_layers = 4
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 6 # 6 extracted stats
@@ -277,11 +282,11 @@ class cvvdp_ml(cvvdp):
             if features is None:
                 features = [None] * len(features_per_block)
                 for bb in range(len(features_per_block)):
-                    features[bb] = torch.empty((features_per_block[bb].shape[0], features_per_block[bb].shape[1], N_frames, features_per_block[bb].shape[-2], features_per_block[bb].shape[-1]), device=self.device)
+                    features[bb] = torch.empty((N_frames, features_per_block[bb].shape[1], features_per_block[bb].shape[2], features_per_block[bb].shape[3], features_per_block[bb].shape[4]), device=self.device)
 
-            ff_end = ff+features[bb].shape[2]
+            ff_end = ff+features_per_block[bb].shape[0]
             for bb in range(len(features_per_block)):
-                features[bb][:,:,ff:ff_end,:,:] = features_per_block[bb]
+                features[bb][ff:ff_end,:,:,:,:] = features_per_block[bb]
 
             if self.do_heatmap:
                 if self.heatmap == "raw":
@@ -290,31 +295,33 @@ class cvvdp_ml(cvvdp):
                     ref_frame = R[:,0, :, :, :]
                     heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach().type(torch.float16).cpu()
 
-            return features, heatmap
+        return features, heatmap
 
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features ):
 
-        # features[band][stat,channel,frame,height,width]
+        # features[band][frames,width,height,channels,stat]
 
-        no_channels = features[0].shape[1]
-        no_frames = features[0].shape[2]
-        no_bands = len(features)
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        # no_bands = len(features)
 
         # Weights for the spatial bands
-        per_sband_w = torch.ones( (no_channels,1,no_bands), dtype=torch.float32, device=self.device)
-        per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
+        # per_sband_w = torch.ones( (no_channels,1,no_bands), dtype=torch.float32, device=self.device)
+        # per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
 
         Q_JOD = torch.as_tensor(10., device=self.device)
 
         for bb in range(len(features)):
 
-            f = torch.permute( features[bb], (2, 3, 4, 0, 1) ).flatten( start_dim=3 )
+            #F[frames,width,height,channels,stat]
+            f = features[bb].flatten( start_dim=3 )
             D_all = self.feature_net(f)
 
             Q_JOD -= D_all.view(-1).mean()
 
+        assert(not Q_JOD.isnan())
         return Q_JOD
 
     def process_block_of_frames(self, R, temp_ch, lpyr, is_image):
