@@ -102,7 +102,7 @@ def fovdots_load_condition(content_id, condition_id, device, data_res="full"):
 
 
 class ImGaussFilt():
-    def __init__(self, sigma, device):
+    def __init__(self, sigma, device, mode='reflect'):
         self.filter_size = 2 * int(np.ceil(2.0 * sigma)) + 1
         self.half_filter_size = (self.filter_size - 1)//2
 
@@ -113,6 +113,7 @@ class ImGaussFilt():
                 distsqr = float(ii - self.half_filter_size) ** 2 + float(jj - self.half_filter_size) ** 2
                 self.K[0,0,jj,ii] = np.exp(-distsqr / (2.0 * sigma * sigma))
 
+        self.mode = mode
         self.K = self.K/self.K.sum()
 
     def run(self, img):
@@ -128,6 +129,20 @@ class ImGaussFilt():
 
         img_4d = Func.pad(img_4d, pad, mode='reflect')
         return Func.conv2d(img_4d, self.K)[0,0]
+
+    def run_4d(self, img):
+        
+        if len(img.shape) == 2: img_4d = img.reshape((1,1,img.shape[0],img.shape[1]))
+        else:                   img_4d = img
+
+        pad = (
+            self.half_filter_size,
+            self.half_filter_size,
+            self.half_filter_size,
+            self.half_filter_size,)
+
+        img_4d = Func.pad(img_4d, pad, mode=self.mode)
+        return Func.conv2d(img_4d, self.K)
 
 
 class config_files:

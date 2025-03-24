@@ -198,6 +198,8 @@ class cvvdp(vq_metric):
         
         # other parameters
         self.debug = False
+        if 'padding_debug' in parameters:
+            self.padding_debug = parameters['padding_debug']
 
     def update_from_checkpoint(self, ckpt):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
@@ -876,8 +878,15 @@ class cvvdp(vq_metric):
     def phase_uncertainty(self, M):
         # Blur only when the image is larger then the required pad size
         if self.pu_dilate != 0 and M.shape[-2]>self.pu_padsize and M.shape[-1]>self.pu_padsize:
-            #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
-            M_pu = self.pu_blur.forward(M) * (10**self.mask_c)
+            # M_pu_edit = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
+            
+            if 'padding_debug' in self.__dict__:
+                if self.padding_debug:
+                    padding_mode = 'replicate'
+                    Gf = utils.ImGaussFilt(self.pu_dilate, M.device,mode=padding_mode)
+                    M_pu = Gf.run_4d(M) * (10.0 ** self.mask_c)
+            else:
+                M_pu = self.pu_blur.forward(M) * (10**self.mask_c)
         else:
             M_pu = M * (10**self.mask_c)
         return M_pu
