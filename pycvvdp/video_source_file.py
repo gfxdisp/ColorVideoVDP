@@ -311,7 +311,7 @@ class video_source_video_file(video_source_dm):
         if ignore_framerate_mismatch: # We cannot use the logic below if we have fps mismatch. video_source_temp_resample_file will handle that.
             if self.test_vidr.frames == -1:
                 self.frames = self.reference_vidr.frames
-            elif self.self.reference_vidr.frames == -1:
+            elif self.reference_vidr.frames == -1:
                 self.frames = self.test_vidr.frames
             else:
                 self.frames = min(self.test_vidr.frames,self.reference_vidr.frames)
@@ -417,7 +417,7 @@ It currently handles only constant fps video.
 '''
 class video_source_temp_resample_file(video_source_video_file):
 
-    max_fps = 160 # upsample to at most this FPS
+    max_fps = 166 # upsample to at most this FPS
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
         super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=-1, full_screen_resize=full_screen_resize, 
