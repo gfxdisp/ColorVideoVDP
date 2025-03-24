@@ -89,19 +89,46 @@ ColorVideoVDP metric with ML head.
 """
 class cvvdp_ml(cvvdp):
 
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=True, dump_channels=None, gpu_mem = None):
+
+        # Use GPU if available
+        if device is None:
+            if torch.cuda.is_available() and torch.cuda.device_count()>0:
+                self.device = torch.device('cuda:0')
+            else:
+                self.device = torch.device('cpu')
+        else:
+            self.device = device
+
+        dropout = 0.2
+        hidden_dims = 48
+        num_layers = 7
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 6 # 6 extracted stats
+        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
 
         super().__init__(display_name=display_name, display_photometry=display_photometry,
                          display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
-                         calibrated_ckpt=calibrated_ckpt, dump_channels=dump_channels, gpu_mem=gpu_mem)
+                         dump_channels=dump_channels, gpu_mem=gpu_mem)
 
-        dropout = 0.1        
-        hidden_dims = 24
-        num_layers = 4
-        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
-        stats_no = 6 # 6 extracted stats
-        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+    def load_config( self, config_paths ):
+        super().load_config(config_paths)
+
+        if self.use_checkpoints:
+            # Load the checkpoint for NN
+            ckpt_file = utils.config_files.find( "cvvdp.ckpt", config_paths )
+
+            logging.info( f"Loading cvvdp checkpoint file from {ckpt_file}" )
+
+            prefix = 'params.feature_net.'
+            if torch.cuda.is_available():
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file)['state_dict'].items() if key.startswith(prefix)}
+            else:
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
+            self.feature_net.load_state_dict(state_dict)
+            self.feature_net = self.feature_net.to(device=self.device) # Unsure why it is needed
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays. Video source is recommended when processing long videos as it allows frame-by-frame loading.
