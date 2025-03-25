@@ -102,7 +102,7 @@ class cvvdp_ml(cvvdp):
 
         dropout = 0.2
         hidden_dims = 48
-        num_layers = 7
+        num_layers = 5
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 6 # 6 extracted stats
         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
@@ -112,6 +112,11 @@ class cvvdp_ml(cvvdp):
                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
                          dump_channels=dump_channels, gpu_mem=gpu_mem)
 
+
+    # Switch to training mode (e.g., to optimize memory allocation)
+    def train(self, do_training=True):
+        super().train(do_training)
+        self.feature_net.train(do_training)
 
     def load_config( self, config_paths ):
         super().load_config(config_paths)

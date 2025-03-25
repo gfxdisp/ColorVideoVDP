@@ -88,6 +88,7 @@ class cvvdp(vq_metric):
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
+        self.training_mode = False
 
         assert heatmap in ["threshold", "supra-threshold", "raw", "none", None], "Unknown heatmap type"            
 
@@ -113,6 +114,10 @@ class cvvdp(vq_metric):
 
         self.dump_channels = dump_channels
         self.heatmap_pyr = None
+
+    # Switch to training mode (e.g., to optimize memory allocation)
+    def train(self, do_training=True):
+        self.training_mode = do_training
 
     def load_config( self, config_paths ):
 
@@ -498,7 +503,7 @@ class cvvdp(vq_metric):
         # The model is:  total_mem = a + pix_cnt*(N_frames+filter_len-1)*b + pix_cnt*N_frames*c
         a = 1.6e9
         b = 16
-        c = 500 #320 if not self.use_checkpoints else 1000 # A different value for training
+        c = 320 if not self.training_mode else 800 # A different value for training
 
         max_frames = int(math.floor((mem_avail-a-pix_cnt*(self.filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
 
