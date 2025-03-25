@@ -405,8 +405,9 @@ class cvvdp_ml(cvvdp):
                 # dimensions: [channel,frame,height,width]
                 D = self.apply_masking_model(T_f, R_f, S)
 
-            width = R.shape[-1]
-            feature_size = math.ceil(self.pix_per_deg * ch_width / width)
+            #width = R.shape[-1]
+            #feature_size = math.ceil(self.pix_per_deg * ch_width / width)
+            feature_size = math.ceil(self.pix_per_deg)
 
             fp = cvvdp_feature_pooling(feature_size)
             features_block[bb] = fp( torch.abs(T_f)*S, torch.abs(R_f)*S, D )
