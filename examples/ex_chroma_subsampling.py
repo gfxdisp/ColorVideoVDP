@@ -2,6 +2,10 @@
 # It will reproduce example from Fig. 20 in ColorVideoVDP paper (https://doi.org/10.1145/3658144). 
 # See Section 6.1 in that paper for the full explanation. 
 
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
+
 import os
 import numpy as np
 import matplotlib
@@ -27,6 +31,7 @@ def resize_array(img, dsize):
 I_ref_np16 = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 
 patch_sz = 256 # Use only a portion of the image
+# This is a 16-bit image, convert to float
 I_ref = I_ref_np16[-patch_sz:,-patch_sz:,:].astype(np.float32) / np.iinfo(I_ref_np16.dtype).max
 
 epsilon = 1e-4 # to avoid div by 0

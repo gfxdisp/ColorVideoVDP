@@ -1,6 +1,7 @@
 # Classes for reading images or videos from files so that they can be passed to ColorVideoVDP frame-by-frame
 
 from asyncio.log import logger
+from functools import cache
 import os
 from turtle import color
 import imageio.v2 as io
@@ -29,6 +30,11 @@ except ImportError as e:
 
 # Load an image (SDR or HDR) into Numpy array
 def load_image_as_array(imgfile):
+    if not os.path.isfile(imgfile):
+        msg = f"File '{imgfile}' not found"
+        logger.error( msg )
+        raise FileNotFoundError( msg )
+
     ext = os.path.splitext(imgfile)[1].lower()
     if ext == '.exr':
         if not pyexr_imported:
@@ -63,7 +69,10 @@ class video_reader:
 
     def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
         try:
-            probe = ffmpeg.probe(vidfile)
+            if vidfile.lower().endswith('.y4m'):
+                probe = ffmpeg.probe(vidfile, count_frames=None)
+            else:
+                probe = ffmpeg.probe(vidfile)
         except:
             raise RuntimeError("ffmpeg failed to open file \"" + vidfile + "\"")
 
@@ -77,6 +86,11 @@ class video_reader:
         self.color_space = video_stream['color_space'] if ('color_space' in video_stream) else 'unknown'
         self.color_transfer = video_stream['color_transfer'] if ('color_transfer' in video_stream) else 'unknown'
         self.in_pix_fmt = video_stream['pix_fmt']
+        if 'nb_read_frames' in video_stream:
+            num_frames = int(video_stream['nb_read_frames'])
+        else:
+            num_frames = int(video_stream['nb_frames'])
+
         avg_fps_num, avg_fps_denom = [float(x) for x in video_stream['r_frame_rate'].split("/")]
         self.avg_fps = avg_fps_num/avg_fps_denom
 
@@ -296,7 +310,7 @@ Use ffmpeg to read video frames, one by one.
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, ignore_framerate_mismatch=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, ignore_framerate_mismatch=False ):
 
         fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -327,7 +341,8 @@ class video_source_video_file(video_source_dm):
                 rs_str = ""
             else:
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {vr.avg_fps}, pixfmt: {vr.in_pix_fmt}, frames: {vr.frames if vr.frames!=-1 else 'unknown'}" )
+            self.fps = vr.avg_fps if fps is None else fps
+            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
 
         # if color_space_name=='auto':
         #     if self.test_vidr.color_space=='bt2020nc':
@@ -365,10 +380,10 @@ class video_source_video_file(video_source_dm):
             return (self.test_vidr.height, self.test_vidr.width, self.frames )
 
     # Return the frame rate of the video
-    def get_frames_per_second(self):
-        return self.test_vidr.avg_fps
+    def get_frames_per_second(self) -> int:
+        return self.fps
     
-    # Get a pair of test and reference video frames as a single-precision luminance map
+    # Get a test (reference) video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
@@ -468,6 +483,126 @@ class video_source_temp_resample_file(video_source_video_file):
             return self.cache_frame[ce]            
 
 '''
+Load video frame-by-frame from image files. It can also handle single images.
+'''
+class video_source_image_frames(video_source_dm):
+        
+    def __init__( self, test_fname, reference_fname, fps=0, frame_range=None, display_photometry='sdr_4k_30', config_paths=[], full_screen_resize=None, resize_resolution=None, verbose=False ):
+
+        super().__init__(display_photometry=display_photometry, config_paths=config_paths)        
+
+        if not fps:
+            fps = 0
+        self.fps = fps
+        (self.test_fname, test_has_frame_no) = self.convert_c2python_format_str(test_fname)
+        (self.reference_fname, ref_has_frame_no) = self.convert_c2python_format_str(reference_fname)
+
+        if full_screen_resize:
+            logging.error("full-screen-resize not implemented for images.")
+            raise RuntimeError( "Not implemented" )
+
+        if test_has_frame_no != ref_has_frame_no:
+            logger.error( "Both test and reference names must contain `%0Nd` string to be replaced with a frame number" )
+            raise RuntimeError( "Incorrect file names" )
+
+        if (fps > 0) != test_has_frame_no:
+            logger.error( "A valid frames-per-second number (--fps) must be provided when input are video frames, or fps should be zero for images." )
+            raise RuntimeError( "Incorrect fps" )
+
+        if fps==0:
+            self.N = 1
+            ff_name = self.test_fname
+        else:
+            # Check how many frames we have
+            if not frame_range:
+                frame_range = range(0, 10000)
+
+            last_frame = 0
+            frame_count = 0
+            for nn in frame_range:
+                if os.path.isfile( self.test_fname.format(nn) ) and os.path.isfile( self.reference_fname.format(nn) ):
+                    last_frame = nn
+                    frame_count += 1
+                else:
+                    break
+
+            if frame_count == 0:
+                logger.error( f"No frames found for {test_fname} and {reference_fname}" )
+                raise RuntimeError( "No frames" )
+
+            logger.info( f"{frame_count} frames found" )
+            self.N = frame_count
+            self.frame_range = frame_range[0:frame_count]
+            ff_name = self.test_fname.format(self.frame_range[0])
+
+        # Need to load first image to get the dimensions
+        self.img_cache = load_image_as_array(ff_name)
+        self.video_size = (self.img_cache.shape[0], self.img_cache.shape[1], self.N)
+
+    def convert_c2python_format_str( self, str ):
+        if not hasattr( self, 'format_re' ):
+            self.format_re = re.compile( r"%(\d)*d" )
+
+        m = self.format_re.search( str )        
+        if m:
+            has_frame_no = True
+            (beg, end) = m.span()
+            new_str = str[0:beg] + '{:' + str[beg+1:end] + '}' + str[end:]
+        else:
+            has_frame_no = False
+            new_str = str
+        return (new_str, has_frame_no)            
+
+    def get_frames_per_second(self):
+        return self.fps
+            
+    # Return a [height width frames] vector with the resolution and
+    # the number of frames in the video clip. [height width 1] is
+    # returned for an image.     
+    def get_video_size(self):
+        return self.video_size
+
+    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        if frame==0 and not self.img_cache is None: # Use cache to avoid loading the same image twice
+            I = self._get_frame( self.test_fname, frame, device, colorspace, self.img_cache )
+            self.img_cache = None
+            return I
+        else:
+            return self._get_frame( self.test_fname, frame, device, colorspace)
+
+    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        return self._get_frame( self.reference_fname, frame, device, colorspace)
+
+    def _get_frame(self, file_name, frame, device, colorspace, cache_img=None):
+
+        if not cache_img is None: 
+            img = cache_img
+        else:
+            if self.fps>0: # video
+                frame_num = self.frame_range[frame]
+                file_name = file_name.format(frame_num)
+            img = load_image_as_array(file_name)
+
+        img_torch = numpy2torch_frame(img, 0, device)
+        I = self.apply_dm_and_colour_transform(img_torch, colorspace)    
+        return I
+
+            # if not full_screen_resize is None:
+            #     logging.error("full-screen-resize not implemented for images.")
+            #     raise RuntimeError( "Not implemented" )
+            # self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
+
+            # hdr_extensions = [".exr", ".hdr"]
+            # if extension in hdr_extensions:
+            #     if self.vs.dm_photometry.EOTF != "linear":
+            #         logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
+            # else:
+            #     if self.vs.dm_photometry.EOTF == "linear":
+            #         logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
+
+
+
+'''
 The same functionality as to fvvdp_video_source_video_file, but preloads all the frames and stores in the CPU memory - allows for random access.
 '''
 class video_source_video_file_preload(video_source_video_file):
@@ -512,15 +647,17 @@ class video_source_matlab( video_source_array ):
         for v_name in mat_struct:
             var = mat_struct[v_name]
             # We need a heuristic here - image needs to have more than 10 pixels - otherwise it is confused with other variables
-            if isinstance( var, np.ndarray ) and var.ndim > 1 and var.ndim < 4 and var.size>10:
+            if isinstance( var, np.ndarray ) and var.ndim > 1 and var.ndim <= 4 and var.size>10:
                 return var.astype(np.single) if var.dtype == np.double else var
 
         raise RuntimeError( 'Cannot find image or video data in the .mat file' )
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[] ):
+    def __init__( self, test_fname, reference_fname, fps=None, display_photometry='sdr_4k_30', config_paths=[] ):
         test_mat = sio.loadmat(test_fname)
         ref_mat = sio.loadmat(reference_fname)
-        fps = 30 if not 'fps' in test_mat.keys() else float(test_mat['fps'])
+
+        if fps is None:
+            fps = 30 if not 'fps' in test_mat.keys() else float(test_mat['fps'])
 
         test_cnt = self.get_content(test_mat)
         ref_cnt = self.get_content(ref_mat)
@@ -553,35 +690,39 @@ Recognize whether the file is an image of video and wraps an appropriate video_s
 '''
 class video_source_file(video_source):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
+    # fps==None - auto-detect, fps==0 - image, video otherwise
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, frame_range=None, fps=None, full_screen_resize=None, resize_resolution=None, preload=False, ffmpeg_cc=False, verbose=False ):
         # these extensions switch mode to images instead
         image_extensions = [".png", ".jpg", ".gif", ".bmp", ".jpeg", ".ppm", ".tiff", ".tif", ".dds", ".exr", ".hdr"]
 
-        assert os.path.isfile(test_fname), f'Test file does not exists: "{test_fname}"'
-        assert os.path.isfile(reference_fname), f'Reference file does not exists: "{reference_fname}"'
+        # assert os.path.isfile(test_fname), f'Test file does not exists: "{test_fname}"'
+        # assert os.path.isfile(reference_fname), f'Reference file does not exists: "{reference_fname}"'
 
         extension = os.path.splitext(test_fname)[1].lower()
 
         if extension == '.mat':
-            self.vs = video_source_matlab(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths)
+            self.vs = video_source_matlab(test_fname, reference_fname, fps=fps, display_photometry=display_photometry, config_paths=config_paths)
         elif extension in image_extensions:
             assert os.path.splitext(reference_fname)[1].lower() in image_extensions, 'Test is an image, but reference is a video'
-            # if color_space_name=='auto':
-            #     color_space_name='sRGB' # TODO: detect the right color space
-            img_test = load_image_as_array(test_fname)
-            img_reference = load_image_as_array(reference_fname)
-            if not full_screen_resize is None:
-                logging.error("full-screen-resize not implemented for images.")
-                raise RuntimeError( "Not implemented" )
-            self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
+            self.vs = video_source_image_frames(test_fname, reference_fname, fps=fps, frame_range=frame_range, display_photometry=display_photometry, config_paths=config_paths, full_screen_resize=full_screen_resize, resize_resolution=resize_resolution, verbose=verbose)
 
-            hdr_extensions = [".exr", ".hdr"]
-            if extension in hdr_extensions:
-                if self.vs.dm_photometry.EOTF != "linear":
-                    logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
-            else:
-                if self.vs.dm_photometry.EOTF == "linear":
-                    logging.warning('A display model with linear color space should not be used with display-encoded SDR images.')
+
+            # # if color_space_name=='auto':
+            # #     color_space_name='sRGB' # TODO: detect the right colour space
+            # img_test = load_image_as_array(test_fname)
+            # img_reference = load_image_as_array(reference_fname)
+            # if not full_screen_resize is None:
+            #     logging.error("full-screen-resize not implemented for images.")
+            #     raise RuntimeError( "Not implemented" )
+            # self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
+
+            # hdr_extensions = [".exr", ".hdr"]
+            # if extension in hdr_extensions:
+            #     if self.vs.dm_photometry.EOTF != "linear":
+            #         logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
+            # else:
+            #     if self.vs.dm_photometry.EOTF == "linear":
+            #         logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
 
         else:
             assert os.path.splitext(reference_fname)[1].lower() not in image_extensions, 'Test is a video, but reference is an image'
@@ -589,7 +730,8 @@ class video_source_file(video_source):
             self.vs = vs_class( test_fname, reference_fname, 
                                 display_photometry=display_photometry, 
                                 config_paths=config_paths,
-                                frames=frames, 
+                                frames=frames,   
+                                fps=fps,
                                 full_screen_resize=full_screen_resize, 
                                 resize_resolution=resize_resolution, 
                                 ffmpeg_cc=ffmpeg_cc, 

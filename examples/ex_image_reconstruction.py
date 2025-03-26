@@ -4,6 +4,10 @@
 # The optimization will success in reconstructing the reference image if the initialization is sufficiently close to the reference images. A random 
 # initialization will cause the optimization to get stuck in a local minimum. 
 
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -62,8 +66,8 @@ I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.p
 
 T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/(2**16-1)
 
-model = ImageRecovery( T_ref, initialization="blurred" )
-#model = ImageRecovery( T_ref, initialization="random" )
+#model = ImageRecovery( T_ref, initialization="blurred" )
+model = ImageRecovery( T_ref, initialization="random" )
 
 model.to(device)
 

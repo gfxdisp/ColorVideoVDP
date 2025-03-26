@@ -149,5 +149,34 @@ def test_interp3(device):
     print(interp3(x, y, z, v, x_q, y_q, z_q))
 
 
+def batch_interp1d(x, xp, fp):
+    """
+    Perform batch-wise linear interpolation.
+    """
+    # Ensure xp is increasing
+    assert torch.all(xp[1:] >= xp[:-1]), "xp must be in increasing order"
+
+    # Make tensors contiguous to avoid warnings and optimize performance
+    x = x.contiguous()
+    xp = xp.contiguous()
+    fp = fp.contiguous()
+
+    # Find indices of the closest points
+    indices = torch.searchsorted(xp, x) - 1
+    indices = torch.clamp(indices, 0, len(xp) - 2)
+
+    # Gather the relevant points
+    x0 = xp[indices]
+    x1 = xp[indices + 1]
+    y0 = fp[torch.arange(fp.shape[0]), indices]
+    y1 = fp[torch.arange(fp.shape[0]), indices + 1]
+
+    # Compute the slope
+    slope = (y1 - y0) / (x1 - x0)
+
+    # Compute the interpolated values
+    return y0 + slope * (x - x0)
+
+
 if __name__ == '__main__':
     test_interp3(torch.device('cpu'))

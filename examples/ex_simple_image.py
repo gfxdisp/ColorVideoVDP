@@ -1,3 +1,9 @@
+# This example shows how to call ColorVideoVDP from python to predict quality for a pair of test and 
+# reference images, stored as numpy arrays.
+
+# Important: This and other examples should be executed from the main ColorVideoVDP directory:
+# python examples/ex_<...>.py
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

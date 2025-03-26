@@ -296,7 +296,7 @@ class lpyr_dec_2(lpyr_dec):
         return self.height+1
 
     def get_lband(self, band):
-        if band == 0 or band == (len(bands)-1):
+        if band == 0 or band == (len(self.lbands)-1):
             band_mul = 1.0
         else:
             band_mul = 2.0
