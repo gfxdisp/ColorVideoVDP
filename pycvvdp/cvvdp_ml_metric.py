@@ -90,7 +90,9 @@ ColorVideoVDP metric with ML head.
 """
 class cvvdp_ml(cvvdp):
 
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=True, dump_channels=None, gpu_mem = None):
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False):
 
         # Use GPU if available
         if device is None:
@@ -100,6 +102,8 @@ class cvvdp_ml(cvvdp):
                 self.device = torch.device('cpu')
         else:
             self.device = device
+
+        self.random_init = random_init
 
         dropout = 0.2
         hidden_dims = 48
@@ -122,7 +126,7 @@ class cvvdp_ml(cvvdp):
     def load_config( self, config_paths ):
         super().load_config(config_paths)
 
-        if self.use_checkpoints:
+        if not self.random_init:
             # Load the checkpoint for NN
             ckpt_file = utils.config_files.find( "cvvdp.ckpt", config_paths )
 
@@ -239,7 +243,7 @@ class cvvdp_ml(cvvdp):
                 if ff == 0: # First frame
                     sw_buf[0] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16) # TODO: switch to float16
                     sw_buf[1] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
-                    print( f"Allocated {sw_buf[0].nelement()*sw_buf[0].element_size()/1e9*2} GB for {fl+block_N_frames-1} frame buffer.")
+                    #print( f"Allocated {sw_buf[0].nelement()*sw_buf[0].element_size()/1e9*2} GB for {fl+block_N_frames-1} frame buffer.")
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
                         # Memory allocated after creating buffers for temporal filters 
