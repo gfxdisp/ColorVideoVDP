@@ -301,7 +301,7 @@ class video_reader_yuv_pytorch(video_reader):
 '''
 Use ffmpeg to read video frames, one by one.
 '''
-class video_source_video_file(video_source_dm):
+class video_source_video_file_old(video_source_dm):
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
 
@@ -378,6 +378,125 @@ class video_source_video_file(video_source_dm):
         return L
 
     def _get_frame( self, vid_reader, frame, device, colorspace ):        
+
+        if frame != (vid_reader.curr_frame+1):
+            raise RuntimeError( 'Video can be currently only read frame-by-frame. Random access not implemented.' )
+
+        frame_np = vid_reader.get_frame()
+
+        if frame_np is None:
+            raise RuntimeError( 'Could not read frame {}'.format(frame) )
+
+        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
+
+    def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y" ):
+        frame_t_hwc = unpack_fn(frame_np, device)
+        frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
+
+        I = self.apply_dm_and_colour_transform(frame_t, colorspace)
+
+        return I
+
+
+'''
+Use ffmpeg to read video frames, one by one.
+The readers are initialized on the first frame access - this allows to pickle an object before it us used (required by Pytorch Lightning)
+'''
+class video_source_video_file(video_source_dm):
+
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+
+        self.fs_width = -1 if full_screen_resize is None else resize_resolution[0]
+        self.fs_height = -1 if full_screen_resize is None else resize_resolution[1]
+        self.reader = video_reader if ffmpeg_cc else video_reader_yuv_pytorch
+        self.reference_vidr = None
+        self.reference_fname = reference_fname
+        self.test_fname = test_fname
+        self.in_frames = frames
+        self.full_screen_resize = full_screen_resize
+        self.resize_resolution = resize_resolution
+        self.ffmpeg_cc = ffmpeg_cc
+        self.verbose = verbose
+        self.fps = fps
+
+        super().__init__(display_photometry=display_photometry, config_paths=config_paths)
+
+        # Resolutions may be different here because upscaling may happen on the GPU
+        # if self.test_vidr.height != self.reference_vidr.height or self.test_vidr.width != self.reference_vidr.width:
+        #     raise RuntimeError( f'Test and reference video sequences must have the same resolutions. Found: test {self.test_vidr.width}x{self.test_vidr.height}, reference {self.reference_vidr.width}x{self.reference_vidr.height}' )
+
+        # self.last_test_frame = None
+        # self.last_reference_frame = None
+
+    def init_readers(self):
+        if self.reference_vidr is None:
+            self.reference_vidr = self.reader(self.reference_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
+            self.test_vidr = self.reader(self.test_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
+
+            self.frames = self.test_vidr.frames if self.in_frames==-1 else self.in_frames
+
+            for vr in [self.test_vidr, self.reference_vidr]:
+                if vr == self.test_vidr:
+                    logging.debug(f"Test video '{self.test_fname}':")
+                else:
+                    logging.debug(f"Reference video '{self.reference_fname}':")
+                if self.full_screen_resize is None:
+                    rs_str = ""
+                else:
+                    rs_str = f"->[{self.resize_resolution[0]}x{self.resize_resolution[1]}]"
+                self.fps = vr.avg_fps if self.fps is None else self.fps
+                logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
+
+            # if color_space_name=='auto':
+            #     if self.test_vidr.color_space=='bt2020nc':
+            #         color_space_name="BT.2020"
+            #     else:
+            #         color_space_name="sRGB"
+
+            if self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
+                logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
+                raise RuntimeError( "Inconsistent frame rates" )
+
+
+
+        if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry.EOTF!="PQ":
+            logging.warning( f"Video color transfer function ({self.test_vidr.color_transfer}) inconsistent with EOTF of the display model ({self.dm_photometry.EOTF})" )
+
+
+    # Return (height, width, frames) touple with the resolution and
+    # the length of the video clip.
+    def get_video_size(self):
+        self.init_readers()
+        if hasattr(self.test_vidr, 'resize_fn') and self.test_vidr.resize_fn is not None:
+            return (self.test_vidr.resize_height, self.test_vidr.resize_width, self.frames )
+        else:
+            return (self.test_vidr.height, self.test_vidr.width, self.frames )
+
+    # Return the frame rate of the video
+    def get_frames_per_second(self) -> int:
+        self.init_readers()
+        return self.fps
+    
+    # Get a test (reference) video frames as a single-precision luminance map
+    # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
+    # starting from 0. 
+    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        #print( f"{self.test_fname} - {self.fs_width}x{self.fs_height}" )
+        # if not self.last_test_frame is None and frame == self.last_test_frame[0]:
+        #     return self.last_test_frame[1]
+        L = self._get_frame( self.test_vidr, frame, device, colorspace )
+        # self.last_test_frame = (frame,L)
+        return L
+
+    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        # if not self.last_reference_frame is None and frame == self.last_reference_frame[0]:
+        #     return self.last_reference_frame[1]
+        L = self._get_frame( self.reference_vidr, frame, device, colorspace )
+        # self.reference_test_frame = (frame,L)
+        return L
+
+    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+        self.init_readers()
 
         if frame != (vid_reader.curr_frame+1):
             raise RuntimeError( 'Video can be currently only read frame-by-frame. Random access not implemented.' )

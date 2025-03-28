@@ -84,6 +84,7 @@ class cvvdp_feature_pooling(torch.nn.Module):
 
         return F
 
+
 """
 ColorVideoVDP metric with ML head.
 """
@@ -102,7 +103,7 @@ class cvvdp_ml(cvvdp):
 
         dropout = 0.2
         hidden_dims = 48
-        num_layers = 5
+        num_layers = 4
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 6 # 6 extracted stats
         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
@@ -236,8 +237,9 @@ class cvvdp_ml(cvvdp):
                 #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
-                    sw_buf[0] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
-                    sw_buf[1] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
+                    sw_buf[0] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16) # TODO: switch to float16
+                    sw_buf[1] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
+                    print( f"Allocated {sw_buf[0].nelement()*sw_buf[0].element_size()/1e9*2} GB for {fl+block_N_frames-1} frame buffer.")
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
                         # Memory allocated after creating buffers for temporal filters 

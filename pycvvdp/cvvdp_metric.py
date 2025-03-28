@@ -56,6 +56,15 @@ from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
 
+# import gc
+# def print_large_tensors():
+#     for obj in gc.get_objects():
+#         try:
+#             if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+#                 print(obj.nelement() * obj.element_size() if len(obj.size()) > 0 else 0, type(obj), obj.size())
+#         except (KeyError, AttributeError):
+#             pass
+
 # A differentiable variant of a power function
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
