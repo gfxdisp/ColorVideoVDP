@@ -132,7 +132,7 @@ class cvvdp_ml(cvvdp):
 
             logging.info( f"Loading cvvdp checkpoint file from {ckpt_file}" )
 
-            prefix = 'params.feature_net.'
+            prefix = 'feature_net.'
             if torch.cuda.is_available():
                 state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
             else:
@@ -351,10 +351,15 @@ class cvvdp_ml(cvvdp):
 
         Q_JOD = torch.as_tensor(10., device=self.device)
 
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
         for bb in range(len(features)):
 
             #F[frames,width,height,channels,stat]
-            f = features[bb].flatten( start_dim=3 )
+            f = features[bb]
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            f = f.flatten( start_dim=3 )
             D_all = self.feature_net(f)
 
             Q_JOD -= D_all.view(-1).mean()
