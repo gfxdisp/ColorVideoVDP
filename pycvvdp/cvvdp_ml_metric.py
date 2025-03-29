@@ -134,7 +134,7 @@ class cvvdp_ml(cvvdp):
 
             prefix = 'params.feature_net.'
             if torch.cuda.is_available():
-                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file)['state_dict'].items() if key.startswith(prefix)}
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
             else:
                 state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
             self.feature_net.load_state_dict(state_dict)
