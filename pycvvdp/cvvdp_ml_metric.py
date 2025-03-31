@@ -365,7 +365,7 @@ class cvvdp_ml(cvvdp):
             if is_image:
                 D_all *= self.image_int
 
-            Q_JOD -= D_all.view(-1).mean()
+            Q_JOD -= D_all.view(-1).mean()/no_bands
 
         assert(not Q_JOD.isnan())
         return Q_JOD
