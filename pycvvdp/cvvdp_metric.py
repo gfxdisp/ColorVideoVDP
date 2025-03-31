@@ -194,8 +194,8 @@ class cvvdp(vq_metric):
         self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.baseband_weight = torch.as_tensor( parameters['baseband_weight'], device=self.device )
-        if self.baseband_weight.numel()<4:
-            self.baseband_weight = self.baseband_weight.repeat(4)
+        # if self.baseband_weight.numel()<4:
+        #     self.baseband_weight = self.baseband_weight.repeat(4)
         self.dclamp_type = parameters['dclamp_type']  # clamping mode: soft or hard
         self.d_max = torch.as_tensor( parameters['d_max'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']

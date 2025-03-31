@@ -343,17 +343,13 @@ class cvvdp_ml(cvvdp):
 
         # no_channels = features[0].shape[3]
         # no_frames = features[0].shape[0]
-        # no_bands = len(features)
-
-        # Weights for the spatial bands
-        # per_sband_w = torch.ones( (no_channels,1,no_bands), dtype=torch.float32, device=self.device)
-        # per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
+        no_bands = len(features)
 
         Q_JOD = torch.as_tensor(10., device=self.device)
 
         is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
 
-        for bb in range(len(features)):
+        for bb in range(no_bands):
 
             #F[frames,width,height,channels,stat]
             f = features[bb]
@@ -361,6 +357,13 @@ class cvvdp_ml(cvvdp):
                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
             f = f.flatten( start_dim=3 )
             D_all = self.feature_net(f)
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
 
             Q_JOD -= D_all.view(-1).mean()
 
