@@ -245,7 +245,7 @@ class cvvdp(vq_metric):
             self.display_geometry = display_geometry
 
         self.pix_per_deg = self.display_geometry.get_ppd()
-        self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
+        #self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
         self.lpyr = None
 
     '''
