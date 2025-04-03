@@ -14,6 +14,9 @@ import numpy as np
 import os
 import sys
 import json
+#import argparse
+#import time
+#import math
 import torch.utils.benchmark as torchbench
 import logging
 from datetime import date
@@ -52,11 +55,13 @@ from interp import interp1, interp3, interp1dim2
 
 import pycvvdp.utils as utils
 
+#from utils import *
+#from fvvdp_test import FovVideoVDP_Testbench
+
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
 
-# A differentiable variant of a power function
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
     #assert torch.all(x>=0), "Must be positive"
@@ -68,8 +73,6 @@ def safe_pow( x:Tensor, p ):
     else:
         return x ** p
 
-
-# A power function that can handle negative values (by preserving the sign)
 def pow_neg( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
 
@@ -82,7 +85,7 @@ def pow_neg( x:Tensor, p ):
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], config_filename=None, heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None, dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
@@ -107,17 +110,21 @@ class cvvdp(vq_metric):
         self.temp_resample = False  # When True, resample the temporal features to nominal_fps
         self.nominal_fps = 240
 
-        self.load_config(config_paths)
+        self.load_config(config_paths, config_filename)
         if calibrated_ckpt is not None:
             self.update_from_checkpoint(calibrated_ckpt)
 
         self.dump_channels = dump_channels
         self.heatmap_pyr = None
 
-    def load_config( self, config_paths ):
+    def load_config( self, config_paths, config_filename=None):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
-        self.parameters_file = utils.config_files.find( "cvvdp_parameters.json", config_paths )
+        if config_filename is not None:
+            self.parameters_file = utils.config_files.find(config_filename, config_paths)
+            print(f"Loading ColourVideoVDP parameters from '{os.path.join(config_paths[0], config_filename)}'")
+        else:
+            self.parameters_file = utils.config_files.find( "cvvdp_parameters.json", config_paths )
         logging.debug( f"Loading ColourVideoVDP parameters from '{self.parameters_file}'" )
         parameters = utils.json2dict(self.parameters_file)
 
@@ -200,6 +207,10 @@ class cvvdp(vq_metric):
         self.debug = False
         if 'padding_debug' in parameters:
             self.padding_debug = parameters['padding_debug']
+            self.padding_mode = parameters['padding_mode']
+        
+        if 'diff_sensitivity' in parameters:
+            self.diff_sensitivity = parameters['diff_sensitivity']
 
     def update_from_checkpoint(self, ckpt):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
@@ -420,7 +431,11 @@ class cvvdp(vq_metric):
                 # Used for training
                 Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, use_reentrant=False)
             else:
-                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
+                ##TODO: Run the model with different flag
+                if hasattr(self, 'diff_sensitivity') and self.diff_sensitivity:
+                    Q_per_ch_block, heatmap_block = self.process_block_of_frames_v2(R, vid_sz, temp_ch, self.lpyr, is_image)
+                else:
+                    Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
@@ -665,7 +680,103 @@ class cvvdp(vq_metric):
             self.dump_channels.dump_diff()
 
         return Q_per_ch_block, heatmap_block
+    
+    def process_block_of_frames_v2(self, R, vid_sz, temp_ch, lpyr, is_image):
+        # R[channels,frames,width,height]
+        #height, width, N_frames = vid_sz
+        all_ch = 2+temp_ch
 
+        #torch.autograd.set_detect_anomaly(True)
+
+        # if self.contrast=="log":
+        #     R = lms2006_to_dkld65( torch.log10(R.clip(min=1e-5)) )
+
+        # Perform Laplacian pyramid decomposition
+        B_bands, L_bkg_pyr = lpyr.decompose(R[0,...])
+
+        if self.debug: assert len(B_bands) == lpyr.get_band_count()
+
+        if self.dump_channels:
+            self.dump_channels.dump_lpyr(lpyr, B_bands)
+
+
+        # if self.do_heatmap:
+        #     Dmap_pyr_bands, Dmap_pyr_gbands = self.heatmap_pyr.decompose( torch.zeros([1,1,height,width], dtype=torch.float, device=self.device))
+
+        # L_bkg_bb = [None for i in range(lpyr.get_band_count()-1)]
+
+        rho_band = lpyr.get_freqs()
+        rho_band[lpyr.get_band_count()-1] = 0.1 # Baseband
+
+        Q_per_ch_block = None
+        block_N_frames = R.shape[-3] 
+
+        for bb in range(lpyr.get_band_count()):  # For each spatial frequency band
+
+            is_baseband = (bb==(lpyr.get_band_count()-1))
+
+            B_bb = lpyr.get_band(B_bands, bb) 
+            T_f = B_bb[0::2,...] # Test
+            R_f = B_bb[1::2,...] # Reference
+
+            logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
+            # Compute CSF
+            rho = rho_band[bb] # Spatial frequency in cpd
+            ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
+            S = torch.empty((2,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+            for ss in range(2):
+                for cc in range(all_ch):
+                    tch = 0 if cc<3 else 1  # Sustained or transient
+                    cch = cc if cc<3 else 0 # Y, rg, yv
+                    # The sensitivity is always extracted for the reference frame
+                    S[ss,cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,ss,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+
+            if is_baseband:
+                # D = (torch.abs(T_f-R_f) * S)
+                D = (torch.abs(T_f*S[0,...]-R_f*S[1,...]))
+            else:
+                # dimensions: [channel,frame,height,width]
+                D = self.apply_masking_model_v2(T_f, R_f, S)
+
+            if Q_per_ch_block is None:
+                Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
+
+            #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
+
+            Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
+
+            # if bb>6:
+            #     Q_per_ch_block[:,:,bb] = 0
+
+            if self.do_heatmap:
+
+                # We need to reduce the differences across the channels using the right weights
+                # Weights for the channels: sustained, RG, YV, [transient]
+                t_int = self.image_int if is_image else 1.0
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
+                if is_baseband:
+                    per_ch_w *= self.baseband_weight[0:all_ch].view(-1,1,1,1)
+
+                D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
+                self.heatmap_pyr.set_lband(bb, D_chr)
+
+            if self.dump_channels:
+                width = R.shape[-1]
+                height = R.shape[-2]
+                t_int = self.image_int if is_image else 1.0
+                per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
+                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w)
+
+        if self.do_heatmap:
+            heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
+        else:
+            heatmap_block = None
+
+        if self.dump_channels:
+            self.dump_channels.dump_diff()
+
+        return Q_per_ch_block, heatmap_block
+    
     def mask_pool(self, C):
         # Cross-channel masking
         num_ch = C.shape[0]
@@ -735,7 +846,7 @@ class cvvdp(vq_metric):
         # R - reference contrast tensor
         # S - sensitivity
 
-        if self.masking_model in [ "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
+        if self.masking_model in ["none" , "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
             num_ch = T.shape[0]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
@@ -857,6 +968,133 @@ class cvvdp(vq_metric):
 
         return D
 
+    def apply_masking_model_v2(self, T, R, S):
+        # T - test contrast tensor T[channel,frame,width,height]
+        # R - reference contrast tensor
+        # S - sensitivity
+
+        if self.masking_model in [ "none", "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
+            num_ch = T.shape[0]
+            if self.masking_model.startswith( "add" ):
+                zero_tens = torch.as_tensor(0., device=T.device)
+                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-1/S[0,...])*ch_gain + 1, zero_tens )
+                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-1/S[1,...])*ch_gain + 1, zero_tens )
+            else:
+                if self.masking_model.endswith( "mutual-old" ):
+                    T_p = T * S[0,...]
+                    R_p = R * S[1,...]
+                else:
+                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                    T_p = T * S[0,...] * ch_gain
+                    R_p = R * S[1,...] * ch_gain
+
+            if self.masking_model.endswith( "none" ):
+                D = self.clamp_diffs(torch.abs(T_p-R_p))
+            elif self.masking_model.endswith( "transducer" ):
+                D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
+            elif self.masking_model.endswith( "mutual" ):
+
+                M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
+                p = self.mask_p
+                q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+
+                M = self.mask_pool(safe_pow(torch.abs(M_mm),q))
+
+                #D_band = safe_pow(torch.abs(T_p - R_p),p)
+                # k_c = self.k_c
+                # D_clamped = k_c*D_band / (k_c + D_band)
+                #D = D_clamped / (1 + M)
+                D_u = safe_pow(torch.abs(T_p - R_p),p) / (1 + M)
+                D = self.clamp_diffs( D_u )
+
+            elif self.masking_model.endswith( "mutual-old" ):
+
+                M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
+                p = self.mask_p
+                q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+
+                M = self.mask_pool(torch.abs(M_mm))
+
+                D_band = safe_pow(torch.abs(T_p - R_p),p)
+                D_m = D_band / (1 + safe_pow(M,q))
+
+                #D = self.clamp_diffs( D_m )
+                k_c = self.k_c                
+                D = k_c*D_m / (k_c + D_m)
+
+            elif self.masking_model.endswith( "transducer-texture" ):
+
+                if T_p.shape[-2] <= self.tex_pad_size or T_p.shape[-1] <= self.tex_pad_size:
+                    D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))
+                else:
+                    T_t = self.cm_transd(T_p)
+                    R_t = self.cm_transd(R_p)
+
+                    mu_T = self.tex_blur.forward(T_t)
+                    mu_R = self.tex_blur.forward(R_t)
+
+                    mu_T_sq = mu_T * mu_T
+                    mu_R_sq = mu_R * mu_R
+                    #mu_TR = mu_T * mu_R
+
+                    sigma_T_sq = (self.tex_blur.forward(T_t * T_t) - mu_T_sq).clamp(min=0.)
+                    sigma_R_sq = (self.tex_blur.forward(R_t * R_t) - mu_R_sq).clamp(min=0.)
+                    #sigma_TR = compensation * (gaussian_filter(X * Y, win) - mu1_mu2)
+
+                    #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
+                    #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
+
+                    D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
+
+            else: # similarity
+                T_p_m = self.phase_uncertainty(self.mask_pool(torch.abs(T_p)))
+                R_p_m = self.phase_uncertainty(self.mask_pool(torch.abs(R_p)))
+    
+                D_max = 10**self.d_max
+                epsilon = D_max-1
+
+                D = D_max - D_max*(2*torch.abs(T_p)*torch.abs(R_p)+epsilon)/(T_p_m*T_p_m + R_p_m*R_p_m + epsilon)
+
+            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
+
+        elif self.masking_model in ["smooth_clamp_cont", "min_mutual_masking_perc_norm2", "fvvdp_ch_gain"]:
+
+            if self.masking_model == "fvvdp_ch_gain":
+                num_ch = T.shape[0]
+                ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                #print( f"max T[0] = {T[0,...].max()}; \tT[1] = {T[1,...].max()/0.610649}" )
+                #print( f"mean S[0] = {S[0,...].mean()}; \tS[1] = {S[1,...].mean()}; \tS[2] = {S[2,...].mean()}" )
+                T = T*S*ch_gain
+                R = R*S*ch_gain
+            else:
+                T = T*S
+                R = R*S
+
+            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
+
+            # Cross-channel masking
+            if self.do_xchannel_masking:
+                num_ch = M_pu.shape[0]
+                M = torch.empty_like(M_pu)
+                xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+                for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
+                    M[cc,...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
+            else:
+                M = M_pu
+
+            D_u = self.mask_func_perc_norm( torch.abs(T-R), M )
+
+            if self.masking_model == "soft_clamp_cont":
+                D = D_u
+            else:
+                D = self.clamp_diffs( D_u )
+        else:
+            raise RuntimeError( f"Unknown masking model {self.masking_model}" )
+
+        return D
+
+
     def clamp_diffs(self,D):
         if self.dclamp_type == "hard":
             Dc = torch.clamp(D, max=(10**self.d_max))
@@ -878,12 +1116,11 @@ class cvvdp(vq_metric):
     def phase_uncertainty(self, M):
         # Blur only when the image is larger then the required pad size
         if self.pu_dilate != 0 and M.shape[-2]>self.pu_padsize and M.shape[-1]>self.pu_padsize:
-            # M_pu_edit = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
-            
+            #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
             if 'padding_debug' in self.__dict__:
                 if self.padding_debug:
-                    padding_mode = 'replicate'
-                    Gf = utils.ImGaussFilt(self.pu_dilate, M.device,mode=padding_mode)
+                    padding_mode = self.padding_mode
+                    Gf = utils.ImGaussFilt(self.pu_dilate, M.device, mode=padding_mode)
                     M_pu = Gf.run_4d(M) * (10.0 ** self.mask_c)
             else:
                 M_pu = self.pu_blur.forward(M) * (10**self.mask_c)

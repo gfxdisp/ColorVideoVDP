@@ -27,6 +27,9 @@ from torchvision.transforms import GaussianBlur
 config_path_debug = ['./pycvvdp/vvdp_data_debug']
 config_path_original= ['./pycvvdp/vvdp_data']   
 
+## if the padding type is 'torch_gaussian_blur', the optimization with 'adam' will fail in 'cuda' environment
+## if the padding type is 'custom_gaussian_blur', the optimization with 'adam' will succeed in 'cuda' environment
+
 padding_type = 'custom_gaussian_blur' # 'torch_gaussian_blur' or 'custom_gaussian_blur'
 if padding_type == 'torch_gaussian_blur':
     vvdp_config_path = config_path_original
@@ -149,7 +152,6 @@ for n in range(num_seed):
             opt_img = pred.detach().permute((1, 2, 0)).cpu().numpy()
             ax[n, 0].imshow(opt_img)
             ax[n, 0].set_title(f"Optimized {n}")
-
 
             if n==0:
                 loss_1 = loss.item()

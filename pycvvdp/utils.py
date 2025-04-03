@@ -127,7 +127,7 @@ class ImGaussFilt():
             self.half_filter_size,
             self.half_filter_size,)
 
-        img_4d = Func.pad(img_4d, pad, mode='reflect')
+        img_4d = Func.pad(img_4d, pad, mode=self.mode)
         return Func.conv2d(img_4d, self.K)[0,0]
 
     def run_4d(self, img):
