@@ -24,7 +24,7 @@ class video_source:
 
     # Return the frame rate of the video
     @abstractmethod
-    def get_frames_per_second(self) -> int:
+    def get_frames_per_second(self) -> float:
         pass
     
     # Get a test video frame in the selected colorspace. See display_model.py->linear_2_target_colourspace
@@ -70,6 +70,10 @@ class video_source:
 
             if not self.warning_shown and f_mean <= 1:
                 logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
+
+    def get_frame_count(self):
+        self.get_video_size()[2]
+
 
 
 
