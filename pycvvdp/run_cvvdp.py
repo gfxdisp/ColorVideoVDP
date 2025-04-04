@@ -236,7 +236,7 @@ def run_on_args(args):
                                 gpu_mem=args.gpu_mem,
                                 dump_channels=dump_channels )
             metrics.append( fv )
-        if mm == 'cvvdp_ml':
+        elif mm == 'cvvdp_ml':
             fv = pycvvdp.cvvdp_ml( display_photometry=display_photometry,
                                 display_geometry=display_geometry,
                                 heatmap=args.heatmap, 
