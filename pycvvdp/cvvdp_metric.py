@@ -210,7 +210,10 @@ class cvvdp(vq_metric):
             self.padding_mode = parameters['padding_mode']
         
         if 'diff_sensitivity' in parameters:
-            self.diff_sensitivity = parameters['diff_sensitivity']
+            self.diff_sensitivity = True if parameters['diff_sensitivity'] == "on" else False
+
+        if 'haploscopic' in parameters:
+            self.haploscopic = True if parameters['haploscopic'] == "on" else False
 
     def update_from_checkpoint(self, ckpt):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
@@ -682,6 +685,11 @@ class cvvdp(vq_metric):
         return Q_per_ch_block, heatmap_block
     
     def process_block_of_frames_v2(self, R, vid_sz, temp_ch, lpyr, is_image):
+        if self.diff_sensitivity:
+            dim_S = 2
+        else:
+            dim_S = 1
+        
         # R[channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
@@ -723,17 +731,20 @@ class cvvdp(vq_metric):
             # Compute CSF
             rho = rho_band[bb] # Spatial frequency in cpd
             ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
-            S = torch.empty((2,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-            for ss in range(2):
+            S = torch.empty((dim_S,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+            for ss in range(dim_S):
                 for cc in range(all_ch):
                     tch = 0 if cc<3 else 1  # Sustained or transient
                     cch = cc if cc<3 else 0 # Y, rg, yv
                     # The sensitivity is always extracted for the reference frame
                     S[ss,cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,ss,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
+                    if hasattr(self, 'haploscopic') and self.haploscopic:
+                        S[ss,cc,:,:,:] *= torch.tensor(1/math.sqrt(2.0), device = self.device, dtype=S.dtype)
+
             if is_baseband:
                 # D = (torch.abs(T_f-R_f) * S)
-                D = (torch.abs(T_f*S[0,...]-R_f*S[1,...]))
+                D = (torch.abs(T_f*S[0,...]-R_f*S[-1,...]))
             else:
                 # dimensions: [channel,frame,height,width]
                 D = self.apply_masking_model_v2(T_f, R_f, S)
@@ -973,21 +984,24 @@ class cvvdp(vq_metric):
         # R - reference contrast tensor
         # S - sensitivity
 
-        if self.masking_model in [ "none", "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
+        assert S.shape[0] == 1 or S.shape[0] == 2, "S must have a first dimension of 1 or 2"
+        # print(f"apply_masking_model_v2: S.shape = {S.shape}")
+
+        if self.masking_model in [ "none", "add-none", "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
             num_ch = T.shape[0]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
                 ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
                 T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-1/S[0,...])*ch_gain + 1, zero_tens )
-                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-1/S[1,...])*ch_gain + 1, zero_tens )
+                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-1/S[-1,...])*ch_gain + 1, zero_tens )
             else:
                 if self.masking_model.endswith( "mutual-old" ):
                     T_p = T * S[0,...]
-                    R_p = R * S[1,...]
+                    R_p = R * S[-1,...]
                 else:
                     ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
                     T_p = T * S[0,...] * ch_gain
-                    R_p = R * S[1,...] * ch_gain
+                    R_p = R * S[-1,...] * ch_gain
 
             if self.masking_model.endswith( "none" ):
                 D = self.clamp_diffs(torch.abs(T_p-R_p))
