@@ -68,8 +68,8 @@ class video_source:
             f_min = torch.min(frame[:,0,:,:,:])
             logging.debug( f"Content mean={f_mean}, max={f_max}, min={f_min}" )
 
-            if not self.warning_shown and f_mean <= 1:
-                logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
+            # if not self.warning_shown and f_mean <= 1:
+            #     logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
 
 
 

@@ -233,6 +233,17 @@
     "max_luminance": 300,   
     "contrast": 3000,
     "E_ambient": 0,
-    "source": "https://www.eizo.com/products/coloredge/cg3146/" }
+    "source": "https://www.eizo.com/products/coloredge/cg3146/" 
+},
+  
+  "Cambridge": {
+    "name": "", 
+    "resolution": [1920, 1080],
+    "viewing_distance_meters":  0.7472,  
+    "diagonal_size_inches": 12,
+    "max_luminance": 1000,   
+    "contrast": 1000,
+    "E_ambient": 0,
+    "source": "none" }
  
 }
