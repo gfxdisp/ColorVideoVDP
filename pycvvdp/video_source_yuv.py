@@ -315,6 +315,7 @@ class video_source_yuv_file(video_source_dm):
     def set_offset( self, offset:int ):
         self.offset = offset
 
+    # Depreciated
     def get_total_frames(self):
         return self.total_frames
 

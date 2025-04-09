@@ -428,6 +428,10 @@ class video_source_video_file(video_source_dm):
         # self.last_test_frame = None
         # self.last_reference_frame = None
 
+    def get_frame_count(self):
+        self.init_readers()
+        return self.frames
+
     def init_readers(self):
         if self.reference_vidr is None:
             self.reference_vidr = self.reader(self.reference_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
