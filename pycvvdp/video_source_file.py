@@ -322,7 +322,7 @@ class video_source_video_file(video_source_dm):
             logging.error( "Neither test nor reference video contains meta-data with the number of frames. You need to specify it with '--nframes' argument" )
             raise RuntimeError("Unknown number of frames")
 
-        if ignore_framerate_mismatch: # We cannot use the logic below if we have fps mismatch. video_source_temp_resample_file will handle that.
+        if not ignore_framerate_mismatch: # We cannot use the logic below if we have fps mismatch. video_source_temp_resample_file will handle that.
             if self.test_vidr.frames == -1:
                 self.frames = self.reference_vidr.frames
             elif self.reference_vidr.frames == -1:
@@ -330,7 +330,7 @@ class video_source_video_file(video_source_dm):
             else:
                 self.frames = min(self.test_vidr.frames,self.reference_vidr.frames)
                 if self.test_vidr.frames != self.reference_vidr.frames:
-                    logging.warning( f"Test and reference videos contain different number of frames ({self.test_vidr.frames} and {self.test_vidr.frames}). Comparing {self.frames} frames.")
+                    logging.warning( f"Test and reference videos contain different number of frames ({self.test_vidr.frames} and {self.reference_vidr.frames}). Comparing {self.frames} frames.")
 
         for vr in [self.test_vidr, self.reference_vidr]:
             if vr == self.test_vidr:
@@ -341,8 +341,9 @@ class video_source_video_file(video_source_dm):
                 rs_str = ""
             else:
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-            self.fps = vr.avg_fps if fps is None else fps
-            logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
+            if not ignore_framerate_mismatch:                 
+                self.fps = vr.avg_fps if fps is None else fps
+                logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
 
         # if color_space_name=='auto':
         #     if self.test_vidr.color_space=='bt2020nc':
@@ -461,6 +462,8 @@ class video_source_temp_resample_file(video_source_video_file):
         self.frames = frames_resampled if frames==-1 else frames
 
         logger.info( f"Test fps: {test_fps}; reference fps: {ref_fps}. Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
+        if test_frames_resampled != ref_frames_resampled:
+            logger.warning( f"Test and reference videos contain different number of frames after resampling ({test_frames_resampled} and {ref_frames_resampled}). Comparing {self.frames} frames." )
 
         self.cache_ind = [-1, -1]
         self.cache_frame = [None, None]

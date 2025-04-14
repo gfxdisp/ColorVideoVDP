@@ -250,7 +250,7 @@ def run_on_args(args):
                 logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
             metrics.append( ssim_metric(device=device) )
         elif mm.startswith( 'dm-preview' ):
-            metrics.append( dm_preview_metric(output_exr=("exr" in mm), side_by_side=("sbs" in mm), device=device) )
+            metrics.append( dm_preview_metric(output_exr=("exr" in mm), side_by_side=("sbs" in mm), device=device, verbose=args.verbose) )
         else:
             raise RuntimeError( f"Unknown metric {mm}")
 
