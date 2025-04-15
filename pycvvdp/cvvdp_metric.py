@@ -41,6 +41,9 @@ from pycvvdp.dump_channels import DumpChannels
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
+# For debugging only
+# from gfxdisp.pfs.pfs_torch import pfs_torch
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from third_party.cpuinfo import cpuinfo
