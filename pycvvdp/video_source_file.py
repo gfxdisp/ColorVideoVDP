@@ -533,6 +533,7 @@ class video_source_image_frames(video_source_dm):
         if not fps:
             fps = 0
         self.fps = fps
+        self.video_size = None
         (self.test_fname, test_has_frame_no) = self.convert_c2python_format_str(test_fname)
         (self.reference_fname, ref_has_frame_no) = self.convert_c2python_format_str(reference_fname)
 
@@ -550,7 +551,7 @@ class video_source_image_frames(video_source_dm):
 
         if fps==0:
             self.N = 1
-            ff_name = self.test_fname
+            self.ff_name = self.test_fname # Name of the first frame
         else:
             # Check how many frames we have
             if not frame_range:
@@ -572,11 +573,8 @@ class video_source_image_frames(video_source_dm):
             logger.info( f"{frame_count} frames found" )
             self.N = frame_count
             self.frame_range = frame_range[0:frame_count]
-            ff_name = self.test_fname.format(self.frame_range[0])
-
-        # Need to load first image to get the dimensions
-        self.img_cache = load_image_as_array(ff_name)
-        self.video_size = (self.img_cache.shape[0], self.img_cache.shape[1], self.N)
+            self.ff_name = self.test_fname.format(self.frame_range[0])
+        
 
     def convert_c2python_format_str( self, str ):
         if not hasattr( self, 'format_re' ):
@@ -599,6 +597,11 @@ class video_source_image_frames(video_source_dm):
     # the number of frames in the video clip. [height width 1] is
     # returned for an image.     
     def get_video_size(self):
+        if self.video_size is None:
+            # Need to load first image to get the dimensions
+            self.img_cache = load_image_as_array(ff_name)
+            self.video_size = (self.img_cache.shape[0], self.img_cache.shape[1], self.N)
+
         return self.video_size
 
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
