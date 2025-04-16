@@ -92,7 +92,7 @@ class cvvdp_ml(cvvdp):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
 
         # Use GPU if available
         if device is None:
@@ -104,6 +104,8 @@ class cvvdp_ml(cvvdp):
             self.device = device
 
         self.random_init = random_init
+
+        self.disabled_features = disabled_features
 
         dropout = 0.2
         hidden_dims = 48
@@ -337,9 +339,10 @@ class cvvdp_ml(cvvdp):
 
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, features ):
+    def do_pooling_and_jods(self, features):
 
         # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
 
         # no_channels = features[0].shape[3]
         # no_frames = features[0].shape[0]
@@ -355,6 +358,8 @@ class cvvdp_ml(cvvdp):
             f = features[bb]
             if is_image:
                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
             f = f.flatten( start_dim=3 )
             D_all = self.feature_net(f)
 
