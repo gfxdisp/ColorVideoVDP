@@ -108,10 +108,10 @@ class cvvdp_ml(cvvdp):
         self.disabled_features = disabled_features
 
         dropout = 0.2
-        hidden_dims = 48
-        num_layers = 6
+        hidden_dims = 24
+        num_layers = 3
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
-        stats_no = 6 # 6 extracted stats
+        stats_no = 2 # 6 extracted stats - for now do 2
         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
 
         super().__init__(display_name=display_name, display_photometry=display_photometry,
@@ -356,10 +356,15 @@ class cvvdp_ml(cvvdp):
 
             #F[frames,width,height,channels,stat]
             f = features[bb]
+            # Remove unecessary features (for now) - keep only mean D and std D
+            f = f[:, :, :, :, 4:]
+            f[:, :, :, :, 1] = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
+
             if is_image:
                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
             if self.disabled_features is not None:
                 f[:, :, :, :, self.disabled_features] = 0  
+                # f[:, :, :, :, 5] = torch.sqrt(torch.abs(f[:, :, :, :, 5]))  
             f = f.flatten( start_dim=3 )
             D_all = self.feature_net(f)
 
