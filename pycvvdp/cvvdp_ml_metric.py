@@ -469,3 +469,68 @@ class cvvdp_ml(cvvdp):
         return features_block, heatmap_block
 
 
+# Adds an attention module to the cvvdp_ml
+class cvvdp_ml_att(cvvdp_ml):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        dropout = 0.2
+        hidden_dims = 24
+        num_layers = 3
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 4 # T, T_var, R, R_var
+        self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+
+            f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
+            f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
+
+            Att = self.att_net(f_TR)
+            D_all = self.feature_net(f_D) * Att
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= D_all.view(-1).mean()/no_bands
+
+        assert(not Q_JOD.isnan())
+        return Q_JOD
