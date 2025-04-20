@@ -105,7 +105,7 @@ class cvvdp_ml(cvvdp):
 
         self.random_init = random_init
 
-        self.disabled_features = disabled_features
+        self.disabled_features = disabled_features        
 
         dropout = 0.2
         hidden_dims = 24
@@ -125,6 +125,10 @@ class cvvdp_ml(cvvdp):
         super().train(do_training)
         self.feature_net.train(do_training)
 
+    # So that we can override in the super classes
+    def get_nets_to_load(self):
+        return [ 'feature_net' ]
+
     def load_config( self, config_paths ):
         super().load_config(config_paths)
 
@@ -134,13 +138,14 @@ class cvvdp_ml(cvvdp):
 
             logging.info( f"Loading cvvdp checkpoint file from {ckpt_file}" )
 
-            prefix = 'feature_net.'
-            if torch.cuda.is_available():
-                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
-            else:
-                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
-            self.feature_net.load_state_dict(state_dict)
-            self.feature_net = self.feature_net.to(device=self.device) # Unsure why it is needed
+            for net in self.get_nets_to_load():
+                prefix = net + '.'
+                if torch.cuda.is_available():
+                    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
+                else:
+                    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
+                getattr(self, net).load_state_dict(state_dict)
+                #.to(device=self.device)
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays. Video source is recommended when processing long videos as it allows frame-by-frame loading.
@@ -477,8 +482,8 @@ class cvvdp_ml_att(cvvdp_ml):
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
 
         dropout = 0.2
-        hidden_dims = 24
-        num_layers = 3
+        hidden_dims = 48
+        num_layers = 4
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 4 # T, T_var, R, R_var
         self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
@@ -488,7 +493,8 @@ class cvvdp_ml_att(cvvdp_ml):
                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
                          dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
 
-
+    def get_nets_to_load(self):
+        return [ 'feature_net', 'att_net' ]
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features):
