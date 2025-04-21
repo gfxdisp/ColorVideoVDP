@@ -356,8 +356,20 @@ class cvvdp_ml(cvvdp):
 
             #F[frames,width,height,channels,stat]
             f = features[bb]
-            # Remove unecessary features (for now) - keep only mean D and std D
+
+            # Get similarity of means 
+            epsilon = torch.tensor(1e-6)
+            mean_T = f[:, :, :, :, 0]
+            mean_R = f[:, :, :, :, 2]
+            std_T = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
+            std_R = torch.sqrt(torch.abs(f[:, :, :, :, 3]))
+
+            mean_distance = torch.sqrt((mean_T - mean_R)**2 + (std_T - std_R)**2)
+            #mean_distance = torch.sqrt((mean_T - mean_R)**2 / (mean_T**2 + mean_R**2 + epsilon))
+            #std_distance = torch.sqrt((std_T - std_R)**2 / (std_T**2 + std_R**2 + epsilon))
+
             f = f[:, :, :, :, 4:]
+            f[:, :, :, :, 0] = f[:, :, :, :, 0] * mean_distance
             f[:, :, :, :, 1] = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
 
             if is_image:
