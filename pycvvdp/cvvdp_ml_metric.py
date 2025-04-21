@@ -684,12 +684,12 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
         self.set_device( device )
 
-        dropout = 0.2
+        dropout = 0.1
         input_dims_pooling = 8 # 2 stats * 4 channels
         hidden_dims = 16
         num_layers = 4
         proj_size = 1
-        self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)
+        self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)                
 
         super().__init__(display_name=display_name, display_photometry=display_photometry,
                          display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
@@ -731,8 +731,9 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
             # f_D[frames,width,height,8]
             D = f_D.view( f_D.shape[0], -1, 8 )
-            D_temp, _ = self.pooling_net(D)  # Pool over time, individually for each spatial location
-            D_all = D_temp[-1,...].view(-1).mean()  # Spatial pooling
+            D_temp, _ = self.pooling_net(D)  # LSTM to convert features into quality scores
+            D_temp = torch.nn.functional.relu(D_temp)  # We want only positive predictions
+            D_all = D_temp.view(-1).mean()  # Spatial and temporal pooling
 
             is_base_band = (bb==no_bands-1)
             if is_base_band:
