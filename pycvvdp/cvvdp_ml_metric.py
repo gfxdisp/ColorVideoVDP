@@ -527,7 +527,7 @@ class cvvdp_ml_att(cvvdp_ml):
             f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
 
             Att = self.att_net(f_TR)
-            D_all = self.feature_net(f_D) * Att
+            D_all = self.feature_net(f_D) * Att /no_bands
 
             is_base_band = (bb==no_bands-1)
             if is_base_band:
@@ -536,7 +536,36 @@ class cvvdp_ml_att(cvvdp_ml):
             if is_image:
                 D_all *= self.image_int
 
-            Q_JOD -= D_all.view(-1).mean()/no_bands
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
 
         assert(not Q_JOD.isnan())
         return Q_JOD
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(-1).mean()
+
+# Adds a recurrent network to pool visual differences over time
+class cvvdp_ml_recur(cvvdp_ml_att):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        dropout = 0.2
+        input_dims_pooling = 1
+        hidden_dims = 4
+        num_layers = 2
+        proj_size = 1
+        self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+
+    def spatiotemporal_pooling(self, D_all):
+        # D_all[frames,width,height]
+        D = D_all.view( D_all.shape[0], -1, 1 )
+        D_temp, _ = self.pooling_net(D)  # Pool over time, individually for each spatial location
+        return D_temp[-1,...].view(-1).mean()  # Spatial pooling
