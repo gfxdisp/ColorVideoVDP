@@ -86,13 +86,25 @@ class cvvdp_feature_pooling(torch.nn.Module):
 
 
 """
-ColorVideoVDP metric with ML head.
+Base class for all ColorVideoVDP with ML heads
 """
-class cvvdp_ml(cvvdp):
+class cvvdp_ml_base(cvvdp):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.random_init = random_init
+        self.disabled_features = disabled_features        
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem)
+
+    def set_device( self, device ):
+        if hasattr( self, "device" ):
+            return
 
         # Use GPU if available
         if device is None:
@@ -103,27 +115,18 @@ class cvvdp_ml(cvvdp):
         else:
             self.device = device
 
-        self.random_init = random_init
-
-        self.disabled_features = disabled_features
-
-        dropout = 0.2
-        hidden_dims = 24
-        num_layers = 3
-        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
-        stats_no = 2 # 6 extracted stats - for now do 2
-        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(device)
-
-        super().__init__(display_name=display_name, display_photometry=display_photometry,
-                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
-                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
-                         dump_channels=dump_channels, gpu_mem=gpu_mem)
-
 
     # Switch to training mode (e.g., to optimize memory allocation)
     def train(self, do_training=True):
         super().train(do_training)
-        self.feature_net.train(do_training)
+        for net in self.get_nets_to_load():
+            getattr(self, net).train(do_training)
+
+    # So that we can override in the super classes
+    @abstractmethod
+    def get_nets_to_load(self):
+        """
+        """
 
     def load_config( self, config_paths ):
         super().load_config(config_paths)
@@ -134,13 +137,14 @@ class cvvdp_ml(cvvdp):
 
             logging.info( f"Loading cvvdp checkpoint file from {ckpt_file}" )
 
-            prefix = 'feature_net.'
-            if torch.cuda.is_available():
-                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
-            else:
-                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
-            self.feature_net.load_state_dict(state_dict)
-            self.feature_net = self.feature_net.to(device=self.device) # Unsure why it is needed
+            for net in self.get_nets_to_load():
+                prefix = net + '.'
+                if torch.cuda.is_available():
+                    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
+                else:
+                    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
+                getattr(self, net).load_state_dict(state_dict)
+                #.to(device=self.device)
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays. Video source is recommended when processing long videos as it allows frame-by-frame loading.
@@ -339,58 +343,10 @@ class cvvdp_ml(cvvdp):
 
 
     # Perform pooling with per-band weights and map to JODs
+    @abstractmethod
     def do_pooling_and_jods(self, features):
-
-        # features[band][frames,width,height,channels,stat]
-        # disables_features is an array of indices of the stat to be disabled
-
-        # no_channels = features[0].shape[3]
-        # no_frames = features[0].shape[0]
-        no_bands = len(features)
-
-        Q_JOD = torch.as_tensor(10., device=self.device)
-
-        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
-
-        for bb in range(no_bands):
-
-            #F[frames,width,height,channels,stat]
-            f = features[bb]
-
-            # Get similarity of means 
-            epsilon = torch.tensor(1e-6)
-            mean_T = f[:, :, :, :, 0]
-            mean_R = f[:, :, :, :, 2]
-            std_T = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
-            std_R = torch.sqrt(torch.abs(f[:, :, :, :, 3]))
-
-            mean_distance = torch.sqrt((mean_T - mean_R)**2 + (std_T - std_R)**2)
-            #mean_distance = torch.sqrt((mean_T - mean_R)**2 / (mean_T**2 + mean_R**2 + epsilon))
-            #std_distance = torch.sqrt((std_T - std_R)**2 / (std_T**2 + std_R**2 + epsilon))
-
-            f = f[:, :, :, :, 4:]
-            f[:, :, :, :, 0] = f[:, :, :, :, 0] * mean_distance
-            f[:, :, :, :, 1] = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
-
-            if is_image:
-                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
-            if self.disabled_features is not None:
-                f[:, :, :, :, self.disabled_features] = 0  
-                # f[:, :, :, :, 5] = torch.sqrt(torch.abs(f[:, :, :, :, 5]))  
-            f = f.flatten( start_dim=3 )
-            D_all = self.feature_net(f)
-
-            is_base_band = (bb==no_bands-1)
-            if is_base_band:
-                D_all *= self.baseband_weight
-
-            if is_image:
-                D_all *= self.image_int
-
-            Q_JOD -= D_all.view(-1).mean()/no_bands
-
-        assert(not Q_JOD.isnan())
-        return Q_JOD
+        """
+        """
 
     def process_block_of_frames(self, R, temp_ch, lpyr, is_image):
         # R[channels,frames,width,height]
@@ -481,3 +437,246 @@ class cvvdp_ml(cvvdp):
         return features_block, heatmap_block
 
 
+"""
+ColorVideoVDP metric with ML head.
+"""
+class cvvdp_ml(cvvdp_ml_base):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        hidden_dims = 24
+        num_layers = 3
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 2 # 6 extracted stats - for now do 2
+        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem,
+                         random_init=random_init, disabled_features=disabled_features)
+
+
+    # So that we can override in the super classes
+    def get_nets_to_load(self):
+        return [ 'feature_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            # Remove unecessary features (for now) - keep only mean D and std D
+            f = f[:, :, :, :, 4:]
+            f[:, :, :, :, 1] = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+                # f[:, :, :, :, 5] = torch.sqrt(torch.abs(f[:, :, :, :, 5]))  
+            f = f.flatten( start_dim=3 )
+            D_all = self.feature_net(f)
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= D_all.view(-1).mean()/no_bands
+
+        assert(not Q_JOD.isnan())
+        return Q_JOD
+
+# Adds an attention module to the cvvdp_ml
+class cvvdp_ml_att(cvvdp_ml):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        hidden_dims = 48
+        num_layers = 4
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 4 # T, T_var, R, R_var
+        self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+    def get_nets_to_load(self):
+        return [ 'feature_net', 'att_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+
+            f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
+            f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
+
+            Att = self.att_net(f_TR)
+            D_all = self.feature_net(f_D) * Att /no_bands
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
+
+        assert(not Q_JOD.isnan())
+        return Q_JOD
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(-1).mean()
+
+# Adds a recurrent network to pool visual differences over time
+class cvvdp_ml_recur(cvvdp_ml_att):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        dropout = 0.2
+        input_dims_pooling = 1
+        hidden_dims = 4
+        num_layers = 2
+        proj_size = 1
+        self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+
+    def get_nets_to_load(self):
+        return [ 'feature_net', 'att_net', 'pooling_net' ]
+
+    def spatiotemporal_pooling(self, D_all):
+        # D_all[frames,width,height]
+        D = D_all.view( D_all.shape[0], -1, 1 )
+        D_temp, _ = self.pooling_net(D)  # Pool over time, individually for each spatial location
+        return D_temp[-1,...].view(-1).mean()  # Spatial pooling
+
+
+# Adds a recurrent network to pool visual differences over time
+class cvvdp_ml_recur_lstm(cvvdp_ml_base):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        input_dims_pooling = 8 # 2 stats * 4 channels
+        hidden_dims = 16
+        num_layers = 4
+        proj_size = 1
+        self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+
+    def get_nets_to_load(self):
+        return [ 'pooling_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+
+            f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
+
+            # f_D[frames,width,height,8]
+            D = f_D.view( f_D.shape[0], -1, 8 )
+            D_temp, _ = self.pooling_net(D)  # Pool over time, individually for each spatial location
+            D_all = D_temp[-1,...].view(-1).mean()  # Spatial pooling
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= D_all
+
+            assert(not Q_JOD.isnan())
+            return Q_JOD
