@@ -461,10 +461,6 @@ class cvvdp_ml(cvvdp_ml_base):
                          dump_channels=dump_channels, gpu_mem=gpu_mem,
                          random_init=random_init, disabled_features=disabled_features)
 
-
-    def eval(self):
-        self.feature_net.eval()
-    
     # So that we can override in the super classes
     def get_nets_to_load(self):
         return [ 'feature_net' ]
@@ -588,8 +584,8 @@ class cvvdp_ml_dis_TR(cvvdp_ml_base):
         self.set_device( device )
 
         dropout = 0.2
-        hidden_dims = 48
-        num_layers = 4
+        hidden_dims = 24
+        num_layers = 3
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 4 # mean D, std D, distance mean, distance std
         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
@@ -599,9 +595,6 @@ class cvvdp_ml_dis_TR(cvvdp_ml_base):
                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
                          dump_channels=dump_channels, gpu_mem=gpu_mem,
                          random_init=random_init, disabled_features=disabled_features)
-    
-    def eval(self):
-        self.feature_net.eval()
     
     # So that we can override in the super classes
     def get_nets_to_load(self):
@@ -676,10 +669,6 @@ class cvvdp_ml_att(cvvdp_ml):
 
     def get_nets_to_load(self):
         return [ 'feature_net', 'att_net' ]
-
-    def eval(self):
-        self.att_net.eval()
-        super().eval()
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features):
@@ -783,9 +772,6 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
     def get_nets_to_load(self):
         return [ 'pooling_net' ]
-    
-    def eval(self):
-        self.pooling_net.eval()
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features):
