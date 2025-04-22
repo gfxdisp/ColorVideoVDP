@@ -771,9 +771,16 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
         dropout = 0.1
         input_dims_pooling = 8 # 2 stats * 4 channels
         hidden_dims = 16
-        num_layers = 4
-        proj_size = 1
+        num_layers = 1
+        proj_size = 8
         self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)                
+
+        dropout = 0.2
+        hidden_dims = 24
+        num_layers = 3
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 2 # 6 extracted stats - for now do 2
+        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
         super().__init__(display_name=display_name, display_photometry=display_photometry,
                          display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
@@ -782,10 +789,11 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
 
     def get_nets_to_load(self):
-        return [ 'pooling_net' ]
+        return [ 'pooling_net', 'feature_net' ]
     
     def eval(self):
-        self.pooling_net.eval()
+        pass
+        # self.pooling_net.eval()
 
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features):
@@ -818,9 +826,9 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
             # f_D[frames,width,height,8]
             D = f_D.view( f_D.shape[0], -1, 8 )
-            D_temp, _ = self.pooling_net(D)  # LSTM to convert features into quality scores
-            D_temp = torch.nn.functional.relu(D_temp)  # We want only positive predictions
-            D_all = D_temp.view(-1).mean()  # Spatial and temporal pooling
+            D_temp, _ = self.pooling_net(D)  # LSTM to convert features into quality scores, the sequence is over time
+            D_mlp = self.feature_net(D_temp)  # We want only positive predictions
+            D_all = D_mlp.view(-1).mean()  # Spatial and temporal pooling
 
             is_base_band = (bb==no_bands-1)
             if is_base_band:
