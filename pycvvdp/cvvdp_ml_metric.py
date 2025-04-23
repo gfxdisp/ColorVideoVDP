@@ -585,7 +585,7 @@ class cvvdp_ml_dis_TR(cvvdp_ml_base):
 
         dropout = 0.2
         hidden_dims = 24
-        num_layers = 3
+        num_layers = 4
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 4 # mean D, std D, distance mean, distance std
         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
