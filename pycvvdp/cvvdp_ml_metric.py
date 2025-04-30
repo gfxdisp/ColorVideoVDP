@@ -1487,6 +1487,116 @@ class cvvdp_ml_transformer(cvvdp_ml):
         return Q_JOD
 
 
+class RegressionTransformerPositionalEmbedding(nn.Module):
+    def __init__(self,
+                 in_channels=32,  # TR(16) + D(8)
+                 dim=256,
+                 depth=4,
+                 heads=8,
+                 dropout=0.1):
+        super().__init__()
+        self.dim = dim
+
+        self.patch_embed = nn.Sequential(
+            nn.Linear(in_channels, dim),
+            Rearrange('b h w c -> b (h w) c')
+        )
+
+        self.pos_embed_mlp = nn.Sequential(
+            nn.Linear(2, dim//2),
+            nn.GELU(),
+            nn.Linear(dim//2, dim)
+        )
+
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer=nn.TransformerEncoderLayer(
+                d_model=dim,
+                nhead=heads,
+                dim_feedforward=dim*4,
+                dropout=dropout,
+                activation='gelu',
+                batch_first=True,
+                norm_first=True
+            ),
+            num_layers=depth
+        )
+
+        self.reg_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 1),
+            nn.ReLU()
+        )
+
+    def get_position_embedding(self, h, w, device):
+        y_coords = (torch.arange(h, device=device).float() + 0.5) / h
+        x_coords = (torch.arange(w, device=device).float() + 0.5) / w
+        grid = torch.stack(torch.meshgrid(x_coords, y_coords, indexing='xy'), dim=-1)  # [H, W, 2]
+        
+        pos_embed = self.pos_embed_mlp(grid)  # [H, W, dim]
+        return pos_embed.view(1, h*w, self.dim)  # [1, N_patches, dim]
+
+    def forward(self, x):
+        # x: [B, H, W, C]
+        B, H, W, C = x.shape
+        x = self.patch_embed(x)  # [B, N_patches, dim]
+            
+        pos_embed = self.get_position_embedding(H, W, x.device)
+        x += pos_embed
+        
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x = self.transformer(x)
+        cls_feat = x[:, 0]
+        return self.reg_head(cls_feat).squeeze(-1)
+
+    
+class cvvdp_ml_transformer_positional_embedding(cvvdp_ml_base):
+    def __init__(self,
+                 dim=256,
+                 **kwargs):
+        
+        self.set_device( kwargs.get('device') )
+        
+        self.transformer_net = RegressionTransformerPositionalEmbedding(
+            in_channels=24,  # TR(4*4) + D(2*4)
+            dim=dim
+        ).to(self.device)
+
+        super().__init__(**kwargs)
+
+    def get_nets_to_load(self):
+        return ['transformer_net']
+    
+    def do_pooling_and_jods(self, features):
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb, f in enumerate(features):
+
+            f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f = f.flatten( start_dim=3 )
+
+            delta = self.transformer_net(f) / len(features)
+
+            if bb == len(features)-1:
+                delta *= self.baseband_weight
+            if is_image:
+                delta *= self.image_int
+
+            Q_JOD -= delta.mean()
+
+        return Q_JOD
+
+
 
 class RegressionTransformer_bands(nn.Module):
     def __init__(self,
@@ -1571,8 +1681,12 @@ class RegressionTransformer_bands(nn.Module):
             patches += band_embed
             
             all_patches.append(patches)
+        
+        del band_features
 
         x = torch.cat(all_patches, dim=1)  # [B, total_patches, dim]
+
+        del all_patches
         
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
@@ -1602,6 +1716,7 @@ class cvvdp_ml_transformer_bands(cvvdp_ml_base):
     def do_pooling_and_jods(self, features):
         Q_JOD = torch.as_tensor(10., device=self.device)
         is_image = (features[0].shape[3]==3)
+        no_bands = len(features)
 
         input_features = []
         for bb, f in enumerate(features):
@@ -1622,13 +1737,16 @@ class cvvdp_ml_transformer_bands(cvvdp_ml_base):
             #     f[..., 4:].flatten(start_dim=3)
             # ], dim=-1)
 
-            band_features = f.flatten(start_dim=3)
+            f = f.flatten(start_dim=3)
 
             #band_features = f_all.permute(0, 3, 1, 2)  # [B, C_i, H_i, W_i]
 
-            input_features.append(band_features)
-            
-        delta = self.transformer_net(input_features) / len(features)
+            input_features.append(f)
+        
+        del features 
+
+        delta = self.transformer_net(input_features) / no_bands
+
         if is_image:
             delta *= self.image_int
 
