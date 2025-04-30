@@ -1016,7 +1016,9 @@ class cvvdp_ml_att(cvvdp_ml):
             f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
 
             Att = self.att_net(f_TR)
-            D_all = self.feature_net(f_D) * Att /no_bands
+            Att = F.relu(Att)
+            D_all = self.feature_net(f_D) 
+            D_all = F.relu(D_all) * Att /no_bands
 
             is_base_band = (bb==no_bands-1)
             if is_base_band:
@@ -1031,7 +1033,7 @@ class cvvdp_ml_att(cvvdp_ml):
         return Q_JOD
 
     def spatiotemporal_pooling(self, D_all):
-        return F.relu(D_all).view(-1).mean()
+        return D_all.view(-1).mean()
     
 
 # Adds an attention module to the cvvdp_ml
