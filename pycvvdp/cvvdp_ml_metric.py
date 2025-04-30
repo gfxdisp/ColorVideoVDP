@@ -18,6 +18,10 @@ import torch.utils.benchmark as torchbench
 import logging
 from datetime import date
 from torchvision.ops import MLP
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
 
 try:
     import matplotlib.pyplot as plt
@@ -794,6 +798,83 @@ class cvvdp_ml_dis_TR(cvvdp_ml_base):
             if is_image:
                 D_all *= self.image_int
 
+            Q_JOD -= F.relu(D_all).view(-1).mean()/no_bands
+
+        assert(not Q_JOD.isnan())
+        return Q_JOD
+    
+
+"""
+Use Distance between T and R - normalized to inform the prediction
+"""
+class cvvdp_ml_dis_TR_normalised(cvvdp_ml_base):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        hidden_dims = 24
+        num_layers = 6
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 4 # mean D, std D, distance mean, distance std
+        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem,
+                         random_init=random_init, disabled_features=disabled_features)
+    
+    # So that we can override in the super classes
+    def get_nets_to_load(self):
+        return [ 'feature_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+            
+            c = 1e-6
+
+            # Get similarity of means and stds between T and R as other features
+            f[:, :, :, :, 2] = torch.sqrt( ( (f[:, :, :, :, 0] - f[:, :, :, :, 2])**2 + c ) / (f[:, :, :, :, 0]**2 + f[:, :, :, :, 2]**2 + c ) )
+            f[:, :, :, :, 3] = torch.sqrt( ( (f[:, :, :, :, 1] - f[:, :, :, :, 3])**2 + c ) / (f[:, :, :, :, 1]**2 + f[:, :, :, :, 3]**2 + c ) )
+
+            # Remove first 2 stats, as they are no longer interesting
+            f = f[:, :, :, :, 2:].flatten( start_dim=3 )
+            D_all = self.feature_net(f)
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
             Q_JOD -= D_all.view(-1).mean()/no_bands
 
         assert(not Q_JOD.isnan())
@@ -950,7 +1031,7 @@ class cvvdp_ml_att(cvvdp_ml):
         return Q_JOD
 
     def spatiotemporal_pooling(self, D_all):
-        return D_all.view(-1).mean()
+        return F.relu(D_all).view(-1).mean()
     
 
 # Adds an attention module to the cvvdp_ml
@@ -1008,6 +1089,90 @@ class cvvdp_ml_att_sim_TR(cvvdp_ml_dis_TR):
 
             f[:, :, :, :, 2] = torch.sqrt( (f[:, :, :, :, 0] - f[:, :, :, :, 2])**2 )
             f[:, :, :, :, 3] = torch.sqrt( (f[:, :, :, :, 1] - f[:, :, :, :, 3])**2 )
+
+            # Remove first 2 stats, as they are no longer interesting
+            f_D = f[:, :, :, :, 2:].flatten( start_dim=3 )
+
+            Att = self.att_net(f_TR)
+            D_all = self.feature_net(f_D) * Att /no_bands
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
+
+        assert(not Q_JOD.isnan())
+        return Q_JOD
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(-1).mean()
+
+
+# Adds an attention module to the cvvdp_ml
+class cvvdp_ml_att_sim_TR_v2(cvvdp_ml_sim_TR):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        hidden_dims = 48
+        num_layers = 4
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 4 # T, T_var, R, R_var
+        self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+    def get_nets_to_load(self):
+        return [ 'feature_net', 'att_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+
+            f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
+
+            mean_T = f[:, :, :, :, 0]
+            mean_R = f[:, :, :, :, 2]
+            std_T = f[:, :, :, :, 1]
+            std_R = f[:, :, :, :, 3]
+
+            c1 = 1e-6
+            f[:, :, :, :, 2] = 1 - ( (2*mean_T*mean_R + c1) / ((mean_T**2) + (mean_R)**2 + c1) )
+            f[:, :, :, :, 3] = 1 - ( (2*std_T*std_R + c1) / ((std_T**2) + (std_R)**2 + c1) )
 
             # Remove first 2 stats, as they are no longer interesting
             f_D = f[:, :, :, :, 2:].flatten( start_dim=3 )
@@ -1213,3 +1378,98 @@ class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
             assert(not Q_JOD.isnan())
             return Q_JOD
+
+class RegressionTransformer(nn.Module):
+    def __init__(self,
+                 in_channels=32,  # TR(16) + D(8)
+                 patch_size=16,
+                 dim=256,
+                 depth=4,
+                 heads=8,
+                 dropout=0.1):
+        super().__init__()
+        self.patch_size = patch_size
+        self.dim = dim
+        self.patch_embed = nn.Sequential(
+            Rearrange('b c h w -> b h w c'),
+            nn.Linear(in_channels, dim),
+            #nn.Conv2d(in_channels, dim, kernel_size=patch_size, stride=patch_size),
+            Rearrange('b h w c -> b (h w) c')
+        )
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer=nn.TransformerEncoderLayer(
+                d_model=dim,
+                nhead=heads,
+                dim_feedforward=dim*4,
+                dropout=dropout,
+                activation='gelu',
+                batch_first=True,
+                norm_first=True
+            ),
+            num_layers=depth
+        )
+        self.reg_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 1),
+            nn.ReLU()
+        )
+    def forward(self, x):
+        # x: [B, H, W, C]
+        x = x.permute(0, 3, 1, 2)  # [B, C, H, W]
+        x = self.patch_embed(x)  # [B, N_patches, dim]
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x = self.transformer(x)
+        cls_feat = x[:, 0]
+        return self.reg_head(cls_feat).squeeze(-1)
+
+    
+class cvvdp_ml_transformer(cvvdp_ml):
+    def __init__(self,
+                 patch_size=(9, 16),
+                 dim=256,
+                 **kwargs):
+        
+        self.set_device( kwargs.get('device') )
+        
+        self.transformer_net = RegressionTransformer(
+            in_channels=24,  # TR(4*4) + D(2*4)
+            patch_size=patch_size,
+            dim=dim
+        ).to(self.device)
+
+        super().__init__(**kwargs)
+
+    def get_nets_to_load(self):
+        return ['transformer_net']
+    
+    def do_pooling_and_jods(self, features):
+
+        Q_JOD = torch.as_tensor(10., device=self.device)
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        for bb, f in enumerate(features):
+
+            f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f_all = torch.cat([
+                f[..., 0:4].flatten(start_dim=3),
+                f[..., 4:].flatten(start_dim=3)
+            ], dim=-1)
+
+            delta = self.transformer_net(f_all) / len(features)
+
+            if bb == len(features)-1:
+                delta *= self.baseband_weight
+            if is_image:
+                delta *= self.image_int
+
+            Q_JOD -= delta.mean()
+
+        return Q_JOD
