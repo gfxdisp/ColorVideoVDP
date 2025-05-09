@@ -450,7 +450,7 @@ class cvvdp(vq_metric):
 
 
         rho_band = self.lpyr.get_freqs()
-        Q_jod = self.do_pooling_and_jods(Q_per_ch)
+        Q_jod = self.do_pooling_and_jods(Q_per_ch, separate_color=True)
 
         stats = {}
         stats['Q_per_ch'] = Q_per_ch.detach().cpu().numpy() # the quality per channel and per frame
@@ -475,7 +475,7 @@ class cvvdp(vq_metric):
                 logging.debug( f"Memory allocated for temp. filter buffers: {self.sw_buf_allocated/1e9} GB" )
             logging.debug( f"Max memory allocated: {torch.cuda.max_memory_allocated()/1e9} GB" )
 
-        return (Q_jod.squeeze(), stats)
+        return (Q_jod, stats)
 
     # Determine how many frames we can process in a single batch 
     # Larger batch means faster processing, but it requires more memory
@@ -523,7 +523,7 @@ class cvvdp(vq_metric):
 
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch ):
+    def do_pooling_and_jods(self, Q_per_ch, separate_color=False ):
         # Q_per_ch[channel,frame,sp_band]
 
         no_channels = Q_per_ch.shape[0]
@@ -546,7 +546,14 @@ class cvvdp(vq_metric):
         if not self.block_channels is None:
             Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
         else:
-            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            if separate_color:
+                # Sum across achromatic and chromatic channels
+                if is_image:
+                    Q_tc = torch.stack( (Q_sc[0:1,...], self.lp_norm(Q_sc[1:3,...], self.beta_tch, dim=0, normalize=False) ), dim=0 )
+                else:
+                    Q_tc = torch.stack( (self.lp_norm(Q_sc[[0,3],...], self.beta_tch, dim=0, normalize=False), self.lp_norm(Q_sc[1:3,...], self.beta_tch, dim=0, normalize=False) ), dim=0 )
+            else:
+                Q_tc = self.lp_norm(Q_sc, self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
 
         if is_image:
             Q = Q_tc * t_int
