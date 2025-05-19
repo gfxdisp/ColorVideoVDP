@@ -1046,8 +1046,8 @@ class cvvdp_ml_dpool_sal(cvvdp_ml):
         self.set_device( device )
 
         dropout = 0.2
-        hidden_dims = 48
-        num_layers = 4
+        hidden_dims = 12
+        num_layers = 3
         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
         stats_no = 4 # T, T_var, R, R_var
         self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
@@ -1089,9 +1089,13 @@ class cvvdp_ml_dpool_sal(cvvdp_ml):
             f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
 
             Att = self.att_net(f_TR)
-            Att = F.sigmoid(Att)
+            Att = F.relu(Att)
+            epsilon = 1e-8
+            Att = Att / (torch.sum( Att, dim=(1,2), keepdim=True ) + epsilon) # Normalize in the spatial dimension
+            #Att = F.sigmoid(Att)
+            assert not Att.isnan().any() and Att.isfinite().all(), "NaNs or Infs in Att"
 
-            D_sp = self.lp_norm(f[:, :, :, :, 4]*Att, self.beta, dim=(1, 2), normalize=True, keepdim=True)  # Sum across all pixels
+            D_sp = self.lp_norm(f[:, :, :, :, 4]*Att, self.beta, dim=(1, 2), normalize=False, keepdim=True)  # Sum across all patches
 
             per_ch_w = self.get_ch_weights( 4 ).view(1,1,1,-1)
 
