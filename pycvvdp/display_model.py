@@ -203,7 +203,7 @@ class vvdp_display_photometry:
     # Transform content from its source colour space (typically display-encoded RGB) into 
     # the colorimetric values of light emmitted from the display and then into the target colour
     # space used by a metric.
-    def source_2_target_colourspace(self, I_src, target_colorspace):        
+    def source_2_target_colourspace(self, I_src, target_colorspace, pu21_type='banding_glare'):        
 
 
         if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
@@ -214,7 +214,7 @@ class vvdp_display_photometry:
             else:
                 # Otherwise, we need to PU-encode the frame
                 if not hasattr( self, "PU" ):
-                    self.PU = utils.PU()
+                    self.PU = utils.PU(type=pu21_type)
 
                 if target_colorspace == 'display_encoded_01':
                     PU_max = self.PU.encode(torch.as_tensor(10000.0))
