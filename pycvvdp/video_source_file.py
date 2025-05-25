@@ -440,7 +440,6 @@ class video_source_temp_resample_file(video_source_video_file):
         super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=-1, full_screen_resize=full_screen_resize, 
                          resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
 
-
         test_fps = self.test_vidr.avg_fps
         ref_fps = self.reference_vidr.avg_fps
 
