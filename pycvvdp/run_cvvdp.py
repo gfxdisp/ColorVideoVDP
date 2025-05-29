@@ -90,7 +90,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("-m", "--metric", choices=['cvvdp', 'cvvdp_ml', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr', 'dm-preview-sbs', 'dm-preview-exr-sbs'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("-m", "--metric", choices=['cvvdp', 'cvvdp_ml', 'cvvdp_ml_saliency', 'cvvdp_ml_transformer', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr', 'dm-preview-sbs', 'dm-preview-exr-sbs'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("--fps", type=float, default=None, help='Frames per second. It will overwrite frame rate stores in the video file. Required when passing an array of image files.')
@@ -238,6 +238,28 @@ def run_on_args(args):
             metrics.append( fv )
         elif mm == 'cvvdp_ml':
             fv = pycvvdp.cvvdp_ml( display_photometry=display_photometry,
+                                display_geometry=display_geometry,
+                                heatmap=args.heatmap, 
+                                device=device,
+                                temp_padding=args.temp_padding,
+                                config_paths=args.config_paths,
+                                quiet=args.quiet,
+                                gpu_mem=args.gpu_mem,
+                                dump_channels=dump_channels )
+            metrics.append( fv )
+        elif mm == 'cvvdp_ml_saliency':
+            fv = pycvvdp.cvvdp_ml_att( display_photometry=display_photometry,
+                                display_geometry=display_geometry,
+                                heatmap=args.heatmap, 
+                                device=device,
+                                temp_padding=args.temp_padding,
+                                config_paths=args.config_paths,
+                                quiet=args.quiet,
+                                gpu_mem=args.gpu_mem,
+                                dump_channels=dump_channels )
+            metrics.append( fv )
+        elif mm == 'cvvdp_ml_transformer':
+            fv = pycvvdp.cvvdp_ml_transformer( display_photometry=display_photometry,
                                 display_geometry=display_geometry,
                                 heatmap=args.heatmap, 
                                 device=device,
