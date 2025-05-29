@@ -246,6 +246,7 @@ def run_on_args(args):
                                 quiet=args.quiet,
                                 gpu_mem=args.gpu_mem,
                                 dump_channels=dump_channels )
+            fv.train(False)
             metrics.append( fv )
         elif mm == 'cvvdp_ml_saliency':
             fv = pycvvdp.cvvdp_ml_att( display_photometry=display_photometry,
@@ -257,6 +258,7 @@ def run_on_args(args):
                                 quiet=args.quiet,
                                 gpu_mem=args.gpu_mem,
                                 dump_channels=dump_channels )
+            fv.train(False)
             metrics.append( fv )
         elif mm == 'cvvdp_ml_transformer':
             fv = pycvvdp.cvvdp_ml_transformer( display_photometry=display_photometry,
@@ -268,6 +270,7 @@ def run_on_args(args):
                                 quiet=args.quiet,
                                 gpu_mem=args.gpu_mem,
                                 dump_channels=dump_channels )
+            fv.train(False)
             metrics.append( fv )
         elif mm == 'pu-psnr-rgb':
             if args.heatmap:
