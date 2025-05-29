@@ -14,8 +14,8 @@ L_peak = 1000
 L = 100 # Background luminance
 w, h = 1920, 1080 # Image width and height
 
-I_reference = np.ones( (h,w) ) * L
-I_test = I_reference + I_reference*np.random.randn(*I_reference.shape)*0.3
+I_reference = np.ones( (h,w), dtype=np.float32 ) * L
+I_test = I_reference + I_reference*np.random.randn(*I_reference.shape).astype(np.float32)*0.3
 
 # We use geometry of FHDR SDR 24" display, but ignore its photometric
 # properties and instead use linear luminance EOTF. Linear EOTF

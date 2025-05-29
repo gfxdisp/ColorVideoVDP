@@ -44,7 +44,7 @@ from pycvvdp.vq_metric import *
 
 from pycvvdp.dump_channels import DumpChannels
 
-from pycvvdp.cvvdp_metric import cvvdp
+from pycvvdp.cvvdp_metric import cvvdp, safe_pow
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
@@ -1035,6 +1035,87 @@ class cvvdp_ml_att(cvvdp_ml):
     def spatiotemporal_pooling(self, D_all):
         return D_all.view(-1).mean()
     
+
+# Mimics cvvdp pooling of differences but also weights the final predictions by learned saliency
+class cvvdp_ml_dpool_sal(cvvdp_ml):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        hidden_dims = 12
+        num_layers = 3
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 4 # T, T_var, R, R_var
+        self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+    def get_nets_to_load(self):
+        return ['att_net'] #[ 'feature_net', 'att_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        D_b = torch.as_tensor(0., device=self.device)
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            #f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+
+            f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
+
+            Att = self.att_net(f_TR)
+            Att = F.relu(Att)
+            epsilon = 1e-8
+            Att = Att / (torch.sum( Att, dim=(1,2), keepdim=True ) + epsilon) # Normalize in the spatial dimension
+            #Att = F.sigmoid(Att)
+            assert not Att.isnan().any() and Att.isfinite().all(), "NaNs or Infs in Att"
+
+            D_sp = self.lp_norm(f[:, :, :, :, 4]*Att, self.beta, dim=(1, 2), normalize=False, keepdim=True)  # Sum across all patches
+
+            per_ch_w = self.get_ch_weights( 4 ).view(1,1,1,-1)
+
+            D_ch = self.lp_norm(per_ch_w*D_sp, self.beta_tch, dim=3, normalize=False, keepdim=True)  # Sum across achromatic and chromatic channels
+
+            if is_image:
+                D_t = D_ch * self.image_int
+            else:
+                D_t = self.lp_norm(D_ch, self.beta_t, dim=0, normalize=True)   # Sum across frames
+
+            D_b += safe_pow(D_t.squeeze(), self.beta_sch)
+
+        D = safe_pow(D_b, 1/self.beta_sch)
+
+        Q_JOD = self.met2jod(D)            
+
+        assert(not Q_JOD.isnan())
+        return Q_JOD
+
+
 
 # Adds an attention module to the cvvdp_ml
 class cvvdp_ml_att_sim_TR(cvvdp_ml_dis_TR):

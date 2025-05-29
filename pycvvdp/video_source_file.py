@@ -485,6 +485,7 @@ class video_source_video_file(video_source_dm):
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        self.init_readers()
         #print( f"{self.test_fname} - {self.fs_width}x{self.fs_height}" )
         # if not self.last_test_frame is None and frame == self.last_test_frame[0]:
         #     return self.last_test_frame[1]
@@ -493,6 +494,7 @@ class video_source_video_file(video_source_dm):
         return L
 
     def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+        self.init_readers()
         # if not self.last_reference_frame is None and frame == self.last_reference_frame[0]:
         #     return self.last_reference_frame[1]
         L = self._get_frame( self.reference_vidr, frame, device, colorspace )
