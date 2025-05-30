@@ -426,69 +426,6 @@ def safe_floor(x):
     x_f = math.floor(x)
     return x_f if (x-x_f)<(1-1e-6) else x_f+1
 
-'''
-This video source will resample the frames over time and can handle test and reference videos that have different frame rates. 
-It currently handles only constant fps video. 
-'''
-class video_source_temp_resample_file(video_source_video_file):
-
-    max_fps = 166 # upsample to at most this FPS
-
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
-        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=-1, full_screen_resize=full_screen_resize, 
-                         resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
-
-
-        test_fps = self.test_vidr.avg_fps
-        ref_fps = self.reference_vidr.avg_fps
-
-        # First check if we can find an integer resampling rate
-        if test_fps % 1 == 0 and ref_fps % 1 == 0:
-            gcd = math.gcd(int(test_fps),int(ref_fps))
-            self.resample_fps = min( test_fps * ref_fps/gcd, __class__.max_fps )
-        else:
-            self.resample_fps = __class__.max_fps
-
-        test_frames_resampled = int( self.test_vidr.frames*self.resample_fps/test_fps )
-        ref_frames_resampled = int( self.reference_vidr.frames*self.resample_fps/ref_fps )
-        if self.test_vidr.frames==-1:
-            frames_resampled = ref_frames_resampled
-        elif self.reference_vidr.frames==-1:
-            frames_resampled = test_frames_resampled
-        else:
-            frames_resampled = min( test_frames_resampled, ref_frames_resampled )
-
-        self.frames = frames_resampled if frames==-1 else frames
-
-        logger.info( f"Test fps: {test_fps}; reference fps: {ref_fps}. Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
-        if test_frames_resampled != ref_frames_resampled:
-            logger.warning( f"Test and reference videos contain different number of frames after resampling ({test_frames_resampled} and {ref_frames_resampled}). Comparing {self.frames} frames." )
-
-        self.cache_ind = [-1, -1]
-        self.cache_frame = [None, None]
-    
-    # Return the frame rate of the video
-    def get_frames_per_second(self):
-        return self.resample_fps
-
-    def get_video_size(self):
-        return super().get_video_size()
-
-
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
-
-        frame_ind = int(safe_floor(frame/self.resample_fps * vid_reader.avg_fps))
-
-        ce = 0 if vid_reader == self.test_vidr else 1
-
-        if self.cache_ind[ce] == frame_ind:  # if quering the same frame in the source video, return the cache entry
-            return self.cache_frame[ce]
-        else:
-            self.cache_ind[ce] = frame_ind
-            self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
-            #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
-            return self.cache_frame[ce]            
-
     
 
 '''
@@ -497,7 +434,7 @@ The readers are initialized on the first frame access - this allows to pickle an
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, ignore_framerate_mismatch=False ):
 
         self.fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         self.fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -510,9 +447,11 @@ class video_source_video_file(video_source_dm):
         self.resize_resolution = resize_resolution
         self.ffmpeg_cc = ffmpeg_cc
         self.verbose = verbose
-        self.fps = fps
+        self.fps = fps       
+        self.ignore_framerate_mismatch = ignore_framerate_mismatch 
 
         super().__init__(display_photometry=display_photometry, config_paths=config_paths)
+
 
         # Resolutions may be different here because upscaling may happen on the GPU
         # if self.test_vidr.height != self.reference_vidr.height or self.test_vidr.width != self.reference_vidr.width:
@@ -530,7 +469,21 @@ class video_source_video_file(video_source_dm):
             self.reference_vidr = self.reader(self.reference_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
             self.test_vidr = self.reader(self.test_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
 
-            self.frames = self.test_vidr.frames if self.in_frames==-1 else self.in_frames
+            if self.test_vidr.frames == -1 and self.reference_vidr.frames == -1:
+                logging.error( "Neither test nor reference video contains meta-data with the number of frames. You need to specify it with '--nframes' argument" )
+                raise RuntimeError("Unknown number of frames")
+
+            if not self.ignore_framerate_mismatch: # We cannot use the logic below if we have fps mismatch. video_source_temp_resample_file will handle that.
+                if self.test_vidr.frames == -1:
+                    self.frames = self.reference_vidr.frames
+                elif self.reference_vidr.frames == -1:
+                    self.frames = self.test_vidr.frames
+                else:
+                    self.frames = min(self.test_vidr.frames,self.reference_vidr.frames)
+                    if self.test_vidr.frames != self.reference_vidr.frames:
+                        logging.warning( f"Test and reference videos contain different number of frames ({self.test_vidr.frames} and {self.reference_vidr.frames}). Comparing {self.frames} frames.")
+
+            # self.frames = self.test_vidr.frames if self.in_frames==-1 else self.in_frames
 
             for vr in [self.test_vidr, self.reference_vidr]:
                 if vr == self.test_vidr:
@@ -541,8 +494,9 @@ class video_source_video_file(video_source_dm):
                     rs_str = ""
                 else:
                     rs_str = f"->[{self.resize_resolution[0]}x{self.resize_resolution[1]}]"
-                self.fps = vr.avg_fps if self.fps is None else self.fps
-                logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
+                if not self.ignore_framerate_mismatch:  
+                    self.fps = vr.avg_fps if self.fps is None else self.fps
+                    logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
 
             # if color_space_name=='auto':
             #     if self.test_vidr.color_space=='bt2020nc':
@@ -550,7 +504,7 @@ class video_source_video_file(video_source_dm):
             #     else:
             #         color_space_name="sRGB"
 
-            if self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
+            if not self.ignore_framerate_mismatch and self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
                 logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
                 raise RuntimeError( "Inconsistent frame rates" )
 
@@ -611,9 +565,74 @@ class video_source_video_file(video_source_dm):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
 
-        I = self.apply_dm_and_colour_transform(frame_t, colorspace)
+        I = self.apply_dm_and_color_transform(frame_t, colorspace)
 
         return I
+
+
+'''
+This video source will resample the frames over time and can handle test and reference videos that have different frame rates. 
+It currently handles only constant fps video. 
+'''
+class video_source_temp_resample_file(video_source_video_file):
+
+    max_fps = 166 # upsample to at most this FPS
+
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=-1, full_screen_resize=full_screen_resize, 
+                         resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
+
+
+        super().init_readers()
+        test_fps = self.test_vidr.avg_fps
+        ref_fps = self.reference_vidr.avg_fps
+
+        # First check if we can find an integer resampling rate
+        if test_fps % 1 == 0 and ref_fps % 1 == 0:
+            gcd = math.gcd(int(test_fps),int(ref_fps))
+            self.resample_fps = min( test_fps * ref_fps/gcd, __class__.max_fps )
+        else:
+            self.resample_fps = __class__.max_fps
+
+        test_frames_resampled = int( self.test_vidr.frames*self.resample_fps/test_fps )
+        ref_frames_resampled = int( self.reference_vidr.frames*self.resample_fps/ref_fps )
+        if self.test_vidr.frames==-1:
+            frames_resampled = ref_frames_resampled
+        elif self.reference_vidr.frames==-1:
+            frames_resampled = test_frames_resampled
+        else:
+            frames_resampled = min( test_frames_resampled, ref_frames_resampled )
+
+        self.frames = frames_resampled if frames==-1 else frames
+
+        logger.info( f"Test fps: {test_fps}; reference fps: {ref_fps}. Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
+        if test_frames_resampled != ref_frames_resampled:
+            logger.warning( f"Test and reference videos contain different number of frames after resampling ({test_frames_resampled} and {ref_frames_resampled}). Comparing {self.frames} frames." )
+
+        self.cache_ind = [-1, -1]
+        self.cache_frame = [None, None]
+    
+    # Return the frame rate of the video
+    def get_frames_per_second(self):
+        return self.resample_fps
+
+    def get_video_size(self):
+        return super().get_video_size()
+
+
+    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+
+        frame_ind = int(safe_floor(frame/self.resample_fps * vid_reader.avg_fps))
+
+        ce = 0 if vid_reader == self.test_vidr else 1
+
+        if self.cache_ind[ce] == frame_ind:  # if quering the same frame in the source video, return the cache entry
+            return self.cache_frame[ce]
+        else:
+            self.cache_ind[ce] = frame_ind
+            self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
+            #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
+            return self.cache_frame[ce]            
 
 
 '''
@@ -721,7 +740,7 @@ class video_source_image_frames(video_source_dm):
             img = load_image_as_array(file_name)
 
         img_torch = numpy2torch_frame(img, 0, device)
-        I = self.apply_dm_and_colour_transform(img_torch, colorspace)    
+        I = self.apply_dm_and_color_transform(img_torch, colorspace)    
         return I
 
             # if not full_screen_resize is None:
