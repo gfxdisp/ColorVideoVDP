@@ -24,8 +24,6 @@ from pycvvdp.ssim_metric import ssim_metric
 from pycvvdp.dm_preview import dm_preview_metric
 from pycvvdp.dump_channels import DumpChannels
 
-from pycvvdp.video_source_file import video_source_hold_blur
-
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
         return [ filestrs ]
@@ -104,7 +102,6 @@ def parse_args(arg_list=None):
     parser.add_argument("--temp-resample", action='store_true', default=False, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates.")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
     parser.add_argument("--dump-channels", nargs='+', choices=['temporal', 'lpyr', 'difference'], default=None, help="Output video/images with intermediate processing stages (for debugging and visualization).")
-    parser.add_argument("--hold-blur", action='store_true', default=False, help="Simulate hold-type blur")
     if arg_list is not None:
         args = parser.parse_args(arg_list)
     else:
@@ -303,9 +300,6 @@ def run_on_args(args):
                                                 preload=preload,
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
-
-                if args.hold_blur:
-                    vs = video_source_hold_blur(vs)
 
                 base, ext = os.path.splitext(os.path.basename(test_file))            
                 base_fname = os.path.join(out_dir, base)

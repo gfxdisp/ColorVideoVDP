@@ -489,53 +489,9 @@ class video_source_temp_resample_file(video_source_video_file):
         else:
             self.cache_ind[ce] = frame_ind
             self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
-            self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
+            #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
             return self.cache_frame[ce]            
 
-
-class video_source_hold_blur(video_source):
-
-    def __init__( self, base_vs ):
-        # A pass-through photometry as extracting frames from vs have already applied a display model
-        self.lin_disp_photo = vvdp_display_photo_eotf(Y_peak=10000, source_colorspace='BT.2020-linear', contrast=1e6, EOTF="linear")
-        self.base_vs = base_vs
-
-        self.filter_size = 11
-        self.K = None
-
-    def get_video_size(self):
-        return self.base_vs.get_video_size()
-
-    # Return the frame rate of the video
-    def get_frames_per_second(self) -> int:
-        return self.base_vs.get_frames_per_second()
-
-    def apply_blur(self, frame: torch.Tensor):
-        if self.K is None:
-            self.K = torch.ones((1, 1, 1, self.filter_size), device=frame.device)/self.filter_size
-
-        half_filter_size = int(self.filter_size/2)
-        pad = (
-            half_filter_size,
-            half_filter_size,
-            half_filter_size,
-            half_filter_size,)
-        #frame_padded = Func.pad(frame, pad, mode='reflect')
-        frame_blured = torch.empty_like(frame)
-        for cc in range(frame.shape[1]): # for eacg colour channel
-            frame_blured[:,cc,...] = Func.conv2d(frame[:,cc,...], self.K, padding="same")[0,0]
-        return frame_blured
-
-
-    def get_test_frame( self, frame, device, colorspace ) -> Tensor:        
-        frame = self.base_vs.get_test_frame( frame, device, 'RGB2020' )
-        frame = self.apply_blur(frame)        
-        return self.lin_disp_photo.source_2_target_colorspace( frame, colorspace )
-
-    def get_reference_frame( self, frame, device, colorspace ) -> Tensor:
-        frame = self.base_vs.get_reference_frame( frame, device, 'RGB2020' )
-        frame = self.apply_blur(frame)                
-        return self.lin_disp_photo.source_2_target_colorspace( frame, colorspace )
     
 
 '''
