@@ -484,7 +484,8 @@ class cvvdp(vq_metric):
         if has_nvml:
             # This is more accurate estimate
             nvmlInit()
-            h = nvmlDeviceGetHandleByIndex(self.device.index)
+            dev_index = self.device.index if self.device.index is not None else torch.cuda.current_device()
+            h = nvmlDeviceGetHandleByIndex(dev_index)
             info = nvmlDeviceGetMemoryInfo(h)
             mem_avail = info.free - 1e9  # We reserving some space, not to use all the memory
         else:

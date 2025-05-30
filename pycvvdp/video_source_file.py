@@ -87,15 +87,13 @@ class video_reader:
         self.color_space = video_stream['color_space'] if ('color_space' in video_stream) else 'unknown'
         self.color_transfer = video_stream['color_transfer'] if ('color_transfer' in video_stream) else 'unknown'
         self.in_pix_fmt = video_stream['pix_fmt']
-        if 'nb_read_frames' in video_stream:
-            num_frames = int(video_stream['nb_read_frames'])
-        else:
-            num_frames = int(video_stream['nb_frames'])
 
         avg_fps_num, avg_fps_denom = [float(x) for x in video_stream['r_frame_rate'].split("/")]
         self.avg_fps = avg_fps_num/avg_fps_denom
 
-        if 'nb_frames' in video_stream: 
+        if 'nb_read_frames' in video_stream:
+            frames_in_vstream = int(video_stream['nb_read_frames'])
+        elif 'nb_frames' in video_stream: 
             frames_in_vstream = int(video_stream['nb_frames'])
         else:
             # Metadata may not contain total number of frames - this is the case of some VP9 videos
@@ -474,8 +472,7 @@ class video_source_temp_resample_file(video_source_video_file):
         return self.resample_fps
 
     def get_video_size(self):
-        vsize = super().get_video_size()
-        return (vsize[0]-8, vsize[1]-8, vsize[2])
+        return super().get_video_size()
 
 
     def _get_frame( self, vid_reader, frame, device, colorspace ):        
