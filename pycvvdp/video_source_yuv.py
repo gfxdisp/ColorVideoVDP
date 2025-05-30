@@ -76,7 +76,7 @@ class YUVReader:
 
         self.width = vprops["width"]
         self.height = vprops["height"]
-        self.fps = vprops["fps"]
+        self.avg_fps = vprops["fps"]
         self.color_space = vprops["color_space"]
         self.chroma_ss = vprops["chroma_ss"]
 
@@ -101,20 +101,20 @@ class YUVReader:
         else:
             self.dtype = np.uint8
 
-        self.frame_count = os.stat(file_name).st_size / self.frame_bytes
+        self.frames = os.stat(file_name).st_size / self.frame_bytes
 #        if math.ceil(self.frame_count)!=self.frame_count:
 #            raise RuntimeError( ".yuv file does not seem to contain an integer number of frames" )
 
-        self.frame_count = int(self.frame_count)
+        self.frames = int(self.frames)
 
         self.mm = None
 
     def get_frame_count(self):
-        return int(self.frame_count)
+        return int(self.frames)
     
     def get_frame_yuv( self, frame_index ):
 
-        if frame_index<0 or frame_index>=self.frame_count:
+        if frame_index<0 or frame_index>=self.frames:
             raise RuntimeError( "The frame index is outside the range of available frames")
 
         if self.mm is None: # Mem-map as needed
@@ -156,7 +156,7 @@ class YUVReader:
     # Return RGB PyTorch tensor
     def get_frame_rgb_tensor( self, frame_index, device ):
 
-        if frame_index<0 or frame_index>=self.frame_count:
+        if frame_index<0 or frame_index>=self.frames:
             raise RuntimeError( "The frame index is outside the range of available frames")
 
         if self.mm is None: # Mem-map as needed
@@ -234,6 +234,34 @@ class YUVReader:
         self.mm = None
 
 
+"""
+This class is compatible with ffmpeg video readers - supports resizing and can be used with video_source_video_file
+"""
+class video_reader_yuv(YUVReader):
+
+    def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
+        super().__init__(vidfile)
+        self.resize_fn=resize_fn
+        self.resize_width = resize_width
+        self.resize_height = resize_height        
+        self.color_transfer = None
+        if frames!=-1:
+            self.frames = min(self.frames, frames)
+        self.curr_frame = -1
+
+    def get_frame(self):
+        self.curr_frame += 1
+        return self.curr_frame       
+
+    def unpack(self, frame_index, device):
+        RGB = self.get_frame_rgb_tensor(frame_index, device)
+
+        if not self.resize_fn is None and (vid_reader.height != self.resize_height or vid_reader.width != self.resize_width):
+            RGB = torch.nn.functional.interpolate(RGB.view(1,RGB.shape[0],RGB.shape[1],RGB.shape[2]),
+                                                size=(self.resize_height, self.resize_width),
+                                                mode=self.resize_fn).view(RGB_bcfhw.shape[0],self.resize_height,self.resize_width).clip(0.,1.)
+        return RGB
+
 
 class video_source_yuv_file(video_source_dm):
 
@@ -241,7 +269,7 @@ class video_source_yuv_file(video_source_dm):
 
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
-        self.total_frames = self.test_vidr.frame_count
+        self.total_frames = self.test_vidr.frames
         self.frames = self.total_frames if frames==-1 else min(self.total_frames, frames)
         self.offset = 0     # Offset for random access of a shorter subsequence
 
@@ -274,7 +302,7 @@ class video_source_yuv_file(video_source_dm):
                 rs_str = ""
             else:
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-            logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry.EOTF}, fps: {vr.fps}, frames: {self.frames}" )
+            logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry.EOTF}, fps: {vr.avg_fps}, frames: {self.frames}" )
 
         
     # Return (height, width, frames) touple with the resolution and
@@ -287,7 +315,7 @@ class video_source_yuv_file(video_source_dm):
 
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
-        return self.test_vidr.fps
+        return self.test_vidr.avg_fps
     
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,

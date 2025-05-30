@@ -17,6 +17,7 @@ import scipy.io as sio
 
 import logging
 from video_source import *
+from video_source_yuv import video_reader_yuv
 
 try:
     # This may fail if OpenEXR is not installed. To install,
@@ -438,7 +439,11 @@ class video_source_video_file(video_source_dm):
 
         self.fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         self.fs_height = -1 if full_screen_resize is None else resize_resolution[1]
-        self.reader = video_reader if ffmpeg_cc else video_reader_yuv_pytorch
+
+        if test_fname.endswith('.yuv') and reference_fname.endswith('.yuv'):
+            self.reader = video_reader_yuv
+        else:
+            self.reader = video_reader if ffmpeg_cc else video_reader_yuv_pytorch
         self.reference_vidr = None
         self.reference_fname = reference_fname
         self.test_fname = test_fname
