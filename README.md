@@ -1,4 +1,4 @@
-# ColorVideoVDP: A visible difference predictor for colour images and videos
+# ColorVideoVDP: A visible difference predictor for color images and videos
 
 [Web page](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/) | [Paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2024_ColorVideoVDP.pdf)
 
@@ -11,7 +11,7 @@ This metric is unique because it is the first color-aware metric that accounts f
 The main features:
 * models chromatic and achromatic contrast sensitivity using a novel contrast sensitivity model ([castleCSF](http://dx.doi.org/10.1167/jov.24.4.5)), allowing us to predict distortions in color and luminance;
 * models spatio-temporal sensitivity so that it can predict visibility of artifacts like waveguide nonuniformity and other temporally varying artifacts;
-* works with colorimetrically calibrated content, both SDR and HDR (any colour space);
+* works with colorimetrically calibrated content, both SDR and HDR (any color space);
 * can predict a single number quality correlate, a distortion map or a visualization of an error over time and visual channels (distogram). 
 
 ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-enabled GPU. It can also run on a CPU, but the processing times will be much longer, especially for video. Its usage is described [below](#example-usage).
@@ -148,7 +148,7 @@ If you run the metric from Python code, the display photometry and geometry can 
 
 * HDR video files encoded using PQ EOTF function (SMPTE ST 2084). Pass the video files as `--test` and `--ref` arguments and specify `--display standard_hdr_pq`.
 
-* OpenEXR images. The images *MUST* contain absolute linear colour values (colour graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package, which is required to read `.exr` files. To install, run:
+* OpenEXR images. The images *MUST* contain absolute linear color values (color graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package, which is required to read `.exr` files. To install, run:
 ```bash
 conda install -c conda-forge openexr-python   # or "sudo apt install openxr" on Linux machines
 pip install pyexr
@@ -218,9 +218,9 @@ Both distogram and heatmap will be saved in the current directory and the filena
 
 ## Configuration files
 
-Configuration files contain a list of available display models (`display_models.json`), colour spaces (`color_spaces.json`) and the parameters of the metric (`cvvdp_parameters.json`). Those are located by default in `pycvvdp/vvdp_data` folder. Different locations could be specified with the `--config-paths` argument or the `CVVDP_PATH` environment variable. 
+Configuration files contain a list of available display models (`display_models.json`), color spaces (`color_spaces.json`) and the parameters of the metric (`cvvdp_parameters.json`). Those are located by default in `pycvvdp/vvdp_data` folder. Different locations could be specified with the `--config-paths` argument or the `CVVDP_PATH` environment variable. 
 
-If you want to use a different colour space or display model, make a copy of the corresponding file in another directory, add your custom entry, and then pass the path to either the directory or the file as the `--config-paths` argument.
+If you want to use a different color space or display model, make a copy of the corresponding file in another directory, add your custom entry, and then pass the path to either the directory or the file as the `--config-paths` argument.
 
 You can also use a different metric calibration file by passing a path to another `cvvdp_parameters.json` file. 
 
@@ -305,6 +305,12 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.4.3 (30/May/2025)
+  - Fixed: Base bands were incorrectly weighted when generating heat maps. 
+  - Fixed: Improved Matlab interface - handles negative JODs and video heatmaps (thanks to CaptainS5)
+  - Now can handle videos that do not contain the number of frames in the meta-data
+  - Added `--temp-resample` option that allows to compare videos of different frame rates
+
 * v0.4.2 (29/September/2024)
   - Added: Support for HLG EOTF (e.g. iPhone HDR video) - thanks to Cosmin Stejerean
   - Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)

@@ -46,7 +46,7 @@ uint16to8 = lambda imgs: (np.floor(im/256).astype(np.uint8) for im in imgs)
 # uint16toint16 = lambda imgs: (im.astype(np.int16) for im in imgs)
 # uint16tofp32 = lambda imgs: (im.astype(np.float32)/(2**16 - 1) for im in imgs)
 
-# Below are the functions for colour space transforms 
+# Below are the functions for color space transforms 
 
 def lin2pq( L ):
     """ Convert from absolute linear values (between 0.005 and 10000) to PQ-encoded values V (between 0 and 1)
@@ -130,9 +130,9 @@ def Yxy2xyz(col_vec):
                       col_vec[:,0]/col_vec[:,2]*(1-col_vec[:,1]-col_vec[:,2])), axis=1)
 
 def im2colvec(im):
-    """ Convert an image ([height width 3] array) into a colour vector ([height*width 3] array)
+    """ Convert an image ([height width 3] array) into a color vector ([height*width 3] array)
     """
-    if im.ndim==2 and im.shape[1]==3: # Aleady a colour vector
+    if im.ndim==2 and im.shape[1]==3: # Aleady a color vector
         return im
 
     assert(im.shape[2]==3)
@@ -140,7 +140,7 @@ def im2colvec(im):
     return im.reshape( (npix, 3), order='F' )    
 
 def colvec2im(colvec, shape):
-    """ Convert a colour vector ([height*width 3] array) into an image ([height width 3] array) 
+    """ Convert a color vector ([height*width 3] array) into an image ([height width 3] array) 
     """
     if colvec.ndim==3 and colvec.shape[2]==3: # Already an image
         return colvec
@@ -166,7 +166,7 @@ __xyz2rgb709 = np.array( [ [3.2406, -1.5372, -0.4986], \
                         [-0.9689,  1.8758,  0.0415], \
                         [0.0557, -0.2040,  1.0570] ] )
 
-# Get colour transform from "fromCS" to "toSC". CIE XYZ 1931 is used as an intermediate colour space
+# Get color transform from "fromCS" to "toSC". CIE XYZ 1931 is used as an intermediate color space
 def get_cform( fromCS, toCS ):
 
     # Get the transform from 'fromCS' to XYZ
@@ -177,7 +177,7 @@ def get_cform( fromCS, toCS ):
     elif fromCS=="xyz":
         in2xyz = np.eye(3,3)
     else:
-        assert( False ) # Not recognized colour space
+        assert( False ) # Not recognized color space
 
     if toCS=="rgb2020":
         xyz2out = __xyz2rgb2020
@@ -188,12 +188,12 @@ def get_cform( fromCS, toCS ):
     elif toCS=="xyz":
         xyz2out = np.eye(3,3)
     else:
-        assert( False ) # Not recognized colour space
+        assert( False ) # Not recognized color space
 
     return xyz2out @ in2xyz
 
-# Recipes for converting from a given colour space to CIE XYZ 1931
-# First value - non-linear conversion function (or None), second - colour conversion matrix 
+# Recipes for converting from a given color space to CIE XYZ 1931
+# First value - non-linear conversion function (or None), second - color conversion matrix 
 __to_xyz_cforms = { 
     "rgb2020" : (None, __rgb2020_2xyz),
     "rgb709" : (None, __rgb709_2xyz),
@@ -204,8 +204,8 @@ __to_xyz_cforms = {
     "itp" : (itp2lms, __lms2xyz)
 }
 
-# Recipes for converting from CIE XYZ 1931 to a given colour space 
-# First value - colour transform matrix, second column - non-linear conversion function (or None)
+# Recipes for converting from CIE XYZ 1931 to a given color space 
+# First value - color transform matrix, second column - non-linear conversion function (or None)
 __from_xyz_cforms = { 
     "rgb2020" : (__xyz2rgb2020, None),
     "rgb709" : (__xyz2rgb709, None),
@@ -217,36 +217,36 @@ __from_xyz_cforms = {
 }
 
 def im_ctrans( im, fromCS=None, toCS=None, M=None, exposure=1 ):
-    """Transform an image or a colour vector from one colour space into another
+    """Transform an image or a color vector from one color space into another
     Parameters:
-    in - either an image as (width, height, 3) array or (n, 3) colour vector
-    fromCS, toCS - strings with the name of the input and output colour spaces. 
-                   Linear colour spaces: rgb709, rgb2020, xyz, 
-                   Non-linear colour spaces: pq_rgb (BT.2020), srgb (BT.709), Yxy
-    M - if fromCS and toCS are not specified, you must pass the colour transformation matrix as M 
+    in - either an image as (width, height, 3) array or (n, 3) color vector
+    fromCS, toCS - strings with the name of the input and output color spaces. 
+                   Linear color spaces: rgb709, rgb2020, xyz, 
+                   Non-linear color spaces: pq_rgb (BT.2020), srgb (BT.709), Yxy
+    M - if fromCS and toCS are not specified, you must pass the color transformation matrix as M 
         (default is None)
-    exposure - The colour values are multiplied (in linear space) by the value of the `exposure`. 
+    exposure - The color values are multiplied (in linear space) by the value of the `exposure`. 
                Default is 1. This parameter is useful when converting between relative and absolute 
-               colour spaces, for example:
+               color spaces, for example:
 
                im_ctrans(im, "srgb", "pq_rgb", exposure=100)
 
                will map peak white (1,1,1) in sRGB to (100,100,100) or 100 cd/m^2 D65 in BT.2020. 
 
     Returns:
-    An image or colour vector in the new colour space.
+    An image or color vector in the new color space.
     """
 
     col_vec = im2colvec(im)
 
     if fromCS:
-        assert fromCS in __to_xyz_cforms, "Unknown colour space"
+        assert fromCS in __to_xyz_cforms, "Unknown color space"
         nl_func, in2xyz = __to_xyz_cforms[fromCS]        
         if nl_func:
             col_vec = nl_func(col_vec)
         
     if toCS:
-        assert toCS in __from_xyz_cforms, "Unknown colour space"
+        assert toCS in __from_xyz_cforms, "Unknown color space"
         xyz2out, to_nl_func = __from_xyz_cforms[toCS]
     else:
         to_nl_func = None

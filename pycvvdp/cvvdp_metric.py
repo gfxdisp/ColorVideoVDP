@@ -132,7 +132,7 @@ class cvvdp(vq_metric):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
         self.parameters_file = utils.config_files.find( "cvvdp_parameters.json", config_paths )
-        logging.debug( f"Loading ColourVideoVDP parameters from '{self.parameters_file}'" )
+        logging.debug( f"Loading ColorVideoVDP parameters from '{self.parameters_file}'" )
         parameters = utils.json2dict(self.parameters_file)
 
         #all common parameters between Matlab and Pytorch, loaded from the .json file
@@ -256,11 +256,11 @@ class cvvdp(vq_metric):
         The two supported datatypes are float16 and uint8.
     dim_order - a string with the order of dimensions of test_cont and reference_cont. The individual characters denote
         B - batch
-        C - colour channel
+        C - color channel
         F - frame
         H - height
         W - width
-        Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - colour image; "FCHW" - colour video
+        Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - color image; "FCHW" - color video
         The default order is "BCFHW". The processing can be a bit faster if data is provided in that order. 
     frame_padding - the metric requires at least 250ms of video for temporal processing. Because no previous frames exist in the
         first 250ms of video, the metric must pad those first frames. This options specifies the type of padding to use:
@@ -342,7 +342,7 @@ class cvvdp(vq_metric):
         if self.contrast=="log":
             met_colorspace='logLMS_DKLd65'
         else:
-            met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+            met_colorspace='DKLd65' # This metric uses DKL colorspace with d65 whitepoint
 
         if self.dump_channels:
             self.dump_channels.open(vid_source.get_frames_per_second())
@@ -420,7 +420,7 @@ class cvvdp(vq_metric):
                 for cc in range(all_ch): # Iterate over chromatic and temporal channels
                     # 1D filter over time (over frames)
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1]) 
-                    sw_ch = 0 if cc==3 else cc # colour channel in the sliding window
+                    sw_ch = 0 if cc==3 else cc # color channel in the sliding window
                     for fi in range(cur_block_N_frames):
                         R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
                         R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference

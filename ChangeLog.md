@@ -1,8 +1,10 @@
-# v0.4.3 (?)
+# v0.4.3 (30/05/2025)
 * Interpolation of the CSF is a bit faster now (thanks to Dongyeon)
 * Fixed: Updated broken `calibration/*.py` scripts. Now they use `--config-paths` instead of discontinued `--config-dir`.
 * Fixed: Base bands were incorrectly weighted when generating heat maps. 
 * Fixed: Improved Matlab interface - handles negative JODs and video heatmaps (thanks to CaptainS5)
+* Now can handle videos that do not contain the number of frames in the meta-data
+* Added `--temp-resample` option that allows to compare videos of different frame rates
 
 # v0.4.2 (29/09/2024)
 * Files are now sorted after the wildcard expansion
@@ -39,7 +41,7 @@
 * Better handling of paths to configuration files
 
 # v0.2
-* Updated ColourVideoVDP model with cross-channel masking and more advanced pooling, different calibration and better prediction accuracy.
+* Updated ColorVideoVDP model with cross-channel masking and more advanced pooling, different calibration and better prediction accuracy.
 * Added distograms
 * Changed handling of paths to configuration files
 
