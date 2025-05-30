@@ -1,4 +1,4 @@
-# v0.4.3 (?)
+# v0.4.3 (30/05/2025)
 * Interpolation of the CSF is a bit faster now (thanks to Dongyeon)
 * Fixed: Updated broken `calibration/*.py` scripts. Now they use `--config-paths` instead of discontinued `--config-dir`.
 * Fixed: Base bands were incorrectly weighted when generating heat maps. 

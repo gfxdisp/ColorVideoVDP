@@ -305,6 +305,12 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.4.3 (30/May/2025)
+  - Fixed: Base bands were incorrectly weighted when generating heat maps. 
+  - Fixed: Improved Matlab interface - handles negative JODs and video heatmaps (thanks to CaptainS5)
+  - Now can handle videos that do not contain the number of frames in the meta-data
+  - Added `--temp-resample` option that allows to compare videos of different frame rates
+
 * v0.4.2 (29/September/2024)
   - Added: Support for HLG EOTF (e.g. iPhone HDR video) - thanks to Cosmin Stejerean
   - Added: `--dump-channels` for generating videos with intermediate processing stages (debugging and visualization)
