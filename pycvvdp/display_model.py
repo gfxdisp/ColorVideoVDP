@@ -35,7 +35,7 @@ XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986), \
 def lms2006_to_dkld65( img ):
     M = torch.as_tensor( LMS2006_to_DKLd65, dtype=img.dtype, device=img.device)
 
-    ABC = torch.empty_like(img)  # ABC represents any linear colour space
+    ABC = torch.empty_like(img)  # ABC represents any linear color space
     # To avoid permute (slow), perform separate dot products
     for cc in range(3):
         ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
@@ -115,7 +115,7 @@ class vvdp_display_photometry:
         colorspaces = utils.json2dict(colorspaces_file)
 
         if not source_colorspace in colorspaces:
-            raise RuntimeError( "Unknown color space: \"" + source_colorspace + "\"" )
+            raise RuntimeError( f'Color space: "{source_colorspace}" not found in "{colorspaces_file}"' )
 
         if 'RGB2X' in colorspaces[source_colorspace]: # luminance will not have colour space primaries
             self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
@@ -200,11 +200,10 @@ class vvdp_display_photometry:
 
         return obj
 
-    # Transform content from its source colour space (typically display-encoded RGB) into 
-    # the colorimetric values of light emmitted from the display and then into the target colour
+    # Transform content from its source color space (typically display-encoded RGB) into 
+    # the colorimetric values of light emmitted from the display and then into the target color
     # space used by a metric.
-    def source_2_target_colourspace(self, I_src, target_colorspace):        
-
+    def source_2_target_colorspace(self, I_src, target_colorspace):        
 
         if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
 
@@ -231,15 +230,15 @@ class vvdp_display_photometry:
 
             is_color = (I_src.shape[-4]==3)
             if is_color:
-                I_target = self.linear_2_target_colourspace(I_lin, target_colorspace)
+                I_target = self.linear_2_target_colorspace(I_lin, target_colorspace)
             else:
                 I_target = I_lin
 
         return I_target
 
-    # Transform frame/image from native linear colour space to the target colour space.
+    # Transform frame/image from native linear color space to the target color space.
     # Internal, do not use. 
-    def linear_2_target_colourspace(self, RGB_lin, target_colorspace):        
+    def linear_2_target_colorspace(self, RGB_lin, target_colorspace):        
         if hasattr(self, "rgb2xyz"):
             rgb2xyz = self.rgb2xyz
         else:
@@ -264,7 +263,7 @@ class vvdp_display_photometry:
             else:
                 raise RuntimeError( f"Unknown colorspace '{target_colorspace}'" )
 
-            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear colour space
+            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear color space
             # To avoid permute (slow), perform separate dot products
             for cc in range(3):
                 ABC[...,cc,:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)

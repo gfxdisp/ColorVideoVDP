@@ -24,7 +24,7 @@ A fake metric that writes the output of a display model to either HDR video or O
 """
 class dm_preview_metric(vq_metric):
 
-    def __init__(self, output_exr=False, side_by_side=False, display_name="standard_4k", display_photometry=None, device=None):
+    def __init__(self, output_exr=False, side_by_side=False, display_name="standard_4k", display_photometry=None, device=None, verbose=False):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -37,6 +37,7 @@ class dm_preview_metric(vq_metric):
         self.output_exr = output_exr
         self.side_by_side = side_by_side
         self.set_display_model( display_name=display_name, display_photometry=display_photometry )        
+        self.verbose = verbose
 
 
     def predict_video_source(self, vid_source, frame_padding="replicate"):
@@ -50,9 +51,9 @@ class dm_preview_metric(vq_metric):
         else:
             colorspace = 'RGB2020pq'
             fps = vid_source.get_frames_per_second()
-            test_vw = VideoWriter(self.base_fname + "-test.mp4", hdr_mode=True, fps=fps, codec='h265')
+            test_vw = VideoWriter(self.base_fname + "-test.mp4", hdr_mode=True, fps=fps, codec='h265', verbose=self.verbose)
             if not self.side_by_side:
-                ref_vw = VideoWriter(self.base_fname + "-reference.mp4", hdr_mode=True, fps=fps, codec='h265')
+                ref_vw = VideoWriter(self.base_fname + "-reference.mp4", hdr_mode=True, fps=fps, codec='h265', verbose=self.verbose)
 
         for ff in range(N_frames):
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=colorspace)

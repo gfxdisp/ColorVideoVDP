@@ -41,7 +41,7 @@ metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.
 # Channels can be in any order, but the order must be specified as a dim_order parameter. 
-# Here the dimensions are (Height,Width,Colour)
+# Here the dimensions are (Height,Width,Color)
 Q_JOD_noise, stats_noise = metric.predict( I_test_noise, I_ref, dim_order="HWC" )
 noise_str = f'Noise - Quality: {Q_JOD_noise:.3f} JOD'
 print( noise_str )

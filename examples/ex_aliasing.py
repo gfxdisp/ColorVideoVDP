@@ -1,4 +1,4 @@
-# This example shows how to use python interface to run FovVideoVDP directly on video files
+# This example shows how to use python interface to run ColorVideoVDP directly on video files
 
 # Important: This and other examples should be executed from the main ColorVideoVDP directory:
 # python examples/ex_<...>.py

@@ -27,9 +27,7 @@ def resize_array(img, dsize):
     #return np.array( PIL.Image.fromarray(img).resize(dsize, resample=PIL.Image.LANCZOS) )
     return cv2.resize( img, dsize=dsize, interpolation=cv2.INTER_LANCZOS4 )
 
-# For debugging only
-# from gfxdisp.pfs.pfs import pfs
-
+# This is a 16-bit image, convert to float
 I_ref_np16 = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 
 patch_sz = 256 # Use only a portion of the image
@@ -107,7 +105,7 @@ fig, axs = plt.subplots(len(ss_type), N+M, layout="constrained", figsize=(18, 8)
 if len(ss_type) == 1:
     axs = [axs]
 
-# qpp = { 'cvvdp': { 'ylabel': 'ColourVideoVDP JOD', 'ylim': (4, 10), 'col': 0 }, 
+# qpp = { 'cvvdp': { 'ylabel': 'ColorVideoVDP JOD', 'ylim': (4, 10), 'col': 0 }, 
 #         'ssim-lum': { 'ylabel': 'SSIM-luma', 'ylim': (0.4, 1), 'col': 1 },
 #         'ssim-rgb': { 'ylabel': 'SSIM-RGB', 'ylim': (0.4, 1), 'col': 1 } }
 

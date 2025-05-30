@@ -1,4 +1,4 @@
-# Command-line interface for ColourVideoVDP. 
+# Command-line interface for ColorVideoVDP. 
 
 import os, sys
 import os.path
@@ -77,7 +77,7 @@ def np2img(np_srgb, imgfile):
 # Command-line Arguments
 # -----------------------------------
 def parse_args(arg_list=None):
-    parser = argparse.ArgumentParser(description="Evaluate ColourVideoVDP on a set of videos")
+    parser = argparse.ArgumentParser(description="Evaluate ColorVideoVDP on a set of videos")
     parser.add_argument("-t", "--test", type=str, nargs='+', required = False, help="list of test images/videos")
     parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
     parser.add_argument("--device", type=str,  default='cuda:0', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda:0', 'cuda:1', ...]")
@@ -98,7 +98,8 @@ def parse_args(arg_list=None):
     parser.add_argument("--gpu-mem", type=float, default=None, help='How much GPU memory can we use in GB. Use if CUDA reports out of mem errors, or you want to run multiple instances at the same time.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
-    parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and colour conversion. Use custom pytorch code by default (faster and less memory).")
+    parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and color conversion. Use custom pytorch code by default (faster and less memory).")    
+    parser.add_argument("--temp-resample", action='store_true', default=False, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates.")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
     parser.add_argument("--dump-channels", nargs='+', choices=['temporal', 'lpyr', 'difference'], default=None, help="Output video/images with intermediate processing stages (for debugging and visualization).")
     if arg_list is not None:
@@ -249,7 +250,7 @@ def run_on_args(args):
                 logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
             metrics.append( ssim_metric(device=device) )
         elif mm.startswith( 'dm-preview' ):
-            metrics.append( dm_preview_metric(output_exr=("exr" in mm), side_by_side=("sbs" in mm), device=device) )
+            metrics.append( dm_preview_metric(output_exr=("exr" in mm), side_by_side=("sbs" in mm), device=device, verbose=args.verbose) )
         else:
             raise RuntimeError( f"Unknown metric {mm}")
 
@@ -277,7 +278,18 @@ def run_on_args(args):
         for mm in metrics:
             preload = False if args.temp_padding == 'replicate' else True
             with torch.no_grad():
-                vs = pycvvdp.video_source_file( test_file, ref_file, 
+
+                if args.temp_resample:
+                    vs = pycvvdp.video_source_temp_resample_file( test_file, ref_file, 
+                                                display_photometry=display_photometry, 
+                                                config_paths=args.config_paths,
+                                                full_screen_resize=args.full_screen_resize, 
+                                                resize_resolution=display_geometry.resolution, 
+                                                frames=args.nframes,
+                                                ffmpeg_cc=args.ffmpeg_cc,
+                                                verbose=args.verbose )
+                else:
+                    vs = pycvvdp.video_source_file( test_file, ref_file, 
                                                 display_photometry=display_photometry, 
                                                 config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize, 
