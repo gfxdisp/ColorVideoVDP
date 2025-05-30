@@ -114,6 +114,10 @@ class cvvdp(vq_metric):
         self.dump_channels = dump_channels
         self.heatmap_pyr = None
 
+    # Switch to training mode (e.g., to optimize memory allocation)
+    def train(self, do_training=True):
+        self.training_mode = do_training
+
     def load_config( self, config_paths ):
 
         #parameters_file = os.path.join(os.path.dirname(__file__), "fvvdp_data/fvvdp_parameters.json")
