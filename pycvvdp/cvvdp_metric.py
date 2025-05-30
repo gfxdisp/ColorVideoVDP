@@ -96,7 +96,7 @@ class cvvdp(vq_metric):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
-                self.device = torch.device('cuda:0')
+                self.device = torch.device('cuda')
             else:
                 self.device = torch.device('cpu')
         else:
