@@ -5,6 +5,7 @@
 * Fixed: Improved Matlab interface - handles negative JODs and video heatmaps (thanks to CaptainS5)
 * Now can handle videos that do not contain the number of frames in the meta-data
 * Added `--temp-resample` option that allows to compare videos of different frame rates
+* Fixed: The default device is now 'cuda' instead of 'cuda:0' (thanks to soCzech)
 
 # v0.4.2 (29/09/2024)
 * Files are now sorted after the wildcard expansion
