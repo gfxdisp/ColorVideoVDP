@@ -61,3 +61,8 @@ class vq_metric:
     '''
     def set_base_fname( self, base_fname ):
         self.base_fname = base_fname
+
+vq_metric_dict = dict()
+
+def register_metric( metric_class ):
+    vq_metric_dict[metric_class.__name__] = metric_class    

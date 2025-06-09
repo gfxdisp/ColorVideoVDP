@@ -442,7 +442,7 @@ class cvvdp_ml_base(cvvdp):
 
 
 """
-ColorVideoVDP metric with ML head.
+ColorVideoVDP metric with an MLP head.
 """
 class cvvdp_ml(cvvdp_ml_base):
 
@@ -581,9 +581,11 @@ class cvvdp_ml_nr(cvvdp_ml_base):
         assert(not Q_JOD.isnan())
         return Q_JOD
 
+register_metric( cvvdp_ml_nr )
+
 
 """
-ColorVideoVDP metric with ML head.
+ColorVideoVDP metric with an MLP head.
 """
 class cvvdp_ml_trd(cvvdp_ml_base):
 
@@ -649,6 +651,8 @@ class cvvdp_ml_trd(cvvdp_ml_base):
 
         assert(not Q_JOD.isnan())
         return Q_JOD
+
+register_metric( cvvdp_ml_trd )
 
 
 """
@@ -728,7 +732,10 @@ class cvvdp_ml_texture_sim(cvvdp_ml_base):
 
         assert(not Q_JOD.isnan())
         return Q_JOD
-    
+
+register_metric( cvvdp_ml_texture_sim )
+
+
 """
 Use Distance between T and R to inform the prediction
 """
@@ -803,6 +810,7 @@ class cvvdp_ml_dis_TR(cvvdp_ml_base):
         assert(not Q_JOD.isnan())
         return Q_JOD
     
+register_metric( cvvdp_ml_dis_TR )
 
 """
 Use Distance between T and R - normalized to inform the prediction
@@ -880,6 +888,7 @@ class cvvdp_ml_dis_TR_normalised(cvvdp_ml_base):
         assert(not Q_JOD.isnan())
         return Q_JOD
     
+register_metric( cvvdp_ml_dis_TR_normalised )
 
 """
 Use Similarity between T and R to inform the prediction
@@ -961,8 +970,11 @@ class cvvdp_ml_sim_TR(cvvdp_ml_base):
         assert(not Q_JOD.isnan())
         return Q_JOD
 
+register_metric( cvvdp_ml_sim_TR )
+
+
 # Adds an attention module to the cvvdp_ml
-class cvvdp_ml_att(cvvdp_ml):
+class cvvdp_ml_att(cvvdp_ml_trd):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
@@ -1036,8 +1048,10 @@ class cvvdp_ml_att(cvvdp_ml):
         return D_all.view(-1).mean()
     
 
+register_metric( cvvdp_ml_att )
+
 # Mimics cvvdp pooling of differences but also weights the final predictions by learned saliency
-class cvvdp_ml_dpool_sal(cvvdp_ml):
+class cvvdp_ml_dpool_sal(cvvdp_ml_base):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
@@ -1115,7 +1129,82 @@ class cvvdp_ml_dpool_sal(cvvdp_ml):
         assert(not Q_JOD.isnan())
         return Q_JOD
 
+register_metric( cvvdp_ml_dpool_sal )
 
+
+# Polynomial regression
+class cvvdp_ml_poly_reg(cvvdp_ml_base):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+
+        self.set_device( device )
+
+        N_v = 24
+        N = N_v*2 + round(N_v*(N_v-1)/2)
+        self.poly_k = torch.randn( (1,1,1,N,1), device=device )
+
+        super().__init__(display_name=display_name, display_photometry=display_photometry,
+                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
+                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
+                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+
+    def get_nets_to_load(self):
+        return [] 
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        # features[band][frames,width,height,channels,stat]
+        # disables_features is an array of indices of the stat to be disabled
+
+        # no_channels = features[0].shape[3]
+        # no_frames = features[0].shape[0]
+        no_bands = len(features)
+
+        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+
+        D = torch.as_tensor(10., device=self.device)
+        for bb in range(no_bands):
+
+            #F[frames,width,height,channels,stat]
+            f = features[bb]
+            
+            # Variance into std
+            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+
+            if self.disabled_features is not None:
+                f[:, :, :, :, self.disabled_features] = 0  
+
+            f_TR = f.flatten( start_dim=3 )
+
+            # Polynomial basis (2nd order only)
+
+            # Mixed products
+            N_v = f_TR.shape[3]
+            N = round(N_v*(N_v-1)/2)
+            f_TR_mixed = torch.empty( (f_TR.shape[0], f_TR.shape[1], f_TR.shape[2], N), device=self.device)
+            pp = 0
+            for rr in range(N_v):
+                for cc in range(rr+1,N_v):
+                    f_TR_mixed[:,:,:,pp] = f_TR[:,:,:,rr] * f_TR[:,:,:,cc]
+                    pp += 1
+
+            f_poly = torch.cat( (f_TR, f_TR_mixed, f_TR**2), dim=3 )
+
+            D -= F.relu( self.spatiotemporal_pooling( torch.matmul( f_poly[:,:,:,None,:], self.poly_k ) ) )
+
+        assert(not D.isnan())
+        return D
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(-1).mean()
+
+register_metric( cvvdp_ml_poly_reg )
 
 # Adds an attention module to the cvvdp_ml
 class cvvdp_ml_att_sim_TR(cvvdp_ml_dis_TR):
@@ -1193,6 +1282,9 @@ class cvvdp_ml_att_sim_TR(cvvdp_ml_dis_TR):
 
     def spatiotemporal_pooling(self, D_all):
         return D_all.view(-1).mean()
+
+register_metric( cvvdp_ml_att_sim_TR )
+
 
 
 # Adds an attention module to the cvvdp_ml
@@ -1278,8 +1370,11 @@ class cvvdp_ml_att_sim_TR_v2(cvvdp_ml_sim_TR):
     def spatiotemporal_pooling(self, D_all):
         return D_all.view(-1).mean()
 
+register_metric( cvvdp_ml_att_sim_TR_v2 )
+
+
 # Adds a masking module to the cvvdp_ml
-class cvvdp_ml_masking_sim(cvvdp_ml):
+class cvvdp_ml_masking_sim(cvvdp_ml_trd):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
@@ -1352,6 +1447,9 @@ class cvvdp_ml_masking_sim(cvvdp_ml):
 
     def spatiotemporal_pooling(self, D_all):
         return D_all.view(-1).mean()
+
+register_metric( cvvdp_ml_masking_sim )
+
 
 # Adds a recurrent network to pool visual differences over time
 class cvvdp_ml_recur(cvvdp_ml_att):
@@ -1567,6 +1665,8 @@ class cvvdp_ml_transformer(cvvdp_ml):
 
         return Q_JOD
 
+register_metric( cvvdp_ml_transformer )
+
 
 class RegressionTransformerPositionalEmbedding(nn.Module):
     def __init__(self,
@@ -1676,6 +1776,8 @@ class cvvdp_ml_transformer_positional_embedding(cvvdp_ml_base):
             Q_JOD -= delta.mean()
 
         return Q_JOD
+
+register_metric( cvvdp_ml_transformer_positional_embedding )
 
 
 
@@ -1834,3 +1936,5 @@ class cvvdp_ml_transformer_bands(cvvdp_ml_base):
         Q_JOD -= delta.mean()
 
         return Q_JOD
+
+register_metric( cvvdp_ml_transformer_bands )
