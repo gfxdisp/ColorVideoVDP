@@ -24,7 +24,7 @@ from torchvision.transforms import GaussianBlur
 ## This is due to the 'reflect' padding in the Gaussian blur in torchvision.transforms
 ## The issue is resolved by using the custom Gaussian blur with 'replicate' padding in the cvvdp library
 
-config_path_debug = ['./pycvvdp/vvdp_data_debug']
+config_path_debug = ['./pycvvdp/vvdp_data_debug/cvvdp_mult_mutual_new']
 config_path_original= ['./pycvvdp/vvdp_data']   
 
 ## if the padding type is 'torch_gaussian_blur', the optimization with 'adam' will fail in 'cuda' environment
@@ -47,8 +47,8 @@ if device.type == "cpu":
     # torch.use_deterministic_algorithms(True)
 elif device.type == "cuda":
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    torch.use_deterministic_algorithms(True)
-    torch.autograd.set_detect_anomaly(True)
+    # torch.use_deterministic_algorithms(True)
+    # torch.autograd.set_detect_anomaly(True)
 
 debug = False
 save_results = False
