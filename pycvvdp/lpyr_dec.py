@@ -350,6 +350,7 @@ class lpyr_dec_2(lpyr_dec):
         if self.keep_gaussian:
             self.gbands = gpyr        
 
+        return lpyr, gpyr
 
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
 class weber_contrast_pyr(lpyr_dec):

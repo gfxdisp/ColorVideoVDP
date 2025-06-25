@@ -1144,5 +1144,69 @@ class cvvdp(vq_metric):
         # fig.show()
         # plt.waitforbuttonpress()        
         
+    # Visualize the local contrast pyramid
+    def visualize_lpyr(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, met_colorspace='DKLd65'):
+        vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        vid_sz = vid_source.get_video_size() # H, W, F
+        height, width, N_frames = vid_sz
+        if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+            if self.contrast.startswith("weber"):
+                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+            elif self.contrast.startswith("log"):
+                self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+            else:
+                raise RuntimeError( f"Unknown contrast {self.contrast}" )    
+        R = torch.empty((1, 6, 1, height, width), device=self.device)
+        if self.contrast=="log":
+            met_colorspace='logLMS_DKLd65'
+        else:
+            met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+        R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+        R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+        B_bands, L_bkg_pyr = self.lpyr.decompose(R[0,...])
 
+        test_pyr = []
+        ref_pyr = []
+        for bb in range(self.lpyr.get_band_count()):  # For each spatial frequency band
+            B_bb = self.lpyr.get_band(B_bands, bb) 
+            test_pyr.append(B_bb[0::2,...]) # Test
+            ref_pyr.append(B_bb[1::2,...]) # Reference
+
+        return test_pyr, ref_pyr
+    
+    # Visualize the pyramids
+    def visualize_pyr(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, keep_gaussian=False, met_colorspace='DKLd65'):
+        vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        vid_sz = vid_source.get_video_size() # H, W, F
+        height, width, N_frames = vid_sz
+        if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+            self.lpyr = lpyr_dec_2(width, height, self.pix_per_deg, self.device, keep_gaussian=keep_gaussian)
+        R = torch.empty((1, 6, 1, height, width), device=self.device)
+        if self.contrast=="log":
+            met_colorspace='logLMS_DKLd65'
+        else:
+            met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+        R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+        R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+        
+        _, _ = self.lpyr.decompose(R[0,...])
+
+        return self.lpyr
+
+    # Visualize the color-encoded frame
+    def visualize_encoded_frame(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, keep_gaussian=False, met_colorspace='DKLd65'):
+        vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        vid_sz = vid_source.get_video_size() # H, W, F
+        height, width, N_frames = vid_sz
+        if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+            self.lpyr = lpyr_dec_2(width, height, self.pix_per_deg, self.device, keep_gaussian=keep_gaussian)
+        R = torch.empty((1, 6, 1, height, width), device=self.device)
+        if self.contrast=="log":
+            met_colorspace='logLMS_DKLd65'
+        else:
+            met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+        R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+        R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+        
+        return R[0,...]
 
