@@ -244,6 +244,16 @@
     "max_luminance": 1000,   
     "contrast": 1000,
     "E_ambient": 0,
+    "source": "none" 
+},
+
+  "standard_test_4k": {
+    "name": "30-inch 4K monitor, peak luminance 200 cd/m^2, viewed under office light levels (250 lux), seen from 2 x display height", 
+    "resolution": [3840, 2160], 
+    "viewing_distance_meters":  0.7472,  
+    "diagonal_size_inches": 30,   
+    "max_luminance": 200,   
+    "contrast": 1000000,
+    "E_ambient": 250,
     "source": "none" }
- 
 }

@@ -35,7 +35,7 @@ XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986), \
 def lms2006_to_dkld65( img ):
     M = torch.as_tensor( LMS2006_to_DKLd65, dtype=img.dtype, device=img.device)
 
-    ABC = torch.empty_like(img)  # ABC represents any linear colour space
+    ABC = torch.empty_like(img)  # ABC represents any linear color space
     # To avoid permute (slow), perform separate dot products
     for cc in range(3):
         ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
@@ -117,7 +117,7 @@ class vvdp_display_photometry:
         if not source_colorspace in colorspaces:
             raise RuntimeError( "Unknown color space: \"" + source_colorspace + "\"" )
 
-        if 'RGB2X' in colorspaces[source_colorspace]: # luminance will not have colour space primaries
+        if 'RGB2X' in colorspaces[source_colorspace]: # luminance will not have color space primaries
             self.rgb2xyz_list = [colorspaces[source_colorspace]['RGB2X'], colorspaces[source_colorspace]['RGB2Y'], colorspaces[source_colorspace]['RGB2Z'] ]
         self.EOTF = colorspaces[source_colorspace]['EOTF']
 
@@ -200,8 +200,8 @@ class vvdp_display_photometry:
 
         return obj
 
-    # Transform content from its source colour space (typically display-encoded RGB) into 
-    # the colorimetric values of light emmitted from the display and then into the target colour
+    # Transform content from its source color space (typically display-encoded RGB) into 
+    # the colorimetric values of light emmitted from the display and then into the target color
     # space used by a metric.
     def source_2_target_colourspace(self, I_src, target_colorspace):        
 
@@ -231,15 +231,15 @@ class vvdp_display_photometry:
 
             is_color = (I_src.shape[-4]==3)
             if is_color:
-                I_target = self.linear_2_target_colourspace(I_lin, target_colorspace)
+                I_target = self.linear_2_target_colorspace(I_lin, target_colorspace)
             else:
                 I_target = I_lin
 
         return I_target
 
-    # Transform frame/image from native linear colour space to the target colour space.
+    # Transform frame/image from native linear color space to the target color space.
     # Internal, do not use. 
-    def linear_2_target_colourspace(self, RGB_lin, target_colorspace):        
+    def linear_2_target_colorspace(self, RGB_lin, target_colorspace):        
         if hasattr(self, "rgb2xyz"):
             rgb2xyz = self.rgb2xyz
         else:
@@ -264,7 +264,7 @@ class vvdp_display_photometry:
             else:
                 raise RuntimeError( f"Unknown colorspace '{target_colorspace}'" )
 
-            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear colour space
+            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear color space
             # To avoid permute (slow), perform separate dot products
             for cc in range(3):
                 ABC[...,cc,:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
@@ -293,7 +293,7 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
     #         office
     # k_refl - [0.005] reflectivity of the display screen
-    # exposure - [1] exposure of the content. The colour in the linear colour space is multipled by this constant.
+    # exposure - [1] exposure of the content. The color in the linear color space is multipled by this constant.
     #
     # For more details on the GOG display model, see:
     # https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2016perceptual_display.pdf
@@ -338,7 +338,10 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
             V = V.clamp( 0., 1. )
             
         Y_black, Y_refl = self.get_black_level()
-                
+
+        import pdb
+        pdb.set_trace()
+
         if self.EOTF=='sRGB':
             if self.exposure == 1:
                 L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black + Y_refl
