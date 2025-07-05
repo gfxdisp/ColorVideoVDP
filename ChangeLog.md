@@ -1,3 +1,6 @@
+# v0.4.4 (?)
+  - Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).
+
 # v0.4.3 (30/05/2025)
 * Interpolation of the CSF is a bit faster now (thanks to Dongyeon)
 * Fixed: Updated broken `calibration/*.py` scripts. Now they use `--config-paths` instead of discontinued `--config-dir`.
