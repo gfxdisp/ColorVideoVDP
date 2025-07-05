@@ -1210,3 +1210,5 @@ class cvvdp(vq_metric):
         
         return R[0,...]
 
+
+register_metric( cvvdp )

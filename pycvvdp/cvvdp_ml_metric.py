@@ -96,15 +96,12 @@ class cvvdp_ml_base(cvvdp):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+    def __init__(self, random_init = False, disabled_features=None, **kwargs):
 
         self.random_init = random_init
         self.disabled_features = disabled_features        
 
-        super().__init__(display_name=display_name, display_photometry=display_photometry,
-                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
-                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
-                         dump_channels=dump_channels, gpu_mem=gpu_mem)
+        super().__init__(**kwargs)
 
     def set_device( self, device ):
         if hasattr( self, "device" ):
@@ -448,7 +445,7 @@ class cvvdp_ml(cvvdp_ml_base):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+    def __init__(self, device=None, **kwargs):
 
         self.set_device( device )
 
@@ -459,11 +456,7 @@ class cvvdp_ml(cvvdp_ml_base):
         stats_no = 2 # 6 extracted stats - for now do 2
         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
-        super().__init__(display_name=display_name, display_photometry=display_photometry,
-                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
-                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
-                         dump_channels=dump_channels, gpu_mem=gpu_mem,
-                         random_init=random_init, disabled_features=disabled_features)
+        super().__init__(device=device, **kwargs)
 
     # So that we can override in the super classes
     def get_nets_to_load(self):
@@ -510,6 +503,9 @@ class cvvdp_ml(cvvdp_ml_base):
 
         assert(not Q_JOD.isnan())
         return Q_JOD
+
+    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
+        pass # Not implemented
 
 
 """
@@ -973,12 +969,12 @@ class cvvdp_ml_sim_TR(cvvdp_ml_base):
 register_metric( cvvdp_ml_sim_TR )
 
 
-# Adds an attention module to the cvvdp_ml
-class cvvdp_ml_att(cvvdp_ml_trd):
+# Adds a saliency module to the cvvdp_ml
+class cvvdp_ml_saliency(cvvdp_ml_trd):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
+    def __init__(self, config_paths=[], device=None, **kwargs):
 
         self.set_device( device )
 
@@ -989,10 +985,11 @@ class cvvdp_ml_att(cvvdp_ml_trd):
         stats_no = 4 # T, T_var, R, R_var
         self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
-        super().__init__(display_name=display_name, display_photometry=display_photometry,
-                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
-                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
-                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
+        path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_saliency")
+        config_paths.append( path )
+
+
+        super().__init__(config_paths=config_paths, device=device, **kwargs)
 
     def get_nets_to_load(self):
         return [ 'feature_net', 'att_net' ]
@@ -1048,7 +1045,7 @@ class cvvdp_ml_att(cvvdp_ml_trd):
         return D_all.view(-1).mean()
     
 
-register_metric( cvvdp_ml_att )
+register_metric( cvvdp_ml_saliency )
 
 # Mimics cvvdp pooling of differences but also weights the final predictions by learned saliency
 class cvvdp_ml_dpool_sal(cvvdp_ml_base):
@@ -1450,37 +1447,6 @@ class cvvdp_ml_masking_sim(cvvdp_ml_trd):
 
 register_metric( cvvdp_ml_masking_sim )
 
-
-# Adds a recurrent network to pool visual differences over time
-class cvvdp_ml_recur(cvvdp_ml_att):
-
-    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
-    # random_init - do not load NN from a checkpoint file, use a random initialization
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None, random_init = False, disabled_features=None):
-
-        dropout = 0.2
-        input_dims_pooling = 1
-        hidden_dims = 4
-        num_layers = 2
-        proj_size = 1
-        self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)
-
-        super().__init__(display_name=display_name, display_photometry=display_photometry,
-                         display_geometry=display_geometry, config_paths=config_paths, heatmap=heatmap,
-                         quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
-                         dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
-
-
-    def get_nets_to_load(self):
-        return [ 'feature_net', 'att_net', 'pooling_net' ]
-
-    def spatiotemporal_pooling(self, D_all):
-        # D_all[frames,width,height]
-        D = D_all.view( D_all.shape[0], -1, 1 )
-        D_temp, _ = self.pooling_net(D)  # Pool over time, individually for each spatial location
-        return D_temp[-1,...].view(-1).mean()  # Spatial pooling
-
-
 # Adds a recurrent network to pool visual differences over time
 class cvvdp_ml_recur_lstm(cvvdp_ml_base):
 
@@ -1620,17 +1586,21 @@ class cvvdp_ml_transformer(cvvdp_ml):
     def __init__(self,
                  patch_size=(9, 16),
                  dim=256,
+                 config_paths=[],
                  **kwargs):
         
         self.set_device( kwargs.get('device') )
         
+        path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_transformer")
+        config_paths.append( path )
+
         self.transformer_net = RegressionTransformer(
             in_channels=24,  # TR(4*4) + D(2*4)
             patch_size=patch_size,
             dim=dim
         ).to(self.device)
 
-        super().__init__(**kwargs)
+        super().__init__(config_paths=config_paths, **kwargs)
 
     def get_nets_to_load(self):
         return ['transformer_net']

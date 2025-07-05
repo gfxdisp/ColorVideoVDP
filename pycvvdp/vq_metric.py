@@ -62,6 +62,13 @@ class vq_metric:
     def set_base_fname( self, base_fname ):
         self.base_fname = base_fname
 
+    '''
+    Some metrics can be switch between training and inference modes.
+    '''
+    def train(self, do_training=True):
+        pass
+
+
 vq_metric_dict = dict()
 
 def register_metric( metric_class ):
