@@ -237,9 +237,9 @@ def run_on_args(args):
         if not mm in vq_metric_dict:
             raise RuntimeError( f"Unknown metric {mm}")
         metric_class = vq_metric_dict[mm]
+
         # The code below will figure out and pass only the parameters that a metric needs
         constructor_args = inspect.getfullargspec(metric_class.__init__)[0]
-
         all_bases = list(metric_class.__bases__)
         for bc in all_bases:
             constructor_args.extend( inspect.getfullargspec(bc.__init__)[0] )

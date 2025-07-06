@@ -8,11 +8,19 @@ The code can run one of the following metrics (selected with `--metrics` or `-m`
 
 * cvvdp-ml-saliency [experimental]
 
-  The extended version of ColorVideoVDP with a machine-learning based regressor and a saliency model, as explained in the [ICME paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/hammou2025_ICME_GC_ColorVideoVDP_ML.pdf)
+  The extended version of ColorVideoVDP with a machine-learning based regressor and a saliency model, as explained in the [ICME paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/hammou2025_ICME_GC_ColorVideoVDP_ML.pdf).
+
+  This metric has been calibrated to perform well on the challenge dataset - video streaming distortions due to reduce bit-rate and resolution in both SDR and HDR content. The model was ranked the 3rd in the challenge, performing slightly worse than `cvvdp-ml-transformer`. 
+
+  We do not recommend using this metric for optimization as it results a highly irregular loss landscape. It may also not generalize well to new (unseen) distortions. 
 
 * cvvdp-ml-transformer [experimental]
 
   The extended version of ColorVideoVDP with a transformer, as explained in the [ICME paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/hammou2025_ICME_GC_ColorVideoVDP_ML.pdf)
+
+  This metric has been calibrated to perform well on the challenge dataset - video streaming distortions due to reduce bit-rate and resolution in both SDR and HDR content. The model was ranked the 2nd in the challenge.
+
+  We do not recommend using this metric for optimization as it results a highly irregular loss landscape. It may also not generalize well to new (unseen) distortions. 
 
 * psnr-rgb
 

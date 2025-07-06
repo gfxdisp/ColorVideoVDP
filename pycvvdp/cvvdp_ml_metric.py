@@ -970,7 +970,7 @@ register_metric( cvvdp_ml_sim_TR )
 
 
 # Adds a saliency module to the cvvdp_ml
-class cvvdp_ml_saliency(cvvdp_ml_trd):
+class cvvdp_ml_saliency(cvvdp_ml):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
@@ -1040,6 +1040,9 @@ class cvvdp_ml_saliency(cvvdp_ml_trd):
 
         assert(not Q_JOD.isnan())
         return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-Saliency"
 
     def spatiotemporal_pooling(self, D_all):
         return D_all.view(-1).mean()
@@ -1634,6 +1637,10 @@ class cvvdp_ml_transformer(cvvdp_ml):
             Q_JOD -= delta.mean()
 
         return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-Tramsformer"
+
 
 register_metric( cvvdp_ml_transformer )
 
