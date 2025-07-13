@@ -59,6 +59,10 @@ import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
+from huggingface_hub import hf_hub_download
+os.environ["HF_HUB_TOKEN"] = ""  # empty string disables token
+
+
 
 class cvvdp_feature_pooling(torch.nn.Module):
 
@@ -988,6 +992,13 @@ class cvvdp_ml_saliency(cvvdp_ml):
         path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_saliency")
         config_paths.append( path )
 
+        # Downloads the file if not cached; returns local path to cached file
+        model_path = hf_hub_download(
+            repo_id="gfxdisp/cvvdp_ml",
+            filename="cvvdp_ml_saliency/cvvdp.ckpt"
+        )
+        config_paths.append(os.path.dirname(model_path))
+
 
         super().__init__(config_paths=config_paths, device=device, **kwargs)
 
@@ -1596,6 +1607,13 @@ class cvvdp_ml_transformer(cvvdp_ml):
         
         path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_transformer")
         config_paths.append( path )
+
+        # Downloads the file if not cached; returns local path to cached file
+        model_path = hf_hub_download(
+            repo_id="gfxdisp/cvvdp_ml",
+            filename="cvvdp_ml_transformer/cvvdp.ckpt"
+        )
+        config_paths.append(os.path.dirname(model_path))
 
         self.transformer_net = RegressionTransformer(
             in_channels=24,  # TR(4*4) + D(2*4)
