@@ -25,6 +25,8 @@ The metric is explained in detail in:
 
 If you use the metric in your research, please cite the paper above. 
 
+The repository also contains code for other metrics, such as PU-PSNR, or ColorVideoVDP-ML. See [metrics.md](/metrics.md) for more information.
+
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:
 ```bash
@@ -161,7 +163,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 ## Reporting metric results
 
 When reporting the results of the metric, please include the string returned by the metric, such as:
-`"ColorVideoVDP v0.4.1, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
+`"ColorVideoVDP v0.5.0, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
 This is to ensure that you provide enough details to reproduce your results. 
 
 ## Predicted quality scores
@@ -301,7 +303,7 @@ When reporting a problem, run `cvvdp` with `--verbose` argument and paste the en
 
 # Release notes
 * v0.5.0 (17/June/2025)
-  - Added two new metrics: cvvdp-ml-saliency and cvvdp-ml-transformer. See [metrics.md](./metrics.md) for more info. 
+  - Added two new metrics: `cvvdp-ml-saliency` and `cvvdp-ml-transformer`. See [metrics.md](./metrics.md) for more info. 
   - Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).
 
 * v0.4.3 (30/May/2025)
