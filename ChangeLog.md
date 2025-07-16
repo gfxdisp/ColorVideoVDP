@@ -1,5 +1,6 @@
-# v0.4.4 (?)
-  - Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).
+# v0.5.0 (16/07/2025)
+* Added two new metrics: cvvdp-ml-saliency and cvvdp-ml-transformer. See [metrics.md](./metrics.md) for more info. 
+* Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).
 
 # v0.4.3 (30/05/2025)
 * Interpolation of the CSF is a bit faster now (thanks to Dongyeon)

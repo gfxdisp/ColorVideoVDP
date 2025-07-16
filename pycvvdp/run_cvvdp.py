@@ -413,8 +413,11 @@ def run_on_args(args):
                     dest_name = os.path.join(out_dir, base + "_distogram.png")                    
                     logging.info("Writing distogram '" + dest_name + "' ...")
                     jod_max = args.distogram
-                    mm.export_distogram( stats, dest_name, jod_max=jod_max )
-
+                    try: 
+                        mm.export_distogram( stats, dest_name, jod_max=jod_max )
+                    except NotImplementedError as e:
+                        logging.warning( f'Metric {mm.short_name()} cannot generate distograms' )
+                    
                 del stats
 
         if not res_fh is None:
