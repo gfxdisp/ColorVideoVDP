@@ -27,7 +27,7 @@ def vis_tonemap(b, dr):
     b_max = torch.max(b)
     
     if b_max-b_min < dr: # No tone-mapping needed
-        tmo_img = (b/(b_max-b_min+1e03)-b_min)*dr + (1-dr)/2
+        tmo_img = (b-b_min)/(b_max-b_min+1e-3)*dr + (1-dr)/2
         return tmo_img
 
     b_scale = torch.linspace( b_min, b_max, 1024, device=b.device)
