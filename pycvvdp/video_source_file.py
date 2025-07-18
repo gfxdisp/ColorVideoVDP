@@ -601,7 +601,7 @@ class video_source_image_frames(video_source_dm):
     def get_video_size(self):
         if self.video_size is None:
             # Need to load first image to get the dimensions
-            self.img_cache = load_image_as_array(ff_name)
+            self.img_cache = load_image_as_array(self.ff_name)
             self.video_size = (self.img_cache.shape[0], self.img_cache.shape[1], self.N)
 
         return self.video_size
