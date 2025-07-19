@@ -5,15 +5,15 @@ with open("README.md", "r", encoding="utf8") as fh:
 
 setup(
     name='pycvvdp',
-    version='0.4.0',
+    version='0.5.0',
     description='PyTorch code for \'ColorVideoVDP\': a full-reference' \
                 'visual quality metric that predicts the perceptual' \
                 'difference between pairs of images or videos.',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    license='Creative Commons Attribution-NonCommercial 4.0 International Public License',
+    license='MIT License',
     packages=['pycvvdp', 'pycvvdp/third_party'],
-    package_data={'pycvvdp': ['csf_cache/*.mat', 'vvdp_data/*.json']},
+    package_data={'pycvvdp': ['csf_cache/*.mat', 'vvdp_data/*.json', 'vvdp_data/README.md', 'vvdp_data/cvvdp_ml_saliency/*.json', 'vvdp_data/cvvdp_ml_transformer/*.json']},
     include_package_data=True,
     install_requires=['numpy>=1.17.3',
                       'scipy>=1.10.0',
@@ -22,7 +22,10 @@ setup(
                       'torchvision>=0.9.2',
                       'ffmpeg>=1.4',
                       'imageio>=2.19.5',
-                      'matplotlib>=3.8.0'
+                      'matplotlib>=3.8.0',
+                      'huggingface_hub>=0.33.4',
+                      'einops>=0.8.1',
+                      'PyEXR>=0.3.10'
                      ],
 
     classifiers=[

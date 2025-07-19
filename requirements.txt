@@ -8,3 +8,4 @@ imageio>=2.19.5
 matplotlib>=3.8.0
 PyEXR>=0.3.10
 einops>=0.8.1
+huggingface_hub>=0.33.4

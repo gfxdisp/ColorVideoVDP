@@ -25,6 +25,8 @@ The metric is explained in detail in:
 
 If you use the metric in your research, please cite the paper above. 
 
+# Other metrics: ColorVideoVDP-ML, PU-PSNR
+
 The repository also contains code for other metrics, such as PU-PSNR, or ColorVideoVDP-ML. See [metrics.md](/metrics.md) for more information.
 
 ## PyTorch quickstart
