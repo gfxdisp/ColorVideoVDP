@@ -306,7 +306,7 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
-* v0.5.0 (17/June/2025)
+* v0.5.0 (20/June/2025)
   - Added two new metrics: `cvvdp-ml-saliency` and `cvvdp-ml-transformer`. See [metrics.md](./metrics.md) for more info. 
   - Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).
 
