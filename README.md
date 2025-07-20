@@ -1,6 +1,6 @@
 # ColorVideoVDP: A visible difference predictor for color images and videos
 
-[Web page](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/) | [Paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/mantiuk2024_ColorVideoVDP.pdf)
+[Web page](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/) | [Paper](https://doi.org/10.1145/3658144)
 
 ![ColorVideoVDP logo](imgs/cvvdp_logo_256.png) ![ColorVideoVDP graphical abstract](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/2024_cvvdp_graph_abstract_larger.gif)  [![](https://www.replicabilitystamp.org/logo/Reproducibility-small.png)](http://www.replicabilitystamp.org#https-github-com-gfxdisp-colorvideovdp)
 
@@ -48,17 +48,26 @@ pip install pynvml
 conda install ffmpeg conda-forge::freeimage
 ```
 
-5. Obtain the ColourVDP codebase, by cloning the repository:
+5a. Install from sources
+
+Obtain the ColourVDP codebase, by cloning the repository:
 ```bash
 git clone git@github.com:gfxdisp/ColorVideoVDP.git   # skip if a .zip is provided or you use Github GUI
 ```
 
-6. Finally, install ColorVideoVDP with PyPI:
+Install ColorVideoVDP with PyPI:
 ```bash
 cd ColorVideoVDP
 pip install -e .
 ```
 *Note:* The "-e/--editable" option to `pip` is optional and should be used only if you intend to change the ColorVideoVDP code.
+
+5b. Alternatively, you can install ColorVideoVDP from a PIP package:
+```bash
+pip install cvvdp
+```
+*Note:* If you skip the steps 1-4 and directly install from the pip package, ColorVideoVDP may still work, but will not use CUDA acceleration, and may be missing ffpmeg or FreeImage libraries. 
+
 
 After installation, run `cvvdp` directly from the command line:
 
@@ -306,6 +315,9 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.5.1 (20/June/2025)
+  - Released as a PIP package.
+
 * v0.5.0 (20/June/2025)
   - Added two new metrics: `cvvdp-ml-saliency` and `cvvdp-ml-transformer`. See [metrics.md](./metrics.md) for more info. 
   - Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).

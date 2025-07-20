@@ -1,9 +1,12 @@
 [project]
-name = "pycvvdp"
-version = "0.5.0"
+name = "cvvdp"
+version = "0.5.1"
 description = "PyTorch code for 'ColorVideoVDP': a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos."
 readme = "README.md"
 license = "MIT"
+maintainers = [
+  { name="Rafał Mantiuk", email="mantiuk@gmail.com" },
+]
 requires-python = ">=3.8"
 classifiers = [
    "Development Status :: 3 - Alpha",
@@ -43,3 +46,7 @@ pycvvdp = [
    "vvdp_data/cvvdp_ml_saliency/*.json",
    "vvdp_data/cvvdp_ml_transformer/*.json",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gfxdisp/ColorVideoVDP"
+Issues = "https://github.com/gfxdisp/ColorVideoVDP/issues"
