@@ -214,11 +214,13 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 In addition to the single-valued quality scored in the JOD units, ColorVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
 * `supra-threshold` - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
 * `threshold` - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
-* `raw` - the difference values between 0 and 10 will be mapped to back to white
+* `raw` - the difference values between 0 and 10 will be mapped to 0-1 range (black to white).
 
 The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD degradation to use in the visualization. The default is 10.
 
-Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
+The `--dump-channels` arguments outputs intermediate stages of the ColorVideoVDP processing pipeline. Jump to timestamp 27:02 in [this Webinar](https://doi.org/10.52843/cassyni.89170n) for an explanation what the exported videos represent. The available options are `temporal`, `lpyr`, and `difference`.
+
+All visualization files will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
 
 ## Configuration files
 
