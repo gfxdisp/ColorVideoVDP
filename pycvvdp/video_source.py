@@ -10,8 +10,8 @@ from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 #from pycvvdp.colorspace import ColorTransform
 
 """
-fvvdp_video_source_* objects are used to supply test/reference frames to ColorVideoVDP. 
-Those could be comming from memory or files. The subclasses of this abstract class implement
+video_source_* objects are used to supply test/reference frames to ColorVideoVDP. 
+Those could be coming from memory or files. The subclasses of this abstract class implement
 reading the frames and converting them to the approprtate format. 
 """
 class video_source:
@@ -24,7 +24,7 @@ class video_source:
 
     # Return the frame rate of the video
     @abstractmethod
-    def get_frames_per_second(self) -> int:
+    def get_frames_per_second(self) -> float:
         pass
     
     # Get a test video frame in the selected colorspace. See display_model.py->linear_2_target_colorspace
@@ -70,6 +70,43 @@ class video_source:
 
             if not self.warning_shown and f_mean <= 1:
                 logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
+
+    def get_frame_count(self):
+        self.get_video_size()[2]
+
+
+"""
+video_source_filter is used to customize an existing video_source class. All calls are passed via redirection.
+"""
+class video_source_filter(video_source):
+
+    def __init__(self, vs: video_source):
+        self.vs = vs
+
+    # Return (height, width, frames) touple with the resolution and
+    # the length of the video clip.
+    def get_video_size(self):
+        return self.vs.get_video_size()
+
+    # Return the frame rate of the video
+    def get_frames_per_second(self) -> float:
+        return self.vs.get_frames_per_second()
+    
+    # Get a test video frame in the selected colorspace. See display_model.py->linear_2_target_colorspace
+    # for the list of available color spaces. 
+    # You can also pass:
+    # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return 
+    #  display-encoded image (e.g. sRGB) with the values between 0 and 1. If the input source contains linear
+    #  values (e.g. an HDR image) they will be PU-encoded:
+    # 'display_encoded_01' when the input is 0.005 to 10000, the PU-encoded values are between 0-1
+    # 'display_encoded_100nit' when the input is 100, the PU-encoded value is 1, the values can be >1
+    # 'display_encoded_dmax' when the input is equal display peak luminance, the PU-encoded value is 1, the values can be >1
+    def get_test_frame( self, frame, device, colorspace ) -> Tensor:
+        return self.vs.get_test_frame(frame, device, color_space)
+
+    def get_reference_frame( self, frame, device, colorspace ) -> Tensor:
+        return self.vs.get_reference_frame(frame, device, color_space)
+
 
 
 

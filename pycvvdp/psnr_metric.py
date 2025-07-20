@@ -13,7 +13,7 @@ the ColorVideoVDP metric (see pytorch_examples).
 """
 class psnr_rgb(vq_metric):
 
-    def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None, config_paths=[]):
+    def __init__(self, display_name="standard_4k", display_photometry=None, device=None, config_paths=[]):
         # Use GPU if available
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
@@ -24,8 +24,6 @@ class psnr_rgb(vq_metric):
             self.device = device
 
         self.set_display_model( display_name=display_name, display_photometry=display_photometry, config_paths=config_paths )
-        self.color_space = color_space # input content color space
-
 
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays.
@@ -53,6 +51,7 @@ class psnr_rgb(vq_metric):
     def quality_unit(self):
         return "dB"
 
+register_metric( psnr_rgb )
 
 """
 PU21-PSNR-Y metric. Usage is same as the ColorVideoVDP metric (see pytorch_examples).
@@ -108,6 +107,8 @@ class pu_psnr_y(vq_metric):
     def quality_unit(self):
         return "dB"
 
+register_metric( pu_psnr_y )
+
 
 class pu_psnr_rgb2020(pu_psnr_y):
     def __init__(self, display_name="standard_4k", display_photometry=None, color_space="sRGB", device=None):
@@ -117,3 +118,4 @@ class pu_psnr_rgb2020(pu_psnr_y):
     def short_name(self):
         return "PU21-PSNR-RGB2020"
 
+register_metric( pu_psnr_rgb2020 )

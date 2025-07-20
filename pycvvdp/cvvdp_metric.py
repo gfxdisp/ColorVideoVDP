@@ -56,6 +56,15 @@ from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
 
+# import gc
+# def print_large_tensors():
+#     for obj in gc.get_objects():
+#         try:
+#             if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+#                 print(obj.nelement() * obj.element_size() if len(obj.size()) > 0 else 0, type(obj), obj.size())
+#         except (KeyError, AttributeError):
+#             pass
+
 # A differentiable variant of a power function
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
@@ -82,12 +91,13 @@ def pow_neg( x:Tensor, p ):
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, calibrated_ckpt=None, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=True, dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for training
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
+        self.training_mode = False
 
         assert heatmap in ["threshold", "supra-threshold", "raw", "none", None], "Unknown heatmap type"            
 
@@ -108,8 +118,8 @@ class cvvdp(vq_metric):
         self.nominal_fps = 240
 
         self.load_config(config_paths)
-        if calibrated_ckpt is not None:
-            self.update_from_checkpoint(calibrated_ckpt)
+        # if calibrated_ckpt is not None:
+        #     self.update_from_checkpoint(calibrated_ckpt)
 
         self.dump_channels = dump_channels
         self.heatmap_pyr = None
@@ -184,8 +194,8 @@ class cvvdp(vq_metric):
         self.sigma_tf = torch.as_tensor( parameters['sigma_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.beta_tf = torch.as_tensor( parameters['beta_tf'], device=self.device ) # Temporal filter params, per-channel: Y-sust, rg, vy, Y-trans
         self.baseband_weight = torch.as_tensor( parameters['baseband_weight'], device=self.device )
-        if self.baseband_weight.numel()<4:
-            self.baseband_weight = self.baseband_weight.repeat(4)
+        # if self.baseband_weight.numel()<4:
+        #     self.baseband_weight = self.baseband_weight.repeat(4)
         self.dclamp_type = parameters['dclamp_type']  # clamping mode: soft or hard
         self.d_max = torch.as_tensor( parameters['d_max'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
@@ -235,7 +245,7 @@ class cvvdp(vq_metric):
             self.display_geometry = display_geometry
 
         self.pix_per_deg = self.display_geometry.get_ppd()
-        self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
+        #self.imgaussfilt = utils.ImGaussFilt(0.5 * self.pix_per_deg, self.device)
         self.lpyr = None
 
     '''
@@ -503,7 +513,7 @@ class cvvdp(vq_metric):
         # The model is:  total_mem = a + pix_cnt*(N_frames+filter_len-1)*b + pix_cnt*N_frames*c
         a = 1.6e9
         b = 16
-        c = 320 if not self.use_checkpoints else 1000 # A different value for training
+        c = 320 if not self.training_mode else 800 # A different value for training
 
         max_frames = int(math.floor((mem_avail-a-pix_cnt*(self.filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
 
@@ -1008,8 +1018,8 @@ class cvvdp(vq_metric):
 
         return F, omega_bands
 
-    def short_name(self):
-        return "cvvdp"
+    def full_name(self):
+        return "ColorVideoVDP"
 
     def quality_unit(self):
         return "JOD"
@@ -1022,7 +1032,7 @@ class cvvdp(vq_metric):
             standard_str = f'custom-display: {self.display_name}'
 
         L_black, L_refl = self.display_photometry.get_black_level()
-        return f'"ColorVideoVDP v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
+        return f'"{self.full_name()} v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
                f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
                f'Lblack={L_black:.4g}, Lrefl={L_refl:.4g} [cd/m^2], ({standard_str})"' 
 
@@ -1134,5 +1144,71 @@ class cvvdp(vq_metric):
         # fig.show()
         # plt.waitforbuttonpress()        
         
+    # # Visualize the local contrast pyramid
+    # def visualize_lpyr(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, met_colorspace='DKLd65'):
+    #     vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+    #     vid_sz = vid_source.get_video_size() # H, W, F
+    #     height, width, N_frames = vid_sz
+    #     if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+    #         if self.contrast.startswith("weber"):
+    #             self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+    #         elif self.contrast.startswith("log"):
+    #             self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+    #         else:
+    #             raise RuntimeError( f"Unknown contrast {self.contrast}" )    
+    #     R = torch.empty((1, 6, 1, height, width), device=self.device)
+    #     if self.contrast=="log":
+    #         met_colorspace='logLMS_DKLd65'
+    #     else:
+    #         met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+    #     R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+    #     R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+    #     B_bands, L_bkg_pyr = self.lpyr.decompose(R[0,...])
+
+    #     test_pyr = []
+    #     ref_pyr = []
+    #     for bb in range(self.lpyr.get_band_count()):  # For each spatial frequency band
+    #         B_bb = self.lpyr.get_band(B_bands, bb) 
+    #         test_pyr.append(B_bb[0::2,...]) # Test
+    #         ref_pyr.append(B_bb[1::2,...]) # Reference
+
+    #     return test_pyr, ref_pyr
+    
+    # # Visualize the pyramids
+    # def visualize_pyr(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, keep_gaussian=False, met_colorspace='DKLd65'):
+    #     vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+    #     vid_sz = vid_source.get_video_size() # H, W, F
+    #     height, width, N_frames = vid_sz
+    #     if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+    #         self.lpyr = lpyr_dec_2(width, height, self.pix_per_deg, self.device, keep_gaussian=keep_gaussian)
+    #     R = torch.empty((1, 6, 1, height, width), device=self.device)
+    #     if self.contrast=="log":
+    #         met_colorspace='logLMS_DKLd65'
+    #     else:
+    #         met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+    #     R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+    #     R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+        
+    #     _, _ = self.lpyr.decompose(R[0,...])
+
+    #     return self.lpyr
+
+    # # Visualize the color-encoded frame
+    # def visualize_encoded_frame(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, keep_gaussian=False, met_colorspace='DKLd65'):
+    #     vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+    #     vid_sz = vid_source.get_video_size() # H, W, F
+    #     height, width, N_frames = vid_sz
+    #     if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+    #         self.lpyr = lpyr_dec_2(width, height, self.pix_per_deg, self.device, keep_gaussian=keep_gaussian)
+    #     R = torch.empty((1, 6, 1, height, width), device=self.device)
+    #     if self.contrast=="log":
+    #         met_colorspace='logLMS_DKLd65'
+    #     else:
+    #         met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
+    #     R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+    #     R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+        
+    #     return R[0,...]
 
 
+register_metric( cvvdp )

@@ -61,3 +61,19 @@ class vq_metric:
     '''
     def set_base_fname( self, base_fname ):
         self.base_fname = base_fname
+
+    '''
+    Some metrics can be switched between training and inference modes.
+    '''
+    def train(self, do_training=True):
+        pass
+
+    def short_name(self):
+        # Class name but '-' instead of '_'
+        return self.__class__.__name__.replace('_', '-')
+
+
+vq_metric_dict = dict()
+
+def register_metric( metric_class ):
+    vq_metric_dict[metric_class.__name__] = metric_class    

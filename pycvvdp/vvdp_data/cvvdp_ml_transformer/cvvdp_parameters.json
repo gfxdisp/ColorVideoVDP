@@ -1,8 +1,8 @@
 {
-    "version": "0.5.0",
-    "__comment": "The base model.",
-    "calibration_date": "10/01/2024",
-    "internal_model_name": "cvvdp_mult_mutual",
+    "version": "0.1",
+    "__comment": "ColorVideoVDP-ML-Transformer.",
+    "calibration_date": "30/05/2025",
+    "internal_model_name": "cvvdp_ml_transformer",
     "mask_p": 2.264355182647705,
     "mask_c": -0.7954971194267273,
     "pu_dilate": 3,
@@ -58,15 +58,10 @@
         -3.5106418132781982,
         -2.08804988861084
     ],
-    "baseband_weight": [
-        0.0036334486212581396,
-        1.6627724170684814,
-        4.11874532699585,
-        25.25969886779785
-    ],
+    "baseband_weight": 0.9465681910514832,
     "dclamp_type": "soft",
     "d_max": 2.5642454624176025,
-    "image_int": 0.577918291091919,
+    "image_int": 0.907182514667511,
     "Bloch_int": "off",
     "bfilt_duration": 0.4
 }

@@ -179,7 +179,7 @@ class PU():
     Transform absolute linear luminance values to/from the perceptually uniform space.
     This class is intended for adopting image quality metrics to HDR content.
     This is based on the new spatio-chromatic CSF from:
-      Wuerger, S., Ashraf, M., Kim, M., Martinovic, J., P�rez-Ortiz, M., & Mantiuk, R. K. (2020).
+      Wuerger, S., Ashraf, M., Kim, M., Martinovic, J., Perez-Ortiz, M., & Mantiuk, R. K. (2020).
       Spatio-chromatic contrast sensitivity under mesopic and photopic light levels.
       Journal of Vision, 20(4), 23. https://doi.org/10.1167/jov.20.4.23
     The implementation should work for both numpy arrays and torch tensors

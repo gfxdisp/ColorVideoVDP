@@ -11,6 +11,9 @@ import numpy as np
 import torch
 import imageio.v2 as imageio
 import re
+import inspect
+
+from pycvvdp.vq_metric import vq_metric_dict
 
 import pycvvdp
 
@@ -21,7 +24,7 @@ import shlex
 import pycvvdp.utils as utils
 
 from pycvvdp.ssim_metric import ssim_metric
-from pycvvdp.dm_preview import dm_preview_metric
+from pycvvdp.dm_preview_metric import *
 from pycvvdp.dump_channels import DumpChannels
 
 def expand_wildcards(filestrs):
@@ -77,6 +80,9 @@ def np2img(np_srgb, imgfile):
 # Command-line Arguments
 # -----------------------------------
 def parse_args(arg_list=None):
+
+    available_metrics = [mm.replace('_', '-') for mm in vq_metric_dict.keys()] # Use dash in metric names
+
     parser = argparse.ArgumentParser(description="Evaluate ColorVideoVDP on a set of videos")
     parser.add_argument("-t", "--test", type=str, nargs='+', required = False, help="list of test images/videos")
     parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
@@ -90,7 +96,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
-    parser.add_argument("-m", "--metric", choices=['cvvdp', 'pu-psnr-rgb', 'pu-psnr-y', 'ssim', 'dm-preview', 'dm-preview-exr', 'dm-preview-sbs', 'dm-preview-exr-sbs'], nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
+    parser.add_argument("-m", "--metric", choices=available_metrics, nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("--fps", type=float, default=None, help='Frames per second. It will overwrite frame rate stores in the video file. Required when passing an array of image files.')
@@ -115,6 +121,8 @@ def run_on_args(args):
         log_level = logging.DEBUG if args.verbose else logging.INFO
         
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
+
+    args.metric = [mm.replace('-', '_') for mm in args.metric] # We need underscore for class names
 
     if args.verbose:
         import platform
@@ -226,33 +234,37 @@ def run_on_args(args):
         dump_channels = None
 
     for mm in args.metric:
-        if mm == 'cvvdp':
-            fv = pycvvdp.cvvdp( display_photometry=display_photometry,
-                                display_geometry=display_geometry,
-                                heatmap=args.heatmap, 
-                                device=device,
-                                temp_padding=args.temp_padding,
-                                config_paths=args.config_paths,
-                                quiet=args.quiet,
-                                gpu_mem=args.gpu_mem,
-                                dump_channels=dump_channels )
-            metrics.append( fv )
-        elif mm == 'pu-psnr-rgb':
-            if args.heatmap:
-                logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
-            metrics.append( pycvvdp.pu_psnr_rgb2020(device=device) )
-        elif mm == 'pu-psnr-y':
-            if args.heatmap:
-                logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
-            metrics.append( pycvvdp.pu_psnr_y(device=device) )
-        elif mm == 'ssim':
-            if args.heatmap:
-                logging.warning( f'Skipping heatmap as it is not supported by {mm}' )
-            metrics.append( ssim_metric(device=device) )
-        elif mm.startswith( 'dm-preview' ):
-            metrics.append( dm_preview_metric(output_exr=("exr" in mm), side_by_side=("sbs" in mm), device=device, verbose=args.verbose) )
-        else:
+        if not mm in vq_metric_dict:
             raise RuntimeError( f"Unknown metric {mm}")
+        metric_class = vq_metric_dict[mm]
+
+        # The code below will figure out and pass only the parameters that a metric needs
+        constructor_args = inspect.getfullargspec(metric_class.__init__)[0]
+        all_bases = list(metric_class.__bases__)
+        for bc in all_bases:
+            constructor_args.extend( inspect.getfullargspec(bc.__init__)[0] )
+            all_bases.extend( list(bc.__bases__) )
+
+        met_args = {}
+        if 'display_photometry' in constructor_args:
+            met_args['display_photometry'] = display_photometry
+        if 'display_geometry' in constructor_args:
+            met_args['display_geometry'] = display_geometry
+        if 'device' in constructor_args:
+            met_args['device'] = device        
+        if 'heatmap' in constructor_args:
+            met_args['heatmap'] = args.heatmap        
+        if 'temp_padding' in constructor_args:
+            met_args['temp_padding'] = args.temp_padding        
+        if 'config_paths' in constructor_args:
+            met_args['config_paths'] = args.config_paths        
+        if 'gpu_mem' in constructor_args:
+            met_args['gpu_mem'] = args.gpu_mem        
+        if 'dump_channels' in constructor_args:
+            met_args['dump_channels'] = dump_channels        
+        fv = metric_class(**met_args)
+        fv.train(False)
+        metrics.append( fv )
 
         info_str = metrics[-1].get_info_string()
         if not info_str is None:
@@ -337,8 +349,11 @@ def run_on_args(args):
                     dest_name = os.path.join(out_dir, base + "_distogram.png")                    
                     logging.info("Writing distogram '" + dest_name + "' ...")
                     jod_max = args.distogram
-                    mm.export_distogram( stats, dest_name, jod_max=jod_max )
-
+                    try: 
+                        mm.export_distogram( stats, dest_name, jod_max=jod_max )
+                    except NotImplementedError as e:
+                        logging.warning( f'Metric {mm.short_name()} cannot generate distograms' )
+                    
                 del stats
 
         if not res_fh is None:

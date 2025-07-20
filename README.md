@@ -25,6 +25,10 @@ The metric is explained in detail in:
 
 If you use the metric in your research, please cite the paper above. 
 
+# Other metrics: ColorVideoVDP-ML, PU-PSNR
+
+The repository also contains code for other metrics, such as PU-PSNR, or ColorVideoVDP-ML. See [metrics.md](/metrics.md) for more information.
+
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:
 ```bash
@@ -161,7 +165,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 ## Reporting metric results
 
 When reporting the results of the metric, please include the string returned by the metric, such as:
-`"ColorVideoVDP v0.4.1, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
+`"ColorVideoVDP v0.5.0, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
 This is to ensure that you provide enough details to reproduce your results. 
 
 ## Predicted quality scores
@@ -210,11 +214,13 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 In addition to the single-valued quality scored in the JOD units, ColorVideoVDP can generate a heatmap (video or image) and a distogram. The heatmap is generated when `--heatmap` command argument is passed with one of the following options:
 * `supra-threshold` - the difference values between 0 and 3 will be mapped to blue to yellow colors (visualizes large differences)
 * `threshold` - the difference values between 0 and 1 will be mapped to green to red colors (visualizes small differences)
-* `raw` - the difference values between 0 and 10 will be mapped to back to white
+* `raw` - the difference values between 0 and 10 will be mapped to 0-1 range (black to white).
 
 The `--distogram` command line argument can be followed by a floating point value. If present, it will be used as the maximum JOD degradation to use in the visualization. The default is 10.
 
-Both distogram and heatmap will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
+The `--dump-channels` arguments outputs intermediate stages of the ColorVideoVDP processing pipeline. Jump to timestamp 27:02 in [this Webinar](https://doi.org/10.52843/cassyni.89170n) for an explanation what the exported videos represent. The available options are `temporal`, `lpyr`, and `difference`.
+
+All visualization files will be saved in the current directory and the filename will contain the name of the test image/video. To change the directory in which those files are saved, pass `--output-dir` option. 
 
 ## Configuration files
 
@@ -234,12 +240,7 @@ To check which `cvvdp_parameters.json` file is used, run `cvvdp` with `--verbose
 
 ## Other metrics
 
-A command-line argument `--metric` can be used to specify one more more metric to run. The available options are:
-
-* `cvvdp` - ColorVideoVDP
-* `pu-psnr-rgb` - PSNR calculated on PU21-encoded RGB values (see [PU21](https://github.com/gfxdisp/PU21) for more info on PU21 encoding).
-* `pu-psnr-y` - PSNR calculated on PU21-encoded luminance values
-* `dm-preview` or `dm-preview-exr` - a fake metric that outputs either HDR h.265 (.mp4) video (`dm-preview`) or OpenEXR frames (`dm-preview-exr`) with the output of the display model. It can be used to check or debug the display model. Use `--output-dir` to specify the directory in which the files should be written.
+A command-line argument `--metric` can be used to specify one more more metrics to run. Run with `--help` to see the list of available metrics. Those are explained in [metrics.md](./metrics.md).
 
 ## Display model preview
 
@@ -305,6 +306,10 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.5.0 (17/June/2025)
+  - Added two new metrics: `cvvdp-ml-saliency` and `cvvdp-ml-transformer`. See [metrics.md](./metrics.md) for more info. 
+  - Fixed heat map visualization when the test image has very small dynamic range (thanks to Yuta).
+
 * v0.4.3 (30/May/2025)
   - Fixed: Base bands were incorrectly weighted when generating heat maps. 
   - Fixed: Improved Matlab interface - handles negative JODs and video heatmaps (thanks to CaptainS5)

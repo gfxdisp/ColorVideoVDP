@@ -22,7 +22,7 @@ def tensor_to_numpy_image(T):
 """
 A fake metric that writes the output of a display model to either HDR video or OpenEXR images/frames. This is useful for checking and debugging display models. 
 """
-class dm_preview_metric(vq_metric):
+class dm_preview(vq_metric):
 
     def __init__(self, output_exr=False, side_by_side=False, display_name="standard_4k", display_photometry=None, device=None, verbose=False):
         # Use GPU if available
@@ -86,4 +86,21 @@ class dm_preview_metric(vq_metric):
 
     def quality_unit(self):
         return ""
+
+class dm_preview_exr(dm_preview):
+    def __init__(self, **kwargs):
+        super().__init__(output_exr=True, **kwargs)
+
+class dm_preview_sbs(dm_preview):
+    def __init__(self, **kwargs):
+        super().__init__(side_by_side=True, **kwargs)
+
+class dm_preview_exr_sbs(dm_preview):
+    def __init__(self, **kwargs):
+        super().__init__(side_by_side=True, output_exr=True, **kwargs)
+
+register_metric( dm_preview )
+register_metric( dm_preview_sbs )
+register_metric( dm_preview_exr )
+register_metric( dm_preview_exr_sbs )
 
