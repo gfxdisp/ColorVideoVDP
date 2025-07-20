@@ -529,17 +529,18 @@ class cvvdp_ml_saliency(cvvdp_ml):
         self.att_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
         path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_saliency")
-        config_paths.append( path )
+        met_config_paths = config_paths.copy() # We do not want to modify config_path for other metrics
+        met_config_paths.append( path )
 
         # Downloads the file if not cached; returns local path to cached file
         model_path = hf_hub_download(
             repo_id="gfxdisp/cvvdp_ml",
             filename="cvvdp_ml_saliency/cvvdp.ckpt"
         )
-        config_paths.append(os.path.dirname(model_path))
+        met_config_paths.append(os.path.dirname(model_path))
 
 
-        super().__init__(config_paths=config_paths, device=device, **kwargs)
+        super().__init__(config_paths=met_config_paths, device=device, **kwargs)
 
     def get_nets_to_load(self):
         return [ 'feature_net', 'att_net' ]
@@ -666,15 +667,16 @@ class cvvdp_ml_transformer(cvvdp_ml):
         
         self.set_device( kwargs.get('device') )
         
+        met_config_paths = config_paths.copy() # We do not want to modify config_path for other metrics
         path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_transformer")
-        config_paths.append( path )
+        met_config_paths.append( path )
 
         # Downloads the file if not cached; returns local path to cached file
         model_path = hf_hub_download(
             repo_id="gfxdisp/cvvdp_ml",
             filename="cvvdp_ml_transformer/cvvdp.ckpt"
         )
-        config_paths.append(os.path.dirname(model_path))
+        met_config_paths.append(os.path.dirname(model_path))
 
         self.transformer_net = RegressionTransformer(
             in_channels=24,  # TR(4*4) + D(2*4)
@@ -682,7 +684,7 @@ class cvvdp_ml_transformer(cvvdp_ml):
             dim=dim
         ).to(self.device)
 
-        super().__init__(config_paths=config_paths, **kwargs)
+        super().__init__(config_paths=met_config_paths, **kwargs)
 
     def get_nets_to_load(self):
         return ['transformer_net']
