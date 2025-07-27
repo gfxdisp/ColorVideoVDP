@@ -32,7 +32,7 @@ else:
 I_test_both = np.concatenate( (I_test_noise[np.newaxis,...], I_test_blur[np.newaxis,...]), axis=0 )
 I_ref_both = np.concatenate( (I_ref[np.newaxis,...], I_ref[np.newaxis,...]), axis=0 )
 
-metric = pycvvdp.cvvdp(display_name='standard_4k')
+metric = pycvvdp.cvvdp_ml_saliency(display_name='standard_4k')
 
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.

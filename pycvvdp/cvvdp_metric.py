@@ -363,8 +363,8 @@ class cvvdp(vq_metric):
                 #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
-                    sw_buf[0] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
-                    sw_buf[1] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
+                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
+                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
                         # Memory allocated after creating buffers for temporal filters 
@@ -418,7 +418,7 @@ class cvvdp(vq_metric):
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # Images do not have the two last channels
-                R = torch.zeros((1, 8, cur_block_N_frames, height, width), device=self.device)
+                R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
 
                 for cc in range(all_ch): # Iterate over chromatic and temporal channels
                     # 1D filter over time (over frames)

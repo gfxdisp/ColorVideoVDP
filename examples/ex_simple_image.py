@@ -37,6 +37,7 @@ else:
     I_test_blur = utils.imgaussblur(I_ref, sigma)
 
 metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+# metric = pycvvdp.cvvdp_ml_saliency(display_name='standard_4k')
 
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.
