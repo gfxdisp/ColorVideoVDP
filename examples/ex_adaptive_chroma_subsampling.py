@@ -73,6 +73,8 @@ loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW") + 100*reduce_ch
 plt.ion()
 fig, ax = plt.subplots(1, 3, figsize=(18, 6))
 
+# torch.autograd.set_detect_anomaly(True)
+
 for kk in range(1001):
     print( f"Iteration {kk}" )
     optimizer.zero_grad()

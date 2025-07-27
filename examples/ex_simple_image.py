@@ -13,8 +13,8 @@ import pycvvdp
 
 '''
 Results of current version (for reference):
-Noise - Quality: 9.051 JOD
-Blur - Quality: 7.951 JOD
+Noise - Quality: 8.955 JOD
+Blur - Quality: 8.514 JOD
 '''
 
 debug = False

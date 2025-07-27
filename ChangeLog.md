@@ -1,3 +1,9 @@
+# v0.5.2 (?)
+* Added: Batch mode for faster processing
+
+# v0.5.1 (20/07/2025)
+* Fixed missing files in the PIP release
+
 # v0.5.0 (20/07/2025)
 * Added two new metrics: cvvdp-ml-saliency and cvvdp-ml-transformer. See [metrics.md](./metrics.md) for more info. 
 * Fixed: Heat map visualization when the test image has very small dynamic range (thanks to Yuta).

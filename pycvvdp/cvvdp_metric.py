@@ -91,11 +91,11 @@ def pow_neg( x:Tensor, p ):
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=True, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
-        self.use_checkpoints = use_checkpoints # Used for training
+        self.use_checkpoints = use_checkpoints # Used for end-to-end training, these are NOT model checkpoints
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
         self.training_mode = False
 
@@ -292,6 +292,9 @@ class cvvdp(vq_metric):
 
         vid_sz = vid_source.get_video_size() # H, W, F
         height, width, N_frames = vid_sz
+        batch_sz = vid_source.get_batch_size()
+
+        assert batch_sz==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
 
         # 'medium' is a bit slower than 'high' on 3090
         # torch.set_float32_matmul_precision('medium')
@@ -352,7 +355,7 @@ class cvvdp(vq_metric):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
             if is_image:                
-                R = torch.empty((1, 6, 1, height, width), device=self.device)
+                R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
                 R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
                 R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
 
@@ -435,10 +438,10 @@ class cvvdp(vq_metric):
                 Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
 
             if Q_per_ch is None:
-                Q_per_ch = torch.zeros((Q_per_ch_block.shape[0], N_frames, Q_per_ch_block.shape[2]), device=self.device)
+                Q_per_ch = torch.zeros((batch_sz,Q_per_ch_block.shape[1], N_frames, Q_per_ch_block.shape[3]), device=self.device)
             
-            ff_end = ff+Q_per_ch_block.shape[1]
-            Q_per_ch[:,ff:ff_end,:] = Q_per_ch_block  
+            ff_end = ff+Q_per_ch_block.shape[2]
+            Q_per_ch[:,:,ff:ff_end,:] = Q_per_ch_block  
 
             if self.do_heatmap:
                 if self.heatmap == "raw":
@@ -447,7 +450,7 @@ class cvvdp(vq_metric):
                     ref_frame = R[:,0, :, :, :]
                     heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach().type(torch.float16).cpu()
 
-        if self.temp_resample:
+        if self.temp_resample: # This may not be needed anymore
             t_end = N_frames/vid_source.get_frames_per_second() # Video duration in s
             t_org = torch.linspace( 0., t_end, N_frames, device=self.device )
             N_frames_resampled = math.ceil(t_end * self.nominal_fps)
@@ -529,40 +532,40 @@ class cvvdp(vq_metric):
             per_ch_w_all = self.ch_weights
             
         # Weights for the channels: sustained, RG, YV, [transient]
-        per_ch_w = per_ch_w_all[0:no_channels].view(-1,1,1)
+        per_ch_w = per_ch_w_all[0:no_channels].view(1,-1,1,1)
         return per_ch_w
 
 
     # Perform pooling with per-band weights and map to JODs
-    def do_pooling_and_jods(self, Q_per_ch ):
-        # Q_per_ch[channel,frame,sp_band]
+    def do_pooling_and_jods(self, Q_per_ch):
+        # Q_per_ch[batch,channel,frame,sp_band]
 
-        no_channels = Q_per_ch.shape[0]
-        no_frames = Q_per_ch.shape[1]
-        no_bands = Q_per_ch.shape[2]
+        no_channels = Q_per_ch.shape[1]
+        no_frames = Q_per_ch.shape[2]
+        no_bands = Q_per_ch.shape[3]
 
         per_ch_w = self.get_ch_weights( no_channels )
 
         # Weights for the spatial bands
-        per_sband_w = torch.ones( (no_channels,1,no_bands), dtype=torch.float32, device=self.device)
-        per_sband_w[:,0,-1] = self.baseband_weight[0:no_channels]
+        per_sband_w = torch.ones( (1,no_channels,1,no_bands), dtype=torch.float32, device=self.device)
+        per_sband_w[:,:,0,-1] = self.baseband_weight[0:no_channels]
 
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
-        Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=2, normalize=False)  # Sum across spatial channels
+        Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=3, normalize=False)  # Sum across spatial bands
 
         is_image = (no_frames==1)
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
 
         if not self.block_channels is None:
-            Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels                
+            Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels                
         else:
-            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=0, normalize=False)  # Sum across temporal and chromatic channels
+            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels
 
         if is_image:
             Q = Q_tc * t_int
         else:
-            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=1, normalize=True)   # Sum across frames
+            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=2, normalize=True)   # Sum across frames
 
         Q = Q.squeeze()
 
@@ -585,9 +588,10 @@ class cvvdp(vq_metric):
         return Q_JOD
 
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
-        # R[channels,frames,width,height]
+        # R[batch,channels,frames,width,height]
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
+        batch_sz = R.shape[0]
 
         #torch.autograd.set_detect_anomaly(True)
 
@@ -595,7 +599,7 @@ class cvvdp(vq_metric):
         #     R = lms2006_to_dkld65( torch.log10(R.clip(min=1e-5)) )
 
         # Perform Laplacian pyramid decomposition
-        B_bands, L_bkg_pyr = lpyr.decompose(R[0,...])
+        B_bands, L_bkg_pyr = lpyr.decompose(R)
 
         if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
@@ -619,20 +623,20 @@ class cvvdp(vq_metric):
             is_baseband = (bb==(lpyr.get_band_count()-1))
 
             B_bb = lpyr.get_band(B_bands, bb) 
-            T_f = B_bb[0::2,...] # Test
-            R_f = B_bb[1::2,...] # Reference
+            T_f = B_bb[:,0::2,...] # Test
+            R_f = B_bb[:,1::2,...] # Reference
 
             logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
 
             # Compute CSF
             rho = rho_band[bb] # Spatial frequency in cpd
             ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
-            S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+            S = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
             for cc in range(all_ch):
                 tch = 0 if cc<3 else 1  # Sustained or transient
                 cch = cc if cc<3 else 0 # Y, rg, yv
                 # The sensitivity is always extracted for the reference frame
-                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                S[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
             if is_baseband:
                 D = (torch.abs(T_f-R_f) * S)
@@ -641,14 +645,11 @@ class cvvdp(vq_metric):
                 D = self.apply_masking_model(T_f, R_f, S)
 
             if Q_per_ch_block is None:
-                Q_per_ch_block = torch.empty((all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
+                Q_per_ch_block = torch.empty((batch_sz,all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
 
             #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
 
-            Q_per_ch_block[:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
-
-            # if bb>6:
-            #     Q_per_ch_block[:,:,bb] = 0
+            Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
             if self.do_heatmap:
 
@@ -681,14 +682,14 @@ class cvvdp(vq_metric):
 
     def mask_pool(self, C):
         # Cross-channel masking
-        num_ch = C.shape[0]
+        num_ch = C.shape[-4]
         if self.do_xchannel_masking:
             M = torch.empty_like(C)
-            xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+            xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4) )[:num_ch,:]
             for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                M[cc,...] = torch.sum( C * xcm_weights[:,cc], dim=0, keepdim=True )
+                M[:,cc:(cc+1),...] = torch.sum( C * xcm_weights[:,cc].view(1,-1,1,1,1), dim=-4, keepdim=True )
         else:
-            cm_weights = torch.reshape( (2**self.xcm_weights), (4,1,1,1) )[:num_ch,...]
+            cm_weights = torch.reshape( (2**self.xcm_weights), (1,4,1,1,1) )[:,:num_ch,...]
             M = C * cm_weights
         return M
 
@@ -749,10 +750,10 @@ class cvvdp(vq_metric):
         # S - sensitivity
 
         if self.masking_model in [ "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
-            num_ch = T.shape[0]
+            num_ch = T.shape[-4]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
-                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
                 C_t = 1/S
                 T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
                 R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*ch_gain + 1, zero_tens )
@@ -761,7 +762,7 @@ class cvvdp(vq_metric):
                     T_p = T * S
                     R_p = R * S
                 else:
-                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
                     T_p = T * S * ch_gain
                     R_p = R * S * ch_gain
 
@@ -788,7 +789,7 @@ class cvvdp(vq_metric):
 
                 M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
                 p = self.mask_p
-                q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+                q = self.mask_q[0:num_ch].view(1,num_ch,1,1,1)
 
                 M = self.mask_pool(torch.abs(M_mm))
 
@@ -855,7 +856,7 @@ class cvvdp(vq_metric):
                 M = torch.empty_like(M_pu)
                 xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
                 for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                    M[cc,...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
+                    M[:,cc:(cc+1),...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
             else:
                 M = M_pu
 
@@ -892,7 +893,8 @@ class cvvdp(vq_metric):
         # Blur only when the image is larger then the required pad size
         if self.pu_dilate != 0 and M.shape[-2]>self.pu_padsize and M.shape[-1]>self.pu_padsize:
             #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
-            M_pu = self.pu_blur.forward(M) * (10**self.mask_c)
+            H, W = M.shape[-2], M.shape[-1] # We need to reshape because the Gaussian does not work with 5D tensors
+            M_pu = self.pu_blur.forward(M.view(-1,1,H,W)).view( M.shape[0:-2] + (H,W) ) * (10**self.mask_c)
         else:
             M_pu = M * (10**self.mask_c)
         return M_pu
