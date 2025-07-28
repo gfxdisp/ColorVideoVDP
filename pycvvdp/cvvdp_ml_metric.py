@@ -648,7 +648,10 @@ class RegressionTransformer(nn.Module):
             nn.ReLU()
         )
     def forward(self, x):
-        # x: [B, H, W, C]
+        # x: [B, D, H, W, C]
+        
+        B, D, H, W, C = x.shape
+        x = x.reshape(B * D, H, W, C)
         x = x.permute(0, 3, 1, 2)  # [B, C, H, W]
         x = self.patch_embed(x)  # [B, N_patches, dim]
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
@@ -658,7 +661,9 @@ class RegressionTransformer(nn.Module):
         return self.reg_head(cls_feat).squeeze(-1)
     
     def get_heatmap(self, x):
-        # x: [B, H, W, C]
+        # x: [B, D, H, W, C]
+        B, D, H, W, C = x.shape
+        x = x.reshape(B * D, H, W, C)
         x = x.permute(0, 3, 1, 2)  # [B, C, H, W]
         x = self.patch_embed(x)  # [B, N_patches, dim]
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
@@ -700,22 +705,22 @@ class cvvdp_ml_transformer(cvvdp_ml):
         return ['transformer_net']
     
     def do_pooling_and_jods(self, features):
-
-        Q_JOD = torch.as_tensor(10., device=self.device)
-        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+        batch_sz = features[0].shape[0]
+        Q_JOD = torch.ones((batch_sz), device=self.device)*10.
+        is_image = (features[0].shape[4]==3) # if 3 channels, it is an image
 
         for bb, f in enumerate(features):
 
             f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
 
             if is_image:
-                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+                f = torch.cat( (f, torch.zeros((f.shape[0:4] + (1,f.shape[5])), device=self.device)), dim=4) # Add the missing channel
             if self.disabled_features is not None:
                 f[..., self.disabled_features] = 0
 
             f_all = torch.cat([
-                f[..., 0:4].flatten(start_dim=3),
-                f[..., 4:].flatten(start_dim=3)
+                f[..., 0:4].flatten(start_dim=4),
+                f[..., 4:].flatten(start_dim=4)
             ], dim=-1)
 
             delta = self.transformer_net(f_all) / len(features)
@@ -725,7 +730,7 @@ class cvvdp_ml_transformer(cvvdp_ml):
             if is_image:
                 delta *= self.image_int
 
-            Q_JOD -= delta.mean()
+            Q_JOD -= delta
 
         return Q_JOD
 
