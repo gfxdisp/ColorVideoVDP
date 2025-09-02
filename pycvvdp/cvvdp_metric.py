@@ -91,7 +91,7 @@ def pow_neg( x:Tensor, p ):
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=True, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
@@ -339,6 +339,9 @@ class cvvdp(vq_metric):
         else:
             block_N_frames = 1
 
+        # block_N_frames = min(block_N_frames,1)
+        # print( f'Block of frames: {block_N_frames}')
+
         if self.contrast=="log":
             met_colorspace='logLMS_DKLd65'
         else:
@@ -405,8 +408,8 @@ class cvvdp(vq_metric):
                     # Tensor splicing leads to strange errors with videos; switching to torch.roll()
                     # sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
                     # sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
-                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-cur_block_N_frames, dims=2)
-                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-cur_block_N_frames, dims=2)
+                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-block_N_frames, dims=2)
+                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-block_N_frames, dims=2)
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1
@@ -424,6 +427,8 @@ class cvvdp(vq_metric):
                     for fi in range(cur_block_N_frames):
                         R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
                         R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
+                        # R[:,cc*2+0, fi, :, :] = sw_buf[0][:, sw_ch, (fl+fi-1):(fl+fi), :, :] # Test
+                        # R[:,cc*2+1, fi, :, :] = sw_buf[1][:, sw_ch, (fl+fi-1):(fl+fi), :, :] # Reference
 
             if self.dump_channels:
                 self.dump_channels.dump_temp_ch(R)
@@ -458,7 +463,7 @@ class cvvdp(vq_metric):
         else:
             fps = vid_source.get_frames_per_second()
 
-
+        # print( Q_per_ch.mean(dim=(0,2)) )
         rho_band = self.lpyr.get_freqs()
         Q_jod = self.do_pooling_and_jods(Q_per_ch)
 
