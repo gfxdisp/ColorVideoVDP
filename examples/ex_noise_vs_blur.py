@@ -20,7 +20,7 @@ import ex_utils as utils
 import pycvvdp
 import math
 
-from gfxdisp.pfs.pfs_torch import pfs_torch
+#from gfxdisp.pfs.pfs_torch import pfs_torch
 
 def camera_model( I, t, g=1 ):
 
@@ -52,6 +52,7 @@ Y_disp_peak = 200
 disp_photo = pycvvdp.vvdp_display_photo_eotf(Y_peak=Y_disp_peak, contrast=1000, EOTF='linear', E_ambient=10)
 
 metric = [None, None]
+#metric[0] = pycvvdp.cvvdp_ml_transformer(display_name='standard_4k', display_photometry=disp_photo)
 metric[0] = pycvvdp.cvvdp(display_name='standard_4k', display_photometry=disp_photo)
 metric[1] = pycvvdp.psnr_rgb(display_name='standard_4k', display_photometry=disp_photo)
 device = metric[0].device
@@ -71,6 +72,7 @@ for kk in range(t.numel()):
 Q_JOD = [None,] * len(metric)
 for kk in range(len(metric)):
     # Note that we multiply by Y_disp_peak, as with linear EOTF we must provide absolute values
+    #with torch.no_grad():
     Q_JOD[kk], stats = metric[kk].predict( I_test*Y_disp_peak, I_ref*Y_disp_peak, dim_order="BHWC" )
 
 for kk in range(t.numel()):

@@ -114,6 +114,7 @@ class cvvdp_ml_base(cvvdp):
         self.disabled_features = disabled_features        
 
         super().__init__(**kwargs)
+        self.train(False)
 
     def set_device( self, device ):
         if hasattr( self, "device" ):
@@ -134,6 +135,9 @@ class cvvdp_ml_base(cvvdp):
         super().train(do_training)
         for net in self.get_nets_to_load():
             getattr(self, net).train(do_training)
+            if not do_training:            
+                for param in getattr(self, net).parameters():
+                    param.requires_grad = False    
 
     # So that we can override in the super classes
     @abstractmethod
