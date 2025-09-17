@@ -342,6 +342,9 @@ class cvvdp(vq_metric):
         else:
             block_N_frames = 1
 
+        # block_N_frames = min(block_N_frames,1)
+        # print( f'Block of frames: {block_N_frames}')
+
         if self.contrast=="log":
             met_colorspace='logLMS_DKLd65'
         else:
@@ -408,8 +411,8 @@ class cvvdp(vq_metric):
                     # Tensor splicing leads to strange errors with videos; switching to torch.roll()
                     # sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
                     # sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
-                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-cur_block_N_frames, dims=2)
-                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-cur_block_N_frames, dims=2)
+                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-block_N_frames, dims=2)
+                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-block_N_frames, dims=2)
 
                     for fi in range(cur_block_N_frames):
                         ind=fl+fi-1
@@ -461,7 +464,7 @@ class cvvdp(vq_metric):
         else:
             fps = vid_source.get_frames_per_second()
 
-
+        # print( Q_per_ch.mean(dim=(0,2)) )
         rho_band = self.lpyr.get_freqs()
         Q_jod = self.do_pooling_and_jods(Q_per_ch)
 

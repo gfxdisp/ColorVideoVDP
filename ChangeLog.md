@@ -1,5 +1,6 @@
-# v0.5.2 (?)
+# v0.5.2 
 * Added: Batch mode for faster processing
+* Bug fix: small discrepancy in the predictions depending on how many frames are processed at once (gpu memory) (thanks to Yancheng)
 
 # v0.5.1 (20/07/2025)
 * Fixed missing files in the PIP release
