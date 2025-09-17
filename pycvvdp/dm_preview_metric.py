@@ -44,6 +44,9 @@ class dm_preview(vq_metric):
 
         _, _, N_frames = vid_source.get_video_size()
         
+        batch_sz = vid_source.get_batch_size()
+        assert batch_sz>1, 'DM-preview does not work with batches'
+
         write_exr = self.output_exr or N_frames==1
 
         if write_exr:

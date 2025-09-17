@@ -327,8 +327,8 @@ class cvvdp_ml_base(cvvdp):
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1]) 
                     sw_ch = 0 if cc==3 else cc # colour channel in the sliding window
                     for fi in range(cur_block_N_frames):
-                        R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
-                        R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
+                        R[:,(cc*2+0):(cc*2+1), fi:(fi+1), :, :] = (sw_buf[0][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
+                        R[:,(cc*2+1):(cc*2+2), fi:(fi+1), :, :] = (sw_buf[1][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
 
             if self.dump_channels:
                 self.dump_channels.dump_temp_ch(R)
@@ -345,7 +345,7 @@ class cvvdp_ml_base(cvvdp):
                 for bb in range(len(features_per_block)):
                     features[bb] = torch.empty(( (batch_sz,N_frames) + features_per_block[bb].shape[2:]), device=self.device)
 
-            ff_end = ff+features_per_block[bb].shape[0]
+            ff_end = ff+features_per_block[bb].shape[1]
             for bb in range(len(features_per_block)):
                 features[bb][:,ff:ff_end,:,:,:,:] = features_per_block[bb]
 
@@ -651,6 +651,7 @@ class RegressionTransformer(nn.Module):
             nn.Linear(dim, 1),
             nn.ReLU()
         )
+
     def forward(self, x):
         # x: [B, D, H, W, C]
         
@@ -662,7 +663,8 @@ class RegressionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.transformer(x)
         cls_feat = x[:, 0]
-        return self.reg_head(cls_feat).squeeze(-1)
+        y = self.reg_head(cls_feat).squeeze(-1).reshape(B,D)
+        return y.mean(dim=1, keepdim=False)
     
     def get_heatmap(self, x):
         # x: [B, D, H, W, C]

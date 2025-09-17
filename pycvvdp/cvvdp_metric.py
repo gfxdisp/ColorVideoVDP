@@ -337,7 +337,7 @@ class cvvdp(vq_metric):
 
         if self.device.type == 'cuda' and torch.cuda.is_available() and not is_image:
             # GPU utilization is better if we process many frames, but it requires more GPU memory
-            pix_cnt = width*height
+            pix_cnt = width*height*batch_sz
             block_N_frames = self.estimate_block_N(pix_cnt, N_frames)
         else:
             block_N_frames = 1
@@ -425,8 +425,8 @@ class cvvdp(vq_metric):
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1]) 
                     sw_ch = 0 if cc==3 else cc # color channel in the sliding window
                     for fi in range(cur_block_N_frames):
-                        R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
-                        R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
+                        R[:,(cc*2+0):(cc*2+1), fi:(fi+1), :, :] = (sw_buf[0][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
+                        R[:,(cc*2+1):(cc*2+2), fi:(fi+1), :, :] = (sw_buf[1][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
 
             if self.dump_channels:
                 self.dump_channels.dump_temp_ch(R)
