@@ -38,17 +38,12 @@ conda activate cvvdp
 
 2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0.
 
-3. [optional] If you plan on running on GPU (CUDA) install `pynvml`. 
-```bash
-pip install pynvml
-```
-
-4. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
+3. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg conda-forge::freeimage
 ```
 
-5a. Install from sources
+4a. Install from sources
 
 Obtain the ColourVDP codebase, by cloning the repository:
 ```bash
@@ -62,7 +57,7 @@ pip install -e .
 ```
 *Note:* The "-e/--editable" option to `pip` is optional and should be used only if you intend to change the ColorVideoVDP code.
 
-5b. Alternatively, you can install ColorVideoVDP from a PIP package:
+4b. Alternatively, you can install ColorVideoVDP from a PIP package:
 ```bash
 pip install cvvdp
 ```
@@ -318,7 +313,7 @@ When reporting a problem, run `cvvdp` with `--verbose` argument and paste the en
 * v0.5.3 (20/September/2025)
   - Added: ColorVideoVDP can now process batches of images or video (in a PyTorch tensor)
   - Bug fix: small discrepancy in the predictions depending on how many frames are processed at once (gpu memory)
-  
+
 * v0.5.1 (20/June/2025)
   - Released as a PIP package.
 
