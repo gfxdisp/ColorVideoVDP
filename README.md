@@ -315,6 +315,10 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+* v0.5.3 (20/September/2025)
+  - Added: ColorVideoVDP can now process batches of images or video (in a PyTorch tensor)
+  - Bug fix: small discrepancy in the predictions depending on how many frames are processed at once (gpu memory)
+  
 * v0.5.1 (20/June/2025)
   - Released as a PIP package.
 
