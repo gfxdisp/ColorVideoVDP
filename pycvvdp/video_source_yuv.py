@@ -16,7 +16,7 @@ def decode_video_props( fname ):
     bname = os.path.splitext(os.path.basename(fname))[0]
     fp = bname.split("_")
 
-    res_match = re.compile( '(\d+)x(\d+)p?' )
+    res_match = re.compile( r'(\d+)x(\d+)p?' )
 
     for field in fp:
 

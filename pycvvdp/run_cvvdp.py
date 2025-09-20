@@ -163,7 +163,7 @@ def run_on_args(args):
     if args.device.startswith('cuda') and torch.cuda.is_available():
         device = torch.device(args.device)
     elif args.device == 'mps':
-        torch_version = list(map(int, re.search('\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
+        torch_version = list(map(int, re.search(r'\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
         assert torch_version[0] > 2 or (torch_version[0] == 2 and torch_version[1] > 0), f'Please use torch>=2.1.0 with MPS. Current version is {torch.__version__}.'
         logging.warn('MPS support is experimental. Please report any issues encountered.')
         assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
