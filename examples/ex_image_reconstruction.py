@@ -21,6 +21,9 @@ from torchvision.transforms import GaussianBlur
 
 debug = False
 save_results = False
+if save_results:
+    output_dir = "outputs"
+    os.makedirs(output_dir, exist_ok=True)
 
 class ImageRecovery(torch.nn.Module):
     def __init__(self, ref_img, initialization="random"):
@@ -66,8 +69,8 @@ I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.p
 
 T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/(2**16-1)
 
-model = ImageRecovery( T_ref, initialization="blurred" )
-#model = ImageRecovery( T_ref, initialization="random" )
+# model = ImageRecovery( T_ref, initialization="blurred" )
+model = ImageRecovery( T_ref, initialization="random" )
 
 model.to(device)
 
@@ -108,7 +111,7 @@ for kk in range(1001):
         # plt.tight_layout()
 
         if save_results and kk % 100 == 0:
-            io.imwrite( f'reconstructed_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
+            io.imwrite( f'{output_dir}/reconstructed_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
 
         fig.canvas.draw()
         fig.canvas.flush_events()

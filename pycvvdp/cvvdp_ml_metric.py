@@ -63,22 +63,30 @@ from huggingface_hub import hf_hub_download
 os.environ["HF_HUB_TOKEN"] = ""  # empty string disables token
 
 
+class cvvdp_avg_pool(torch.nn.AvgPool2d):
+
+    def forward( self, X ):
+        V = X.view((-1,)+X.shape[2:])  # Need to combine batch and channel so that AvgPool2d works
+        Y = super().forward(V)
+        return Y.view( X.shape[0:2] + Y.shape[1:] )
+
+
 
 class cvvdp_feature_pooling(torch.nn.Module):
 
     def __init__(self, feature_size):
         super().__init__()
 
-        self.avg_pool = torch.nn.AvgPool2d( (feature_size,feature_size), ceil_mode=True )
+        self.avg_pool = cvvdp_avg_pool( (feature_size,feature_size), ceil_mode=True )
 
     def forward(self, T, R, D):
         # T - test
         # R - reference
         # D - difference
-        # T[channels,frames,width,height]
-        # F[frames,width,height,channels,stat]
-        
-        dim_order = [1, 2, 3, 0] # put channels as the last dimension
+        # T[batch,channels,frames,width,height]
+        # F[batch,frames,width,height,channels,stat]
+                
+        dim_order = [0, 2, 3, 4, 1] # put channels as the last dimension
         mean_T = self.avg_pool( T ).permute(dim_order)
         var_T = self.avg_pool( T**2 ).permute(dim_order) - mean_T**2
         mean_R = self.avg_pool( R ).permute(dim_order)
@@ -86,7 +94,7 @@ class cvvdp_feature_pooling(torch.nn.Module):
         mean_D = self.avg_pool( D ).permute(dim_order)
         var_D = self.avg_pool( D**2 ).permute(dim_order) - mean_D**2
 
-        F = torch.stack( (mean_T, var_T, mean_R, var_R, mean_D, var_D), dim=4 )
+        F = torch.stack( (mean_T, var_T, mean_R, var_R, mean_D, var_D), dim=5 )
 
         assert(not F.isnan().any())
 
@@ -106,6 +114,7 @@ class cvvdp_ml_base(cvvdp):
         self.disabled_features = disabled_features        
 
         super().__init__(**kwargs)
+        self.train(False)
 
     def set_device( self, device ):
         if hasattr( self, "device" ):
@@ -126,6 +135,9 @@ class cvvdp_ml_base(cvvdp):
         super().train(do_training)
         for net in self.get_nets_to_load():
             getattr(self, net).train(do_training)
+            if not do_training:            
+                for param in getattr(self, net).parameters():
+                    param.requires_grad = False    
 
     # So that we can override in the super classes
     @abstractmethod
@@ -151,11 +163,10 @@ class cvvdp_ml_base(cvvdp):
                 getattr(self, net).load_state_dict(state_dict)
                 #.to(device=self.device)
 
-    '''
-    The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays. Video source is recommended when processing long videos as it allows frame-by-frame loading.
-    '''
     def predict_video_source(self, vid_source):
         # We assume the pytorch default NCDHW layout
+
+        assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
 
         features, heatmap = self.extract_features(vid_source)
 
@@ -186,6 +197,7 @@ class cvvdp_ml_base(cvvdp):
 
         vid_sz = vid_source.get_video_size() # H, W, F
         height, width, N_frames = vid_sz
+        batch_sz = vid_source.get_batch_size()
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.contrast.startswith("weber"):
@@ -244,7 +256,7 @@ class cvvdp_ml_base(cvvdp):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
             if is_image:                
-                R = torch.empty((1, 6, 1, height, width), device=self.device)
+                R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
                 R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
                 R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
 
@@ -252,8 +264,8 @@ class cvvdp_ml_base(cvvdp):
                 #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
-                    sw_buf[0] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16) # TODO: switch to float16
-                    sw_buf[1] = torch.zeros((1,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
+                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16) # TODO: switch to float16
+                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
                     #print( f"Allocated {sw_buf[0].nelement()*sw_buf[0].element_size()/1e9*2} GB for {fl+block_N_frames-1} frame buffer.")
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
@@ -308,15 +320,15 @@ class cvvdp_ml_base(cvvdp):
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # Images do not have the two last channels
-                R = torch.zeros((1, 8, cur_block_N_frames, height, width), device=self.device)
+                R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
 
                 for cc in range(all_ch): # Iterate over chromatic and temporal channels
                     # 1D filter over time (over frames)
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1]) 
                     sw_ch = 0 if cc==3 else cc # colour channel in the sliding window
                     for fi in range(cur_block_N_frames):
-                        R[:,cc*2+0, fi, :, :] = (sw_buf[0][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
-                        R[:,cc*2+1, fi, :, :] = (sw_buf[1][:, sw_ch, fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
+                        R[:,(cc*2+0):(cc*2+1), fi:(fi+1), :, :] = (sw_buf[0][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
+                        R[:,(cc*2+1):(cc*2+2), fi:(fi+1), :, :] = (sw_buf[1][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
 
             if self.dump_channels:
                 self.dump_channels.dump_temp_ch(R)
@@ -331,11 +343,11 @@ class cvvdp_ml_base(cvvdp):
             if features is None:
                 features = [None] * len(features_per_block)
                 for bb in range(len(features_per_block)):
-                    features[bb] = torch.empty((N_frames, features_per_block[bb].shape[1], features_per_block[bb].shape[2], features_per_block[bb].shape[3], features_per_block[bb].shape[4]), device=self.device)
+                    features[bb] = torch.empty(( (batch_sz,N_frames) + features_per_block[bb].shape[2:]), device=self.device)
 
-            ff_end = ff+features_per_block[bb].shape[0]
+            ff_end = ff+features_per_block[bb].shape[1]
             for bb in range(len(features_per_block)):
-                features[bb][ff:ff_end,:,:,:,:] = features_per_block[bb]
+                features[bb][:,ff:ff_end,:,:,:,:] = features_per_block[bb]
 
             if self.do_heatmap:
                 if self.heatmap == "raw":
@@ -354,13 +366,14 @@ class cvvdp_ml_base(cvvdp):
         """
 
     def process_block_of_frames(self, R, temp_ch, lpyr, is_image):
-        # R[channels,frames,width,height]
+        # R[batch,channels,frames,width,height]
         all_ch = 2+temp_ch
+        batch_sz = R.shape[0]
 
         #torch.autograd.set_detect_anomaly(True)
 
         # Perform Laplacian pyramid decomposition
-        B_bands, L_bkg_pyr = lpyr.decompose(R[0,...])
+        B_bands, L_bkg_pyr = lpyr.decompose(R)
 
         if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
@@ -381,20 +394,20 @@ class cvvdp_ml_base(cvvdp):
             is_baseband = (bb==(lpyr.get_band_count()-1))
 
             B_bb = lpyr.get_band(B_bands, bb) 
-            T_f = B_bb[0::2,...] # Test
-            R_f = B_bb[1::2,...] # Reference
+            T_f = B_bb[:,0::2,...] # Test
+            R_f = B_bb[:,1::2,...] # Reference
 
             logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
 
             # Compute CSF
             rho = rho_band[bb] # Spatial frequency in cpd
             ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
-            S = torch.empty((all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+            S = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
             for cc in range(all_ch):
                 tch = 0 if cc<3 else 1  # Sustained or transient
                 cch = cc if cc<3 else 0 # Y, rg, yv
                 # The sensitivity is always extracted for the reference frame
-                S[cc,:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                S[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
             if is_baseband:
                 D = (torch.abs(T_f-R_f) * S)
@@ -548,32 +561,33 @@ class cvvdp_ml_saliency(cvvdp_ml):
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features):
 
-        # features[band][frames,width,height,channels,stat]
+        # features[band][batch,frames,width,height,channels,stat]
         # disables_features is an array of indices of the stat to be disabled
 
         # no_channels = features[0].shape[3]
         # no_frames = features[0].shape[0]
         no_bands = len(features)
+        batch_sz = features[0].shape[0]
 
-        Q_JOD = torch.as_tensor(10., device=self.device)
+        Q_JOD = torch.ones((batch_sz), device=self.device)*10.
 
-        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+        is_image = (features[0].shape[4]==3) # if 3 channels, it is an image
 
         for bb in range(no_bands):
 
-            #F[frames,width,height,channels,stat]
+            #F[batch,frames,width,height,channels,stat]
             f = features[bb]
             
             # Variance into std
-            f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
+            f[...,1::2] = torch.sqrt(torch.abs(f[...,1::2]))
 
             if is_image:
-                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+                f = torch.cat( (f, torch.zeros((f.shape[0:4] + (1,f.shape[5])), device=self.device)), dim=4) # Add the missing channel
             if self.disabled_features is not None:
-                f[:, :, :, :, self.disabled_features] = 0  
+                f[..., self.disabled_features] = 0  
 
-            f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
-            f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
+            f_TR = f[..., 0:4].flatten( start_dim=4 )
+            f_D = f[..., 4:].flatten( start_dim=4 )
 
             Att = self.att_net(f_TR)
             Att = F.relu(Att)
@@ -589,14 +603,14 @@ class cvvdp_ml_saliency(cvvdp_ml):
 
             Q_JOD -= self.spatiotemporal_pooling(D_all)
 
-        assert(not Q_JOD.isnan())
+        assert(not Q_JOD.isnan().any())
         return Q_JOD
 
     def full_name(self):
         return "ColorVideoVDP-ML-Saliency"
 
     def spatiotemporal_pooling(self, D_all):
-        return D_all.view(-1).mean()
+        return D_all.view(D_all.shape[0],-1).mean(dim=1)
     
 
 register_metric( cvvdp_ml_saliency )
@@ -637,18 +651,25 @@ class RegressionTransformer(nn.Module):
             nn.Linear(dim, 1),
             nn.ReLU()
         )
+
     def forward(self, x):
-        # x: [B, H, W, C]
+        # x: [B, D, H, W, C]
+        
+        B, D, H, W, C = x.shape
+        x = x.reshape(B * D, H, W, C)
         x = x.permute(0, 3, 1, 2)  # [B, C, H, W]
         x = self.patch_embed(x)  # [B, N_patches, dim]
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.transformer(x)
         cls_feat = x[:, 0]
-        return self.reg_head(cls_feat).squeeze(-1)
+        y = self.reg_head(cls_feat).squeeze(-1).reshape(B,D)
+        return y.mean(dim=1, keepdim=False)
     
     def get_heatmap(self, x):
-        # x: [B, H, W, C]
+        # x: [B, D, H, W, C]
+        B, D, H, W, C = x.shape
+        x = x.reshape(B * D, H, W, C)
         x = x.permute(0, 3, 1, 2)  # [B, C, H, W]
         x = self.patch_embed(x)  # [B, N_patches, dim]
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
@@ -690,22 +711,22 @@ class cvvdp_ml_transformer(cvvdp_ml):
         return ['transformer_net']
     
     def do_pooling_and_jods(self, features):
-
-        Q_JOD = torch.as_tensor(10., device=self.device)
-        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+        batch_sz = features[0].shape[0]
+        Q_JOD = torch.ones((batch_sz), device=self.device)*10.
+        is_image = (features[0].shape[4]==3) # if 3 channels, it is an image
 
         for bb, f in enumerate(features):
 
             f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
 
             if is_image:
-                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+                f = torch.cat( (f, torch.zeros((f.shape[0:4] + (1,f.shape[5])), device=self.device)), dim=4) # Add the missing channel
             if self.disabled_features is not None:
                 f[..., self.disabled_features] = 0
 
             f_all = torch.cat([
-                f[..., 0:4].flatten(start_dim=3),
-                f[..., 4:].flatten(start_dim=3)
+                f[..., 0:4].flatten(start_dim=4),
+                f[..., 4:].flatten(start_dim=4)
             ], dim=-1)
 
             delta = self.transformer_net(f_all) / len(features)
@@ -715,7 +736,7 @@ class cvvdp_ml_transformer(cvvdp_ml):
             if is_image:
                 delta *= self.image_int
 
-            Q_JOD -= delta.mean()
+            Q_JOD -= delta
 
         return Q_JOD
 

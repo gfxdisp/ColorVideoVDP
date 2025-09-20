@@ -32,7 +32,7 @@ The code can run one of the following metrics (selected with `--metrics` or `-m`
 
 * `pu-psnr-y`
 
-As above, but the PSNR is computed on the PU21-encoded luminance. 
+  As above, but the PSNR is computed on the PU21-encoded luminance. 
 
 * `dm-preview`, `dm-preview-exr`, `dm-preview-sbs`, `dm-preview-exr-sbs`
 

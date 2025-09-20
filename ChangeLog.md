@@ -1,5 +1,9 @@
 # v0.5.2 
+* Added: Batch mode for faster processing
 * Bug fix: small discrepancy in the predictions depending on how many frames are processed at once (gpu memory) (thanks to Yancheng)
+
+# v0.5.1 (20/07/2025)
+* Fixed missing files in the PIP release
 
 # v0.5.0 (20/07/2025)
 * Added two new metrics: cvvdp-ml-saliency and cvvdp-ml-transformer. See [metrics.md](./metrics.md) for more info. 

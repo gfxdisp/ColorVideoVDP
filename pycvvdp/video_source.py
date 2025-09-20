@@ -72,7 +72,10 @@ class video_source:
                 logging.warning( 'The mean color value is less than 1 - the image may not be scaled in absolute photometric units!' )
 
     def get_frame_count(self):
-        self.get_video_size()[2]
+        return self.get_video_size()[2]
+
+    def get_batch_size(self):
+        return 1  # Not every video source supports batches.
 
 
 """
@@ -296,10 +299,13 @@ class video_source_array( video_source_dm ):
         sh = self.test_video.shape
         return (sh[3], sh[4], sh[2])
     
-    # % Get a test video frame as a single-precision luminance map
-    # % scaled in absolute inits of cd/m^2. 'frame' is the frame index,
-    # % starting from 0. If use_gpu==true, the function should return a
-    # % gpuArray.
+    def get_batch_size(self):
+        return self.test_video.shape[0]
+
+    # Get a test video frame as a single-precision luminance map
+    # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
+    # starting from 0. If use_gpu==true, the function should return a
+    # gpuArray.
 
     def get_test_frame( self, frame, device, colorspace ):
         return self._get_frame(self.test_video, frame, device, colorspace )

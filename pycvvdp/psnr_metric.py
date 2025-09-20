@@ -32,13 +32,14 @@ class psnr_rgb(vq_metric):
 
         _, _, N_frames = vid_source.get_video_size()
 
-        mse = 0
+        batch_sz = vid_source.get_batch_size()
+        mse = torch.zeros((batch_sz), device=self.device)
         for ff in range(N_frames):
             # colorspace='display_encoded_100nit' will get us display-encoded image, or if the original source is linear, it will apply PU-encoding.
             # If the input is PQ-encoded, it will return a PQ-encoded values. 
             T = vid_source.get_test_frame(ff, device=self.device, colorspace='display_encoded_100nit')
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace='display_encoded_100nit')
-            mse += torch.mean( (T - R)**2 )
+            mse += torch.mean( (T - R)**2, dim=(1,2,3,4) )
 
         max_I = 1
         psnr = 20*torch.log10( max_I/torch.sqrt(mse/N_frames) ) 
@@ -81,8 +82,9 @@ class pu_psnr_y(vq_metric):
     def predict_video_source(self, vid_source, frame_padding="replicate"):
 
         _, _, N_frames = vid_source.get_video_size()
+        batch_sz = vid_source.get_batch_size()
 
-        mse = 0
+        mse = torch.zeros((batch_sz), device=self.device)
         for ff in range(N_frames):
             T = vid_source.get_test_frame(ff, device=self.device, colorspace=self.metric_colorspace)
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.metric_colorspace)
@@ -91,7 +93,7 @@ class pu_psnr_y(vq_metric):
             T_enc = self.pu.encode(T)
             R_enc = self.pu.encode(R)
 
-            mse += torch.mean( (T_enc - R_enc)**2 )
+            mse += torch.mean( (T - R)**2, dim=(1,2,3,4) )
         
         psnr = 20*torch.log10( self.max_I/torch.sqrt(mse/N_frames) ) 
 

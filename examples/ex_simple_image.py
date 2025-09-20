@@ -13,8 +13,8 @@ import pycvvdp
 
 '''
 Results of current version (for reference):
-Noise - Quality: 9.051 JOD
-Blur - Quality: 7.951 JOD
+Noise - Quality: 8.955 JOD
+Blur - Quality: 8.514 JOD
 '''
 
 debug = False
@@ -36,7 +36,9 @@ else:
     sigma = 2
     I_test_blur = utils.imgaussblur(I_ref, sigma)
 
-metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+# metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+# metric = pycvvdp.cvvdp_ml_saliency(display_name='standard_4k')
+metric = pycvvdp.cvvdp_ml_transformer(display_name='standard_4k')
 
 # predict() method can handle numpy ndarrays or PyTorch tensors. The data
 # type should be float32, int16 or uint8.
