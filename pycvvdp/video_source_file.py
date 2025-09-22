@@ -218,7 +218,7 @@ class video_reader_yuv_pytorch(video_reader):
         # if not any(f'p{bit_depth}' in self.in_pix_fmt for bit_depth in [10, 12, 14, 16]): # 8 bit
         #     raise RuntimeError('GPU decoding not implemented for bit-depth 8')
 
-        re_grp = re.search('p\d+', self.in_pix_fmt)
+        re_grp = re.search(r'p\d+', self.in_pix_fmt)
         self.bit_depth = 8 if re_grp is None else int(re_grp.group().strip('p'))
 
 

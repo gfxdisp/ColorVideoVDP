@@ -32,20 +32,24 @@ The repository also contains code for other metrics, such as PU-PSNR, or ColorVi
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:
 ```bash
-conda create -n cvvdp python=3.10
+conda create -n cvvdp python=3.13
 conda activate cvvdp
 ```
 
-2. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0.
-
-3. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
+2. Install [ffmpeg](https://ffmpeg.org/) and [FreeImage](https://freeimage.sourceforge.io/). The easiest option is to install using conda,
 ```bash
 conda install ffmpeg conda-forge::freeimage
 ```
 
+3. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0. You may also want to install CUDA toolkit via conda:
+
+```bash
+conda install nvidia/label/cuda-12.9.1::cuda-toolkit
+```
+
 4a. Install from sources
 
-Obtain the ColourVDP codebase, by cloning the repository:
+Obtain the ColorVideoVDP codebase, by cloning the repository:
 ```bash
 git clone git@github.com:gfxdisp/ColorVideoVDP.git   # skip if a .zip is provided or you use Github GUI
 ```
@@ -310,7 +314,7 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
-* v0.5.3 (20/September/2025)
+* v0.5.3 (22/September/2025)
   - Added: ColorVideoVDP can now process batches of images or video (in a PyTorch tensor)
   - Bug fix: small discrepancy in the predictions depending on how many frames are processed at once (gpu memory)
 

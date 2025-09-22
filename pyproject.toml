@@ -1,6 +1,6 @@
 [project]
 name = "cvvdp"
-version = "0.5.1"
+version = "0.5.3"
 description = "PyTorch code for 'ColorVideoVDP': a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos."
 readme = "README.md"
 license = "MIT"
@@ -29,6 +29,7 @@ dependencies = [
    "huggingface_hub>=0.33.4",
    "einops>=0.8.1",
    "PyEXR>=0.3.10",
+   "nvidia-ml-py"
 ]
 
 [project.scripts]
