@@ -1,6 +1,6 @@
 [project]
 name = "cvvdp"
-version = "0.5.3"
+version = "0.5.4"
 description = "PyTorch code for 'ColorVideoVDP': a full-reference visual quality metric that predicts the perceptual difference between pairs of images or videos."
 readme = "README.md"
 license = "MIT"

@@ -55,15 +55,22 @@ import pycvvdp.utils as utils
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.csf import castleCSF
 
-
 # import gc
 # def print_large_tensors():
+#     print( '---------------' )
+#     objs = []
 #     for obj in gc.get_objects():
 #         try:
 #             if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-#                 print(obj.nelement() * obj.element_size() if len(obj.size()) > 0 else 0, type(obj), obj.size())
-#         except (KeyError, AttributeError):
+#                 if len(obj.size()) > 0:
+#                     mem_used = obj.nelement() * obj.element_size()
+#                     if mem_used > 1000:
+#                         objs.append( (mem_used, f"{mem_used/1000000000:.2f} GB {type(obj)} {obj.size()}") )
+#         except: # (KeyError, AttributeError, RuntimeError):
 #             pass
+#     objs_sorted = sorted( objs, key=lambda obj: obj[0], reverse=True )
+#     for obj in objs_sorted:
+#         print( obj[1] )
 
 # A differentiable variant of a power function
 def safe_pow( x:Tensor, p ): 
@@ -366,8 +373,8 @@ class cvvdp(vq_metric):
                 #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
-                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32) # TODO: switch to float16
-                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
+                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
+                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
                         # Memory allocated after creating buffers for temporal filters 
@@ -445,6 +452,8 @@ class cvvdp(vq_metric):
             
             ff_end = ff+Q_per_ch_block.shape[2]
             Q_per_ch[:,:,ff:ff_end,:] = Q_per_ch_block  
+
+            # print_large_tensors()
 
             if self.do_heatmap:
                 if self.heatmap == "raw":

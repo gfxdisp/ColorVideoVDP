@@ -170,7 +170,6 @@ class lpyr_dec():
 
             return torch.cat((beg, x, end), axis)
 
-    @cache
     def get_kernels( self, im, kernel_a = 0.4 ):
 
         # ch_dim = len(im.shape)-2

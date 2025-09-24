@@ -1,3 +1,7 @@
+# v0.5.4 (24/09/2025)
+* Bug fix: Caching was causing a huge mem-leak
+* Storing frames as float16 rather than float32 to save memory
+
 # v0.5.3 (22/09/2025)
 * Added: Batch mode for faster processing
 * Bug fix: small discrepancy in the predictions depending on how many frames are processed at once (gpu memory) (thanks to Yancheng)
