@@ -373,8 +373,8 @@ class cvvdp(vq_metric):
                 #if self.debug: print("Frame %d:\n----" % ff)
 
                 if ff == 0: # First frame
-                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
-                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float16)
+                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)  # In some cases, it should be possible to use float16
+                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
                         # Memory allocated after creating buffers for temporal filters 
