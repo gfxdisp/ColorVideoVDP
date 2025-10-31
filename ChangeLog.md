@@ -1,3 +1,6 @@
+# v0.5.5 (31/10/2025)
+* Bug fix: Distogram export works again (it was broken after introducing the batch mode)
+
 # v0.5.4 (24/09/2025)
 * Bug fix: Caching was causing a huge mem-leak
 
