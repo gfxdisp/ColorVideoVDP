@@ -105,7 +105,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and color conversion. Use custom pytorch code by default (faster and less memory).")    
-    parser.add_argument("--temp-resample", action='store_true', default=False, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates.")
+    parser.add_argument("--temp-resample", type=float, nargs="?", default=-1, const=0, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates. An optional argument - the maximum frame rate used when resampling.")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
     parser.add_argument("--dump-channels", nargs='+', choices=['temporal', 'lpyr', 'difference'], default=None, help="Output video/images with intermediate processing stages (for debugging and visualization).")
     if arg_list is not None:
@@ -291,7 +291,9 @@ def run_on_args(args):
             preload = False if args.temp_padding == 'replicate' else True
             with torch.no_grad():
 
-                if args.temp_resample:
+                if args.temp_resample>=0:
+                    if args.temp_resample>0:
+                        pycvvdp.video_source_temp_resample_file.max_fps = args.temp_resample
                     vs = pycvvdp.video_source_temp_resample_file( test_file, ref_file, 
                                                 display_photometry=display_photometry, 
                                                 config_paths=args.config_paths,
