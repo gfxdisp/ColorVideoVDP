@@ -1,5 +1,6 @@
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)
+* Fixed: A more meaningful message when a metric does not generate a histogram or heatmap but it is asked to generate such
 
 # v0.5.4 (24/09/2025)
 * Bug fix: Caching was causing a huge mem-leak

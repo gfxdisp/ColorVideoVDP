@@ -72,10 +72,6 @@ from pycvvdp.csf import castleCSF
 #     for obj in objs_sorted:
 #         print( obj[1] )
 
-class cvvdp_exception(Exception):
-    def __init__(self, message):
-        super().__init__(message)
-
 # A differentiable variant of a power function
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
@@ -305,7 +301,8 @@ class cvvdp(vq_metric):
         height, width, N_frames = vid_sz
         batch_sz = vid_source.get_batch_size()
 
-        assert batch_sz==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+        if batch_sz>1 and (self.heatmap is not None and self.heatmap!='none'):
+            raise vq_exception( 'Heatmaps not supported when batches are used' )
 
         # 'medium' is a bit slower than 'high' on 3090
         # torch.set_float32_matmul_precision('medium')

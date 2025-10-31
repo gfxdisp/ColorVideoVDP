@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from urllib.parse import ParseResultBytes
+
 try:
     from numpy import expand_dims
 except ImportError:
@@ -45,6 +46,7 @@ from pycvvdp.vq_metric import *
 from pycvvdp.dump_channels import DumpChannels
 
 from pycvvdp.cvvdp_metric import cvvdp, safe_pow
+from pycvvdp.vq_metric import vq_exception
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
@@ -114,6 +116,10 @@ class cvvdp_ml_base(cvvdp):
         self.disabled_features = disabled_features        
 
         super().__init__(**kwargs)
+
+        if self.heatmap is not None and self.heatmap!='none':
+            raise vq_exception( "Currently cvvdp-ml metrics do not produce heatmaps" )
+
         self.train(False)
 
     def set_device( self, device ):
@@ -454,6 +460,10 @@ class cvvdp_ml_base(cvvdp):
 
         return features_block, heatmap_block
 
+    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
+        raise vq_exception( 'Currently cvvdp-ml metrics do not export distograms')
+
+
 
 """
 ColorVideoVDP metric with an MLP head.
@@ -520,10 +530,6 @@ class cvvdp_ml(cvvdp_ml_base):
 
         assert(not Q_JOD.isnan())
         return Q_JOD
-
-    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
-        raise NotImplementedError        
-
 
 # Adds a saliency module to the cvvdp_ml
 class cvvdp_ml_saliency(cvvdp_ml):

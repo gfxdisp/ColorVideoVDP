@@ -318,13 +318,14 @@ def run_on_args(args):
                 mm.set_base_fname(base_fname)
 
                 Q_pred, stats = mm.predict_video_source(vs)
+                Q_pred_scalar = Q_pred.item()
                 if args.quiet:
-                    print( "{Q:0.4f}".format(Q=Q_pred) )
+                    print( "{Q:0.4f}".format(Q=Q_pred_scalar) )                    
                 else:
                     units_str = f" [{mm.quality_unit()}]"
-                    print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
+                    print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred_scalar, units=units_str) )
                 if not res_fh is None:
-                    res_fh.write( f", {Q_pred}" )
+                    res_fh.write( f", {Q_pred_scalar}" )
 
 
                 if args.features and not stats is None:
@@ -345,14 +346,11 @@ def run_on_args(args):
                         logging.info("Writing heat map '" + dest_name + "' ...")
                         np2img(torch.squeeze(stats["heatmap"].permute((2,3,4,1,0)), dim=4).cpu().numpy(), dest_name)
 
-                if args.distogram != -1 and not stats is None:
+                if args.distogram != -1:
                     dest_name = os.path.join(out_dir, base + "_distogram.png")                    
                     logging.info("Writing distogram '" + dest_name + "' ...")
                     jod_max = args.distogram
-                    try: 
-                        mm.export_distogram( stats, dest_name, jod_max=jod_max )
-                    except NotImplementedError as e:
-                        logging.warning( f'Metric {mm.short_name()} cannot generate distograms' )
+                    mm.export_distogram( stats, dest_name, jod_max=jod_max )
                     
                 del stats
 
@@ -368,19 +366,21 @@ def run_on_args(args):
 def main():
     args = parse_args()
 
-    if args.interactive:
-        #print( "Running in an interactive mode" )
-        while True:
-            line = sys.stdin.readline()
-            if not line:
-                break
+    try:
+        if args.interactive:
+            #print( "Running in an interactive mode" )
+            while True:
+                line = sys.stdin.readline()
+                if not line:
+                    break
 
-            #print( shlex.split(line) )
-            args = parse_args(shlex.split(line))
+                #print( shlex.split(line) )
+                args = parse_args(shlex.split(line))
+                run_on_args(args)
+        else:
             run_on_args(args)
-    else:
-        run_on_args(args)
-
+    except pycvvdp.vq_exception as ex:
+        logging.error( str(ex) )
 
 if __name__ == '__main__':
     main()
