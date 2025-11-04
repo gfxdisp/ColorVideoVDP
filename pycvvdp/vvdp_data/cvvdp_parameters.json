@@ -15,7 +15,7 @@
     "masking_model": "mult-mutual",
     "local_adapt": "gpyr",
     "contrast": "weber_g1",
-    "csf": "weber_fixed_size",
+    "csf": "weber_ncsf",
     "jod_a": 0.0439569391310215,
     "jod_exp": 0.9302042722702026,
     "mask_q": [
