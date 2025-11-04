@@ -538,6 +538,7 @@ class video_source_image_frames(video_source_dm):
         self.video_size = None
         (self.test_fname, test_has_frame_no) = self.convert_c2python_format_str(test_fname)
         (self.reference_fname, ref_has_frame_no) = self.convert_c2python_format_str(reference_fname)
+        self.img_cache = None
 
         if full_screen_resize:
             logging.error("full-screen-resize not implemented for images.")
