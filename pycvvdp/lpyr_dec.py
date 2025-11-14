@@ -8,6 +8,7 @@ import numpy as np
 #import sys
 import math
 #import torch.autograd.profiler as profiler
+from pycvvdp.vq_metric import vq_exception
 
 def ceildiv(a, b):
     return -(-a // b)
@@ -24,18 +25,21 @@ class lpyr_dec():
 
         max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
+        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
 
-        # print(max_levels)
-        # print(bands)
-        # sys.exit(0)
+        invalid_levels = np.argwhere(bands <= self.min_freq)
 
-        invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
+        max_band = invalid_levels[0][0]-1 if len(invalid_levels)>0 else max_levels
 
-        if invalid_bands.shape[-2] == 0:
-            max_band = max_levels
-        else:
-            max_band = invalid_bands[0][0]
+        if max_band<1:
+            raise vq_exception( "The spatial frequencies of the image are too small." )
+
+        # invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
+
+        # if invalid_bands.shape[-2] == 0:
+        #     max_band = max_levels
+        # else:
+        #     max_band = invalid_bands[0][0]
 
         # max_band+1 below converts index into count
         self.height = np.clip(max_band+1, 0, max_levels) # int(np.clip(max(np.ceil(np.log2(ppd)), 1.0)))
@@ -44,12 +48,6 @@ class lpyr_dec():
         self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
         self.pyr_ind = self.height * [None]   # index to the elements at each level
 
-        cH = H
-        cW = W
-        for ll in range(self.height):
-            self.pyr_shape[ll] = (cH, cW)
-            cH = ceildiv(H,2)
-            cW = ceildiv(W,2)
 
     def get_freqs(self):
         return self.band_freqs
