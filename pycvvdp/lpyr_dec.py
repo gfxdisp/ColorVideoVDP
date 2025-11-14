@@ -16,10 +16,11 @@ def ceildiv(a, b):
 # Decimated Laplacian pyramid
 class lpyr_dec():
 
+    min_freq = 0.2
+
     def __init__(self, W, H, ppd, device):
         self.device = device
         self.ppd = ppd
-        self.min_freq = 0.2
         self.W = W
         self.H = H
 
@@ -27,33 +28,24 @@ class lpyr_dec():
 
         bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
 
-        invalid_levels = np.argwhere(bands <= self.min_freq)
-
-        max_band = invalid_levels[0][0]-1 if len(invalid_levels)>0 else max_levels
+        invalid_bands = np.argwhere(bands <= lpyr_dec.min_freq)
+        max_band = int(invalid_bands[0][0])-1 if len(invalid_bands)>0 else max_levels
 
         if max_band<1:
-            raise vq_exception( "The spatial frequencies of the image are too small." )
+            raise vq_exception( "The Nyquist frequency of the image is too small. Check whether the pixels_per_degree parameter is correct." )
+        
+        self.height = max_band+1 # +1 to accommodate the base band
+        self.band_freqs = bands[:self.height]
 
-        # invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
-
-        # if invalid_bands.shape[-2] == 0:
-        #     max_band = max_levels
-        # else:
-        #     max_band = invalid_bands[0][0]
-
-        # max_band+1 below converts index into count
-        self.height = np.clip(max_band+1, 0, max_levels) # int(np.clip(max(np.ceil(np.log2(ppd)), 1.0)))
-        self.band_freqs = np.array([1.0] + [0.3228 * 2.0 **(-f) for f in range(self.height)]) * self.ppd/2.0
-
-        self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
-        self.pyr_ind = self.height * [None]   # index to the elements at each level
+        # self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
+        # self.pyr_ind = self.height * [None]   # index to the elements at each level
 
 
     def get_freqs(self):
         return self.band_freqs
 
     def get_band_count(self):
-        return self.height+1
+        return self.height
 
     def get_band(self, bands, band):
         if band == 0 or band == (len(bands)-1):
@@ -90,7 +82,7 @@ class lpyr_dec():
 
         # self.image = image
 
-        return self.laplacian_pyramid_dec(image, self.height+1)
+        return self.laplacian_pyramid_dec(image, self.height)
 
     def reconstruct(self, bands):
         img = bands[-1]
@@ -245,55 +237,32 @@ class lpyr_dec():
 
 
 
-# Decimated Laplacian pyramid with a bit better interface - stores all bands within the object
+# Decimated Laplacian pyramid with a bit better interface - stores all bands within the object. Currently used for the heatmap
 class lpyr_dec_2(lpyr_dec):
 
     def __init__(self, W, H, ppd, device, keep_gaussian=False):
         self.device = device
         self.ppd = ppd
-        self.min_freq = 0.2
         self.W = W
         self.H = H
         self.keep_gaussian=keep_gaussian
 
         max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
+        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
 
-        # print(max_levels)
-        # print(bands)
-        # sys.exit(0)
+        invalid_bands = np.argwhere(bands <= lpyr_dec.min_freq)
+        max_band = int(invalid_bands[0][0])-1 if len(invalid_bands)>0 else max_levels
 
-        invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
+        if max_band<1:
+            raise vq_exception( "The Nyquist frequency of the image is too small. Check whether the pixels_per_degree parameter is correct." )
+        
+        self.height = max_band+1 # +1 to accommodate the base band
+        self.band_freqs = bands[:self.height]
 
-        if invalid_bands.shape[-2] == 0:
-            max_band = max_levels
-        else:
-            max_band = invalid_bands[0][0]
-
-        # max_band+1 below converts index into count
-        self.height = np.clip(max_band+1, 0, max_levels) # int(np.clip(max(np.ceil(np.log2(ppd)), 1.0)))
-        self.band_freqs = np.array([1.0] + [0.3228 * 2.0 **(-f) for f in range(self.height)]) * self.ppd/2.0
-
-        self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
-        self.pyr_ind = self.height * [None]   # index to the elements at each level
-
-        cH = H
-        cW = W
-        for ll in range(self.height):
-            self.pyr_shape[ll] = (cH, cW)
-            cH = ceildiv(H,2)
-            cW = ceildiv(W,2)
-
-        self.lbands = [None] * (self.height+1) # Laplacian pyramid bands
+        self.lbands = [None] * (self.height) # Laplacian pyramid bands
         if self.keep_gaussian:
-            self.gbands = [None] * (self.height+1) # Gaussian pyramid bands
-
-    def get_freqs(self):
-        return self.band_freqs
-
-    def get_band_count(self):
-        return self.height+1
+            self.gbands = [None] * (self.height) # Gaussian pyramid bands
 
     def get_lband(self, band):
         if band == 0 or band == (len(self.lbands)-1):
@@ -314,14 +283,8 @@ class lpyr_dec_2(lpyr_dec):
     def get_gband(self, band):
         return self.gbands[band]
 
-    # def clear(self):
-    #     for pyramid in self.P:
-    #         for level in pyramid:
-    #             # print ("deleting " + str(level))
-    #             del level
-
     def decompose(self, image): 
-        return self.laplacian_pyramid_dec(image, self.height+1)
+        return self.laplacian_pyramid_dec(image, self.height)
 
     def reconstruct(self):
         img = self.lbands[-1]
@@ -360,7 +323,7 @@ class weber_contrast_pyr(lpyr_dec):
         self.contrast = contrast
 
     def decompose(self, image):
-        levels = self.height+1
+        levels = self.height
         kernel_a = 0.4
         gpyr = self.gaussian_pyramid_dec(image, levels, kernel_a)
 
@@ -425,7 +388,7 @@ class log_contrast_pyr(lpyr_dec):
         self.b = math.log10(lms_d65[0]) - math.log10(lms_d65[1]) + math.log10(lms_d65[0]+lms_d65[1])
 
     def decompose(self, image):
-        levels = self.height+1
+        levels = self.height
         kernel_a = 0.4
         gpyr = self.gaussian_pyramid_dec(image, levels, kernel_a)
 

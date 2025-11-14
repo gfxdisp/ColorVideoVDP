@@ -77,7 +77,7 @@ class video_reader:
             else:
                 probe = ffmpeg.probe(vidfile)
         except:
-            raise RuntimeError("ffmpeg failed to open file \"" + vidfile + "\"")
+            raise vq_exception("ffmpeg failed to open file \"" + vidfile + "\"")
 
         # select the first video stream
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
