@@ -258,10 +258,10 @@ class video_reader_yuv_pytorch(video_reader):
                                         [1, -0.16455, -0.57135],
                                         [1, 1.88140, 0]], device=device)
         else:
-            # display-encoded (sRGB) BT.709 RGB image
-            ycbcr2rgb = torch.tensor([[1, 0, 1.402],
-                                    [1, -0.344136, -0.714136],
-                                    [1, 1.772, 0]], device=device)
+            # display-encoded BT.709 RGB image
+            ycbcr2rgb = torch.tensor([[1, 0, 1.5748],
+                                    [1, -0.1873, -0.4681],
+                                    [1, 1.8556, 0]], device=device)
 
         RGB = Yuv_float @ ycbcr2rgb.transpose(1, 0)
         if (hasattr(self, 'resize_fn')) and (self.resize_fn is not None) \
