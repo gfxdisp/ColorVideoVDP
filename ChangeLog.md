@@ -1,3 +1,7 @@
+# v0.5.5 ?
+* Bug fix: incorrect assert in dm_preview_metric.py
+* Fix: disabled some unnecessary warning messages when dm-preview was selected
+
 # v0.5.4 (24/09/2025)
 * Bug fix: Caching was causing a huge mem-leak
 
