@@ -213,9 +213,9 @@ cvvdp --test example_media/structure/ferris-test-*.mp4 --ref example_media/struc
 
 |Original | ![ferris wheel](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-ref.gif) | Quality | Heatmaps |
 | :---: | :---: | :---: | :---: |
-| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 8.87 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-noise_heatmap.gif) |
-| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.55 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-sat_heatmap.gif) |
-| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 5.59 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-wb_heatmap.gif) |
+| Gaussian noise | ![noise](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-noise.gif) | DE00 = 33.5  <br /> CVVDP = 8.89 | ![noise-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-noise_heatmap.gif) |
+| Saturation | ![saturation](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-sat.gif) | DE00 = 33.5 <br /> CVVDP = 6.59 | ![sat-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-sat_heatmap.gif) |
+| Colorbalance | ![wb](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-wb.gif) | DE00 = 33.5 <br /> CVVDP = 5.68 | ![wb-heatmap](https://www.cl.cam.ac.uk/research/rainbow/projects/colorvideovdp/reports/heatmaps/ferris-test-wb_heatmap.gif) |
 
 ## Visualization
 
