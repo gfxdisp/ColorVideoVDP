@@ -1,6 +1,11 @@
-# v0.5.5 ?
+# v0.5.6 ?
 * Bug fix: incorrect assert in dm_preview_metric.py
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
+
+# v0.5.5 (31/10/2025)
+* Bug fix: Distogram export works again (it was broken after introducing the batch mode)
+* Fixed: A more meaningful message when a metric does not generate a histogram or heatmap but it is asked to generate such
+* Fixed: --temp-resample accepts an optional parameter - the maximum frame rate to use for temporal resampling
 
 # v0.5.4 (24/09/2025)
 * Bug fix: Caching was causing a huge mem-leak

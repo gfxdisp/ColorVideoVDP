@@ -16,6 +16,7 @@ import torch.nn.functional as Func
 import scipy.io as sio
 
 import logging
+from pycvvdp.vq_metric import vq_exception
 from video_source import *
 from video_source_yuv import video_reader_yuv
 
@@ -393,8 +394,7 @@ class video_source_video_file(video_source_dm):
             #         color_space_name="sRGB"
 
             if not self.ignore_framerate_mismatch and self.test_vidr.avg_fps != self.reference_vidr.avg_fps:
-                logging.error(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps." )
-                raise RuntimeError( "Inconsistent frame rates" )
+                raise vq_exception(f"Test and reference videos have different frame rates: test is {self.test_vidr.avg_fps} fps, reference is {self.reference_vidr.avg_fps} fps. Pass `--temp-resample` to resample to a common frame rate." )
 
 
 
@@ -474,6 +474,9 @@ class video_source_temp_resample_file(video_source_video_file):
         super().init_readers()
         test_fps = self.test_vidr.avg_fps
         ref_fps = self.reference_vidr.avg_fps
+
+        if test_fps > __class__.max_fps or ref_fps > __class__.max_fps:
+            raise vq_exception( f"Maximum resample fps ({__class__.max_fps}) is smaller than the fps of the test ({test_fps}) or reference video ({ref_fps}). Increase maximum resample fps, e.g, by passing `--temp-resample {max(test_fps,ref_fps)}`")
 
         # First check if we can find an integer resampling rate
         if test_fps % 1 == 0 and ref_fps % 1 == 0:

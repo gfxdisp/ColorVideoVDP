@@ -301,7 +301,8 @@ class cvvdp(vq_metric):
         height, width, N_frames = vid_sz
         batch_sz = vid_source.get_batch_size()
 
-        assert batch_sz==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+        if batch_sz>1 and (self.heatmap is not None and self.heatmap!='none'):
+            raise vq_exception( 'Heatmaps not supported when batches are used' )
 
         # 'medium' is a bit slower than 'high' on 3090
         # torch.set_float32_matmul_precision('medium')
@@ -1097,13 +1098,16 @@ class cvvdp(vq_metric):
 
     # Export the visualization of distortions over time
     def export_distogram(self, stats, fname, jod_max=None, base_size=6):
-        # Q_per_ch[channel,frame,sp_band]
+        # Q_per_ch[batch,channel,frame,sp_band]
         Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
-        ch_no = Q_per_ch.shape[0]    
+        batch_no = Q_per_ch.shape[0]
+        if batch_no != 1:
+            raise cvvdp_exception( 'Exporting distograms in batch mode is not supported' )
+        ch_no = Q_per_ch.shape[1]
 
-        is_image = (Q_per_ch.shape[1]==1)
+        is_image = (Q_per_ch.shape[2]==1)
 
-        Q_per_ch[:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1)
+        Q_per_ch[:,:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1)
         Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
         dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
 
@@ -1113,8 +1117,8 @@ class cvvdp(vq_metric):
         dmap /= jod_max
 
         fps = stats['frames_per_second']
-        band_no = Q_per_ch.shape[2]
-        frame_no = Q_per_ch.shape[1]
+        band_no = Q_per_ch.shape[3]
+        frame_no = Q_per_ch.shape[2]
         rho_band = stats['rho_band']
         band_labels = [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
         band_labels[0] = "BB"
@@ -1128,7 +1132,7 @@ class cvvdp(vq_metric):
         cmap = plt.colormaps["plasma"]
 
         for kk in range(ch_no):
-            dmap_ch = np.flip(np.transpose(dmap[kk,:,:].clip(0.,1.)),axis=0)
+            dmap_ch = np.flip(np.transpose(dmap[0,kk,:,:].clip(0.,1.)),axis=0)
             axs[kk].imshow(dmap_ch, cmap=cmap, aspect="auto" )
             axs[kk].set_ylabel( ch_labels[kk] )
             axs[kk].yaxis.set_major_locator(ticker.FixedLocator(range(0,len(band_labels)*2,2)))

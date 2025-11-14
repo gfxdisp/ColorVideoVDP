@@ -4,6 +4,10 @@ from pycvvdp.video_source import *
 
 # A base class for the video quality metrtics
 
+class vq_exception(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
 class vq_metric:
 
     '''
@@ -71,6 +75,9 @@ class vq_metric:
     def short_name(self):
         # Class name but '-' instead of '_'
         return self.__class__.__name__.replace('_', '-')
+
+    def export_distogram(self, stats, fname, jod_max=None, base_size=6):
+        raise vq_exception( f'Metric {self.short_name()} cannot generate distograms' )
 
 
 vq_metric_dict = dict()
