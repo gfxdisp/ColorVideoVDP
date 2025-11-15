@@ -167,6 +167,7 @@ class cvvdp(vq_metric):
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
+        self.spatial_padding = parameters['spatial_padding'] if 'spatial_padding' in parameters else 'zero'
 
         if 'ce_g' in parameters:
             self.ce_g = torch.as_tensor( parameters['ce_g'], device=self.device )
@@ -309,7 +310,7 @@ class cvvdp(vq_metric):
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.contrast.startswith("weber"):
-                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast, padding_type=self.spatial_padding)
             elif self.contrast.startswith("log"):
                 self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
             else:

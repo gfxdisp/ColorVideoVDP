@@ -18,14 +18,21 @@ class lpyr_dec():
 
     min_freq = 0.2
 
-    def __init__(self, W, H, ppd, device, padding_value=0.0001):
+    def __init__(self, W, H, ppd, device, padding_type='zero', padding_value=0.0001):
         self.device = device
         self.ppd = ppd
         self.W = W
         self.H = H
+        self.padding_type = padding_type
         self.padding_value = padding_value
 
-        max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
+        assert padding_type in ['zero', 'valid']
+
+        if padding_type=='valid':
+            # The baseband must be at least 5x5 to support the kernel
+            max_levels = int(np.floor(np.log2(min(self.H, self.W)/5)))
+        else:
+            max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
         bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
 
@@ -181,8 +188,17 @@ class lpyr_dec():
         # y = y_c.view( x.shape[0:-2] + y_c.shape[-2:] )
 
         H, W = x.shape[-2], x.shape[-1]
-        y_a = Func.conv2d(x.view(-1,1,H,W), K_vert, stride=(2,1), padding=(2,0)).view( x.shape[0:-2] + (-1,W) )
-        # view(B,C,-1,W)
+        x_ch = x.view(-1,1,H,W) # So that we can handle batches
+
+        if self.padding_type=='zero':
+            y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
+            y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=(0,2))
+        else: # 'valid'
+            y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=0)
+            y_np = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=0)
+            y = Func.pad(y_np, (2, 2, 2, 2), mode='constant', value=0)
+
+
 
         # # Symmetric padding 
         # y_a[...,0,:] += x[...,0,:]*K_vert[...,1,0] + x[...,1,:]*K_vert[...,0,0]   # First row
@@ -190,10 +206,6 @@ class lpyr_dec():
         #     y_a[...,-1,:] += x[...,-1,:]*K_vert[...,3,0] + x[...,-2,:]*K_vert[...,4,0]  # Last row
         # else: # even number of rows
         #     y_a[...,-1,:] += x[...,-1,:]*K_vert[...,4,0]  # Last row
-
-        H = y_a.shape[-2]
-        y = Func.conv2d(y_a.view(-1,1,H,W), K_horiz, stride=(1,2), padding=(0,2)).view( x.shape[0:-2] + (H,-1) )
-
         # # Symmetric padding 
         # y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
         # if (x.shape[-2] % 2)==1: # odd number of columns
@@ -201,7 +213,8 @@ class lpyr_dec():
         # else: # even number of columns
         #     y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4] 
 
-        return y
+        H = y.shape[-2]
+        return y.view( x.shape[0:-2] + (H,-1) ) # Restore the batch dimensions
     
     # This function is (a bit) faster
     def gausspyr_expand(self, x, sz = None, kernel_a = 0.4):
@@ -213,8 +226,12 @@ class lpyr_dec():
 
         K_vert, K_horiz = self.get_kernels( kernel_a, device=x.device, dtype=x.dtype )
 
+        # if self.padding_type=='zero':
         y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0))[:,:,0:sz[0],:]
         y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1))[:,:,:,0:sz[1]]
+        # else:
+        #     y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0), output_padding=(2,0))[:,:,0:sz[0],:]
+        #     y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1), output_padding=(0,2))[:,:,:,0:sz[1]]
 
         # y_a = self.interleave_zeros_and_pad(x_ch, dim=-2, exp_size=sz)
         # H, W = y_a.shape[-2], y_a.shape[-1]        
@@ -299,8 +316,8 @@ class lpyr_dec_2(lpyr_dec):
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
 class weber_contrast_pyr(lpyr_dec):
 
-    def __init__(self, W, H, ppd, device, contrast):
-        super().__init__(W, H, ppd, device)
+    def __init__(self, W, H, ppd, device, contrast, padding_type='zero'):
+        super().__init__(W, H, ppd, device, padding_type=padding_type)
         self.contrast = contrast
 
     def decompose(self, image):

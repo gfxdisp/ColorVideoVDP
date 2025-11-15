@@ -68,5 +68,6 @@
     "d_max": 2.5642454624176025,
     "image_int": 0.577918291091919,
     "Bloch_int": "off",
-    "bfilt_duration": 0.4
+    "bfilt_duration": 0.4,
+    "spatial_padding": "valid"
 }
