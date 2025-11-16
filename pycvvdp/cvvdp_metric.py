@@ -682,7 +682,7 @@ class cvvdp(vq_metric):
                 height = R.shape[-2]
                 t_int = self.image_int if is_image else 1.0
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
-                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w)
+                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w, padding_type=self.spatial_padding)
 
         if self.do_heatmap:
             heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)

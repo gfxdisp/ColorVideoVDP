@@ -29,8 +29,8 @@ class lpyr_dec():
         assert padding_type in ['zero', 'valid', 'symmetric']
 
         if padding_type=='valid':
-            # The baseband must be at least 5x5 to support the kernel
-            max_levels = int(np.floor(np.log2(min(self.H, self.W)/5)))
+            # The baseband must be at least 9x9 to support the kernel
+            max_levels = int(np.floor(np.log2(min(self.H, self.W)/9)))
         else:
             max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
@@ -190,13 +190,13 @@ class lpyr_dec():
         H, W = x.shape[-2], x.shape[-1]
         x_ch = x.view(-1,1,H,W) # So that we can handle batches
 
-        if self.padding_type=='zero':
+        if self.padding_type=='zero' or self.padding_type=='valid':  
             y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
             y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=(0,2))
-        elif self.padding_type=='valid':  
-            y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=0)
-            y_np = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=0)
-            y = Func.pad(y_np, (2, 2, 2, 2), mode='constant', value=0)
+        # elif self.padding_type=='valid':  
+        #     y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=0)
+        #     y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=0)
+        #     # y = Func.pad(y_np, (2, 2, 2, 2), mode='constant', value=0)
         else: # 'symmetric (v0.4 padding)
             # Symmetric padding 
             y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
@@ -233,7 +233,7 @@ class lpyr_dec():
             y_a = Func.conv2d(y_a, K_vert*2)        
             y   = self.interleave_zeros_and_pad(y_a, dim=-1, exp_size=sz)
             y = Func.conv2d(y, K_horiz*2)
-        else:
+        else: # 'zero' or 'valid'
             y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0))[:,:,0:sz[0],:]
             y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1))[:,:,:,0:sz[1]]
         # else:
@@ -255,8 +255,8 @@ class lpyr_dec():
 # Decimated Laplacian pyramid with a bit better interface - stores all bands within the object. Currently used for the heatmap
 class lpyr_dec_2(lpyr_dec):
 
-    def __init__(self, W, H, ppd, device, keep_gaussian=False):
-        super().__init__(W, H, ppd, device)
+    def __init__(self, W, H, ppd, device, keep_gaussian=False, padding_type='zero'):
+        super().__init__(W, H, ppd, device, padding_type=padding_type)
         self.keep_gaussian=keep_gaussian
 
         self.lbands = [None] * (self.height) # Laplacian pyramid bands
@@ -343,8 +343,17 @@ class weber_contrast_pyr(lpyr_dec):
                     # The sustained channels use the mean over the image as the background. Otherwise, they would be divided by itself and the contrast would be 1.
                     L_bkg = torch.mean(torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01), dim=[-1, -2], keepdim=True)
             else:
+                # if self.padding_type == 'valid':
+                #     # Because 'valid' shrinks the subbands, we need  to shrink the image
+                #     gpyr[i] = gpyr[i][...,2:(gpyr[i].shape[-2]-2), 2:(gpyr[i].shape[-1]-2)]
+
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
                 layer = gpyr[i] - glayer_ex 
+                if self.padding_type == 'valid': # Remove all values affected by the edge
+                    layer[...,:,0:4] = 0
+                    layer[...,:,-4:] = 0
+                    layer[...,0:4,4:-4] = 0
+                    layer[...,-4:,4:-4] = 0
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # L_bkg is set to ref-sustained 
