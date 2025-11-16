@@ -3,6 +3,7 @@
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
 * Fix: YCbCr to RGB transform changed from BT.601 to BT.709 (issue #36)
 * Fix: the number of pyramid levels is set to stop at 0.2 cpd (excluding the base band)
+* Bug fix: --dump-channels works again (was broken after adding the batch mode)
 
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)
