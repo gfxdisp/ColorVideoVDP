@@ -26,7 +26,7 @@ class lpyr_dec():
         self.padding_type = padding_type
         self.padding_value = padding_value
 
-        assert padding_type in ['zero', 'valid']
+        assert padding_type in ['zero', 'valid', 'symmetric']
 
         if padding_type=='valid':
             # The baseband must be at least 5x5 to support the kernel
@@ -193,25 +193,26 @@ class lpyr_dec():
         if self.padding_type=='zero':
             y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
             y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=(0,2))
-        else: # 'valid'
+        elif self.padding_type=='valid':  
             y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=0)
             y_np = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=0)
             y = Func.pad(y_np, (2, 2, 2, 2), mode='constant', value=0)
-
-
-
-        # # Symmetric padding 
-        # y_a[...,0,:] += x[...,0,:]*K_vert[...,1,0] + x[...,1,:]*K_vert[...,0,0]   # First row
-        # if (x.shape[-2] % 2)==1: # odd number of rows
-        #     y_a[...,-1,:] += x[...,-1,:]*K_vert[...,3,0] + x[...,-2,:]*K_vert[...,4,0]  # Last row
-        # else: # even number of rows
-        #     y_a[...,-1,:] += x[...,-1,:]*K_vert[...,4,0]  # Last row
-        # # Symmetric padding 
-        # y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
-        # if (x.shape[-2] % 2)==1: # odd number of columns
-        #     y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,3] + y_a[...,:,-2]*K_horiz[...,0,4]
-        # else: # even number of columns
-        #     y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4] 
+        else: # 'symmetric (v0.4 padding)
+            # Symmetric padding 
+            y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
+            y_a[...,0,:] += x_ch[...,0,:]*K_vert[...,1,0] + x_ch[...,1,:]*K_vert[...,0,0]   # First row
+            if (x.shape[-2] % 2)==1: # odd number of rows
+                y_a[...,-1,:] += x_ch[...,-1,:]*K_vert[...,3,0] + x_ch[...,-2,:]*K_vert[...,4,0]  # Last row
+            else: # even number of rows
+                y_a[...,-1,:] += x_ch[...,-1,:]*K_vert[...,4,0]  # Last row
+            
+            y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=(0,2))
+            # Symmetric padding 
+            y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
+            if (x.shape[-2] % 2)==1: # odd number of columns
+                y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,3] + y_a[...,:,-2]*K_horiz[...,0,4]
+            else: # even number of columns
+                y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4] 
 
         H = y.shape[-2]
         return y.view( x.shape[0:-2] + (H,-1) ) # Restore the batch dimensions
@@ -226,18 +227,18 @@ class lpyr_dec():
 
         K_vert, K_horiz = self.get_kernels( kernel_a, device=x.device, dtype=x.dtype )
 
-        # if self.padding_type=='zero':
-        y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0))[:,:,0:sz[0],:]
-        y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1))[:,:,:,0:sz[1]]
+        if self.padding_type=='symmetric': # (v0.4)
+            y_a = self.interleave_zeros_and_pad(x_ch, dim=-2, exp_size=sz)
+            H, W = y_a.shape[-2], y_a.shape[-1]        
+            y_a = Func.conv2d(y_a, K_vert*2)        
+            y   = self.interleave_zeros_and_pad(y_a, dim=-1, exp_size=sz)
+            y = Func.conv2d(y, K_horiz*2)
+        else:
+            y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0))[:,:,0:sz[0],:]
+            y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1))[:,:,:,0:sz[1]]
         # else:
         #     y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0), output_padding=(2,0))[:,:,0:sz[0],:]
         #     y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1), output_padding=(0,2))[:,:,:,0:sz[1]]
-
-        # y_a = self.interleave_zeros_and_pad(x_ch, dim=-2, exp_size=sz)
-        # H, W = y_a.shape[-2], y_a.shape[-1]        
-        # y_a = Func.conv2d(y_a, K_vert*2)        
-        # y   = self.interleave_zeros_and_pad(y_a, dim=-1, exp_size=sz)
-        # y = Func.conv2d(y, K_horiz*2)
 
         H = y.shape[-2]
         return y.view( x.shape[0:-2] + (H,-1) ) # Restore the batch dimensions
