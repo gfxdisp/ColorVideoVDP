@@ -1,4 +1,5 @@
 # Dump intermediate channel data for debugging and visualization
+from operator import is_
 import torch
 import math
 import os
@@ -7,7 +8,7 @@ import logging
 # For debugging only
 #from gfxdisp.pfs.pfs_torch import pfs_torch
 
-from pycvvdp.video_writer import VideoWriter
+from pycvvdp.video_writer import VideoWriter, ImageWriter
 from pycvvdp.lpyr_dec import lpyr_dec_2
 
 DKLd65_to_RGB = ( (0.926502308187832, 0.960842501786725, 0.940315924461593),
@@ -34,31 +35,44 @@ class DumpChannels:
         self.do_dump_lpyr = dump_lpyr
         self.do_dump_diff = dump_diff
         self.output_dir = output_dir if output_dir else "."
+        self.is_image = None
 
     def open(self, fps):
 
-        assert fps>0, "This feature currently works only on video"
+        self.is_image = (fps==0)
 
         if self.do_dump_temp_ch:
-            fname = os.path.join( self.output_dir, "temp_channels.mp4" )
+            if self.is_image:
+                fname = os.path.join( self.output_dir, "temp_channels.png" )
+                self.vw_channels = ImageWriter( fname )
+            else:
+                fname = os.path.join( self.output_dir, "temp_channels.mp4" )
+                self.vw_channels = VideoWriter( fname, fps=fps, verbose=False )
             logging.info( f"Writing temporal channels to '{fname}'" )
-            self.vw_channels = VideoWriter( fname, fps=fps, verbose=False )
         else:
             self.vw_channels = None
 
         self.max_V = None
 
         if self.do_dump_lpyr:
-            fname = os.path.join( self.output_dir, "lpyr.mp4" )
+            if self.is_image:
+                fname = os.path.join( self.output_dir, "lpyr.png" )
+                self.vw_lpyr = ImageWriter( fname )
+            else:
+                fname = os.path.join( self.output_dir, "lpyr.mp4" )
+                self.vw_lpyr = VideoWriter( fname, fps=fps )
             logging.info( f"Writing Laplacian pyramids to '{fname}'" )
-            self.vw_lpyr = VideoWriter( fname, fps=fps )
         else:
             self.vw_lpyr = None
 
         if self.do_dump_diff:
-            fname = os.path.join( self.output_dir, "diff.mp4" )
+            if self.is_image:
+                fname = os.path.join( self.output_dir, "diff.png" )
+                self.vw_diff = ImageWriter( fname )
+            else:
+                fname = os.path.join( self.output_dir, "diff.mp4" )
+                self.vw_diff = VideoWriter( fname, fps=fps )
             logging.info( f"Writing visual differences to '{fname}'" )
-            self.vw_diff = VideoWriter( fname, fps=fps )
             self.diff_pyr = None
         else:
             self.vw_diff = None
@@ -81,8 +95,11 @@ class DumpChannels:
             self.max_V = ach_sust_rgb.max()
 
         gray = white_dkl.view([1,3,1,1,1]) * (self.max_V/4)
-        ach_trans = R[0:1,6:7,...]
-        ach_trans_rgb = dkld65_to_rgb( torch.cat( [ ach_trans, white_dkl[1].expand_as(ach_sust), white_dkl[2].expand_as(ach_sust) ], dim=1 )+gray )
+        if self.is_image:
+            ach_trans_rgb = torch.ones((1,3,1,ach_sust.shape[-2],ach_sust.shape[-1]), device=R.device)*0.2176
+        else:
+            ach_trans = R[0:1,6:7,...]
+            ach_trans_rgb = dkld65_to_rgb( torch.cat( [ ach_trans, white_dkl[1].expand_as(ach_sust), white_dkl[2].expand_as(ach_sust) ], dim=1 )+gray )
         rg = R[0:1,2:3,...]
         rg_rgb = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(rg), rg, white_dkl[2].expand_as(rg) ], dim=1 )+gray )
         yv = R[0:1,4:5,...]
@@ -109,7 +126,7 @@ class DumpChannels:
         b0_sh = b0.shape
         width = ceil8((b0_sh[-1] + lpyr.get_band(bands, 1).shape[-1] + 1)*2)
         height = ceil8((b0_sh[-2]+1)*2)
-        frames = b0_sh[1]
+        frames = b0_sh[2]
         lpv = torch.zeros( [3, frames, height, width], device=b0.device)
 
         white_dkl = torch.as_tensor( [1, 0.003775328226986, 0.010327227989383], device=b0.device )
@@ -117,19 +134,22 @@ class DumpChannels:
         gray[0] /= 2
 
         B = lpyr.get_band_count()
-        CHs = [0, 6, 2, 4]
-        for col in range(4):
+        if self.is_image:
+            CHs = [0, 2, 4]
+        else:
+            CHs = [0, 6, 2, 4]
+        for col in range(len(CHs)):
             ch = CHs[col]
             pos = [int(col/2)*int(height/2), (col%2)*int(width/2)]
             for bb in range(B):
-                band = lpyr.get_band(bands,bb)[ch:(ch+1),...]
+                band = lpyr.get_band(bands,bb)[0:1,ch:(ch+1),...]
                 if ch in (0,1,6,7): # achromatic
-                    band_col = dkld65_to_rgb( torch.cat( [ band+white_dkl[0]/2, white_dkl[1].expand_as(band), white_dkl[2].expand_as(band) ], dim=0 ) )
+                    band_col = dkld65_to_rgb( torch.cat( [ band+white_dkl[0]/2, white_dkl[1].expand_as(band), white_dkl[2].expand_as(band) ], dim=1 ) )
                 elif ch in (2,3): # RG
-                    band_col = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(band)/2, band+white_dkl[1], white_dkl[2].expand_as(band) ], dim=0 ) )
+                    band_col = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(band)/2, band+white_dkl[1], white_dkl[2].expand_as(band) ], dim=1 ) )
                 elif ch in (4,5): # YV
-                    band_col = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(band)/2, white_dkl[1].expand_as(band), band + white_dkl[2] ], dim=0 ) )
-                lpv[:, :, pos[0]:(pos[0]+band.shape[-2]), pos[1]:(pos[1]+band.shape[-1])] = band_col
+                    band_col = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(band)/2, white_dkl[1].expand_as(band), band + white_dkl[2] ], dim=1 ) )
+                lpv[:, :, pos[0]:(pos[0]+band.shape[-2]), pos[1]:(pos[1]+band.shape[-1])] = band_col[0,...]
                 if (bb % 2)==0:
                     pos[1] += band.shape[-1]+1
                 else:
@@ -163,20 +183,23 @@ class DumpChannels:
         b0_sh = b0.shape
         width = ceil8((b0_sh[-1] + self.diff_pyr.get_lband(1).shape[-1] + 1)*2)
         height = ceil8((b0_sh[-2]+1)*2)
-        frames = b0_sh[1]
-        lpv = torch.zeros( [3, frames, height, width], device=b0.device)
+        frames = b0_sh[2]
+        lpv = torch.ones( [3, frames, height, width], device=b0.device)*0.2716
 
         white_dkl = torch.as_tensor( [1, 0.003775328226986, 0.010327227989383], device=b0.device )
 
         B = self.diff_pyr.get_band_count()
-        CHs = [0, 3, 1, 2]
-        for col in range(4):
+        if self.is_image:
+            CHs = [0, 1, 2]
+        else:
+            CHs = [0, 3, 1, 2]
+        for col in range(len(CHs)):
             ch = CHs[col]
             pos = [int(col/2)*int(height/2), (col%2)*int(width/2)]
             for bb in range(B):
-                band = self.diff_pyr.get_lband(bb)[ch:(ch+1),...]
-                band_col = (band/10).expand( (3,-1,-1,-1) )
-                lpv[:, :, pos[0]:(pos[0]+band.shape[-2]), pos[1]:(pos[1]+band.shape[-1])] = band_col
+                band = self.diff_pyr.get_lband(bb)[0:1,ch:(ch+1),...]
+                band_col = (band/10).expand( (-1,3,-1,-1,-1) )
+                lpv[:, :, pos[0]:(pos[0]+band.shape[-2]), pos[1]:(pos[1]+band.shape[-1])] = band_col[0,...]
                 if (bb % 2)==0:
                     pos[1] += band.shape[-1]+1
                 else:
