@@ -4,4 +4,5 @@ from pycvvdp.video_source_file import video_source_file, video_source_video_file
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_photo_eotf, vvdp_display_geometry
 from pycvvdp.video_source_yuv import video_source_yuv_file
 from pycvvdp.cvvdp_ml_metric import cvvdp_ml_saliency, cvvdp_ml_transformer
+from pycvvdp.cvvdp_ncsf_mtf_metric import cvvdp_ncsf_mtf, cvvdp_ncsf_mtf_trained
 from pycvvdp import third_party

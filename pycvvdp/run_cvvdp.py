@@ -19,6 +19,8 @@ import pycvvdp
 
 import shlex
 
+from utils.glare_model import GlareModel
+
 #from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
 # from pyfvvdp.visualize_diff_map import visualize_diff_map
 import pycvvdp.utils as utils
@@ -108,6 +110,7 @@ def parse_args(arg_list=None):
     parser.add_argument("--temp-resample", action='store_true', default=False, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates.")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
     parser.add_argument("--dump-channels", nargs='+', choices=['temporal', 'lpyr', 'difference'], default=None, help="Output video/images with intermediate processing stages (for debugging and visualization).")
+    parser.add_argument("--apply-glare", action='store_true', default=False, help="Apply glare model to the input video.")
     if arg_list is not None:
         args = parser.parse_args(arg_list)
     else:
@@ -313,6 +316,8 @@ def run_on_args(args):
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
 
+                if args.apply_glare:
+                    vs = GlareModel(vs, display_geometry=display_geometry, surround=None)
                 base, ext = os.path.splitext(os.path.basename(test_file))            
                 base_fname = os.path.join(out_dir, base)
                 mm.set_base_fname(base_fname)
