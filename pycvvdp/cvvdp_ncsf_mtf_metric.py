@@ -10,7 +10,7 @@ class cvvdp_ncsf_mtf(cvvdp):
 
     def predict_video_source(self, vid_source):
         # Apply NCSF MTF before predicting
-        vid_source = GlareModel(vid_source.vs, display_geometry=self.display_geometry, surround=None)  # remember to add the display geometry
+        vid_source = GlareModel(vid_source, display_geometry=self.display_geometry, surround=None)  # remember to add the display geometry
         return super().predict_video_source(vid_source)
     
     def short_name(self):
