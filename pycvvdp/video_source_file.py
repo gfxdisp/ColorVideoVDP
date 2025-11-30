@@ -225,7 +225,7 @@ class video_reader_yuv_pytorch(video_reader):
 
         self.chroma_ss = self.in_pix_fmt[3:6]
         if not self.chroma_ss in ['444', '420']: # TODO: implement and test 422
-            raise RuntimeError(f"Unrecognized chroma subsampling {self.chroma_ss}")
+            raise vq_exception(f"GPU-accelerated decoding cannot handle chroma subsampling {self.chroma_ss}. Run with `--ffmpeg-cc` command-line argument.")
 
         if self.bit_depth>8: 
             self.dtype = np.uint16
