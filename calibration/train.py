@@ -105,7 +105,7 @@ def main():
         for batch in tqdm.tqdm(val_loader, leave=False):
             jod_hat = []
             for qpc, bb, _ in zip(*batch):
-                jod_hat.append(metric.do_pooling_and_jods(qpc.to(device), bb.to(device)))
+                jod_hat.append(metric.do_pooling_and_jods(qpc.to(device)))
             jod_hat = torch.stack(jod_hat)
 
             jod = batch[-1].to(device)
@@ -138,7 +138,7 @@ def main():
             opt.zero_grad()
             jod_hat = []
             for qpc, bb, _ in zip(*batch):
-                jod_hat.append(metric.do_pooling_and_jods(qpc.to(device), bb.to(device)))
+                jod_hat.append(metric.do_pooling_and_jods(qpc.to(device)))
             jod_hat = torch.stack(jod_hat)
 
             jod = batch[-1].to(device)

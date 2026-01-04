@@ -1064,9 +1064,9 @@ class cvvdp(vq_metric):
                 else:
                     fmap[key] = value
 
-        for cc in range(Q_per_ch.shape[0]): # for each temporal/chromatic channel
-            for bb in range(Q_per_ch.shape[2]): # for each band
-                fmap[f"t{cc}_b{bb}"] = Q_per_ch[cc,:,bb].tolist()
+        for cc in range(Q_per_ch.shape[1]): # for each temporal/chromatic channel
+            for bb in range(Q_per_ch.shape[3]): # for each band
+                fmap[f"t{cc}_b{bb}"] = Q_per_ch[:, cc,:,bb].tolist()
 
         with open(dest_fname, 'w', encoding='utf-8') as f:
             json.dump(fmap, f, ensure_ascii=False, indent=4)
