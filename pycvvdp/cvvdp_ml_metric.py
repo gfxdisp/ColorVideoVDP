@@ -140,10 +140,12 @@ class cvvdp_ml_base(cvvdp):
     def train(self, do_training=True):
         super().train(do_training)
         for net in self.get_nets_to_load():
+            for param in getattr(self, net).parameters():
+                param.requires_grad = do_training
             getattr(self, net).train(do_training)
-            if not do_training:            
-                for param in getattr(self, net).parameters():
-                    param.requires_grad = False    
+            # if not do_training:            
+            #     for param in getattr(self, net).parameters():
+            #         param.requires_grad = False    
 
     # So that we can override in the super classes
     @abstractmethod
