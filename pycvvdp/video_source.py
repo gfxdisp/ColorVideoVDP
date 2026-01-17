@@ -61,7 +61,7 @@ class video_source:
         if not hasattr( self, "first_frame" ):
             self.first_frame = True
 
-        if self.first_frame and not target_colorspace.startswith('display_encoded'):
+        if self.first_frame and not target_colorspace.startswith('display_encoded') and not target_colorspace=='RGB2020pq':
             self.first_frame = False
             f_mean = torch.mean(frame[:,0,:,:,:])
             f_max = torch.max(frame[:,0,:,:,:])

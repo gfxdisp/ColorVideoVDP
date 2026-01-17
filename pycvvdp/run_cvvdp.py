@@ -262,6 +262,8 @@ def run_on_args(args):
             met_args['gpu_mem'] = args.gpu_mem        
         if 'dump_channels' in constructor_args:
             met_args['dump_channels'] = dump_channels        
+        if 'quiet' in constructor_args:
+            met_args['quiet'] = args.quiet        
         fv = metric_class(**met_args)
         fv.train(False)
         metrics.append( fv )

@@ -16,6 +16,7 @@ import sys
 import json
 import torch.utils.benchmark as torchbench
 import logging
+from tqdm import tqdm
 from datetime import date
 
 try:
@@ -361,8 +362,9 @@ class cvvdp(vq_metric):
         if self.dump_channels:
             self.dump_channels.open(vid_source.get_frames_per_second())
 
+        show_progress_bar = not is_image and not self.quiet
 
-        for ff in range(0, N_frames, block_N_frames):
+        for ff in tqdm(range(0, N_frames, block_N_frames), disable=not show_progress_bar):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
             if is_image:                
@@ -846,7 +848,8 @@ class cvvdp(vq_metric):
 
                 D = D_max - D_max*(2*torch.abs(T_p)*torch.abs(R_p)+epsilon)/(T_p_m*T_p_m + R_p_m*R_p_m + epsilon)
 
-            assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
+            if not str(self.device) == "mps": # The reduction below does not work on MPS
+                assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
 
         elif self.masking_model in ["smooth_clamp_cont", "min_mutual_masking_perc_norm2", "fvvdp_ch_gain"]:
 
@@ -1061,9 +1064,9 @@ class cvvdp(vq_metric):
                 else:
                     fmap[key] = value
 
-        for cc in range(Q_per_ch.shape[0]): # for each temporal/chromatic channel
-            for bb in range(Q_per_ch.shape[2]): # for each band
-                fmap[f"t{cc}_b{bb}"] = Q_per_ch[cc,:,bb].tolist()
+        for cc in range(Q_per_ch.shape[1]): # for each temporal/chromatic channel
+            for bb in range(Q_per_ch.shape[3]): # for each band
+                fmap[f"t{cc}_b{bb}"] = Q_per_ch[:, cc,:,bb].tolist()
 
         with open(dest_fname, 'w', encoding='utf-8') as f:
             json.dump(fmap, f, ensure_ascii=False, indent=4)

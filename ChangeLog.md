@@ -1,3 +1,11 @@
+# v0.5.6 ?
+* Bug fix: incorrect assert in dm_preview_metric.py
+* Fix: disabled some unnecessary warning messages when dm-preview was selected
+* Fix: YCbCr to RGB transform changed from BT.601 to BT.709 (issue #36)
+* Bug fix: --dump-channels works again (was broken after adding the batch mode)
+* Fix: --device=mps works again (on Apple Silicon)
+* Added: Progress bar
+
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)
 * Fixed: A more meaningful message when a metric does not generate a histogram or heatmap but it is asked to generate such
