@@ -21,7 +21,10 @@ def read_args_from_file(args):
         if ':' not in line:                     # stop
             break
 
-        key, val = map(str.strip, line.split(':'))
+        col_pos = line.find( ':' )
+        key = line[0:col_pos]
+        val = line[col_pos+1:].strip()
+        # key, val = map(str.strip, line.split(':'))
         key = key.replace('-', '_')
         if key in vars(args).keys():
             if val.lower() == 'true':
