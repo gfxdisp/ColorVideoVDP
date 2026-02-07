@@ -95,6 +95,13 @@ def pow_neg( x:Tensor, p ):
     min_v = torch.as_tensor( 0.00001, device=x.device )
     return (torch.max(x,min_v) ** p) + (torch.max(-x,min_v) ** p) - min_v**p
 
+
+class cvvdp_frame_buffers:
+    def __init__(self) -> None:
+        self.sw_buf = [None, None] # Sliding window buffer [test: Tensor, reference: Tensor] - stores frames for applying a temporal filter
+        self.ra_buf = [[], []] # Read-ahead buffer [test: List, reference: List] - used for the symmetric padding
+
+
 """
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
@@ -273,8 +280,7 @@ class cvvdp(vq_metric):
     frame_padding - the metric requires at least 250ms of video for temporal processing. Because no previous frames exist in the
         first 250ms of video, the metric must pad those first frames. This options specifies the type of padding to use:
           'replicate' - replicate the first frame (default)
-          'circular'  - (not implemented) tile the video in the front, so that the last frame is used for frame 0.
-          'pingpong'  - (not implemented) the video frames are mirrored so that frames -1, -2, ... correspond to frames 0, 1, ...
+          'symmetric'  - the video frames are mirrored so that frames -1, -2, ... correspond to frames 0, 1, ...
     '''
     def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0):
 
@@ -331,7 +337,7 @@ class cvvdp(vq_metric):
             self.F, omega_tmp = self.get_temporal_filters(vid_source.get_frames_per_second())
             self.filter_len = torch.numel(self.F[0])
 
-        all_ch = 2+temp_ch
+        no_channels = 2+temp_ch
 
         if self.do_heatmap:
             dmap_channels = 1 if self.heatmap == "raw" else 3
@@ -339,10 +345,7 @@ class cvvdp(vq_metric):
         else:
             heatmap = None
 
-        sw_buf = [None, None]
         Q_per_ch = None
-
-        fl = self.filter_len
 
         if self.device.type == 'cuda' and torch.cuda.is_available() and not is_image:
             # GPU utilization is better if we process many frames, but it requires more GPU memory
@@ -364,82 +367,14 @@ class cvvdp(vq_metric):
 
         show_progress_bar = not is_image and not self.quiet
 
+        fb = cvvdp_frame_buffers()
+        # sw_buf = [None, None] # Sliding window buffer [test, reference] - stores frames for applying a temporal filter
+        # ra_buf = [None, None] # Read-ahead buffer [test, reference]
+
         for ff in tqdm(range(0, N_frames, block_N_frames), disable=not show_progress_bar):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
-            if is_image:                
-                R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
-                R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
-                R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
-
-            else: # This is video
-                #if self.debug: print("Frame %d:\n----" % ff)
-
-                if ff == 0: # First frame
-                    sw_buf[0] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)  # In some cases, it should be possible to use float16
-                    sw_buf[1] = torch.zeros((batch_sz,3,fl+block_N_frames-1,height,width), device=self.device, dtype=torch.float32)
-
-                    if self.debug and not hasattr( self, 'sw_buf_allocated' ):
-                        # Memory allocated after creating buffers for temporal filters 
-                        self.sw_buf_allocated = torch.cuda.max_memory_allocated(self.device)
-
-                    if self.temp_padding == "replicate":
-                        for fi in range(cur_block_N_frames):
-                            ind = fl+fi-1
-                            sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
-                            sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
-
-                        ind = fl-1
-                        sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,ind:ind+1,:,:] # Replicate the first frame
-                        sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,ind:ind+1,:,:] # Replicate the first frame
-
-                    # elif self.temp_padding == "circular":
-                    #     sw_buf[0] = torch.zeros([1, 1, fl, height, width], device=self.device)
-                    #     sw_buf[1] = torch.zeros([1, 1, fl, height, width], device=self.device)
-                    #     for kk in range(fl):
-                    #         fidx = (N_frames - 1 - fl + kk) % N_frames
-                    #         sw_buf[0][:,:,kk,...] = vid_source.get_test_frame(fidx, device=self.device)
-                    #         sw_buf[1][:,:,kk,...] = vid_source.get_reference_frame(fidx, device=self.device)
-                    # elif self.temp_padding == "pingpong":
-                    #     sw_buf[0] = torch.zeros([1, 1, fl, height, width], device=self.device)
-                    #     sw_buf[1] = torch.zeros([1, 1, fl, height, width], device=self.device)
-
-                    #     pingpong = list(range(0,N_frames)) + list(range(N_frames-2,0,-1))
-                    #     indices = []
-                    #     while(len(indices) < (fl-1)):
-                    #         indices = indices + pingpong
-                    #     indices = indices[-(fl-1):] + [0]
-
-                    #     for kk in range(fl):
-                    #         fidx = indices[kk]
-                    #         sw_buf[0][:,:,kk,...] = vid_source.get_test_frame(fidx,device=self.device)
-                    #         sw_buf[1][:,:,kk,...] = vid_source.get_reference_frame(fidx,device=self.device)
-                    else:
-                        raise RuntimeError( 'Unknown padding method "{}"'.format(self.temp_padding) )
-                else:
-                    # scroll the sliding window buffers
-                    # Tensor splicing leads to strange errors with videos; switching to torch.roll()
-                    # sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
-                    # sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
-                    sw_buf[0] = torch.roll(sw_buf[0], shifts=-block_N_frames, dims=2)
-                    sw_buf[1] = torch.roll(sw_buf[1], shifts=-block_N_frames, dims=2)
-
-                    for fi in range(cur_block_N_frames):
-                        ind=fl+fi-1
-                        sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
-                        sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
-
-                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
-                # Images do not have the two last channels
-                R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
-
-                for cc in range(all_ch): # Iterate over chromatic and temporal channels
-                    # 1D filter over time (over frames)
-                    corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1]) 
-                    sw_ch = 0 if cc==3 else cc # color channel in the sliding window
-                    for fi in range(cur_block_N_frames):
-                        R[:,(cc*2+0):(cc*2+1), fi:(fi+1), :, :] = (sw_buf[0][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
-                        R[:,(cc*2+1):(cc*2+2), fi:(fi+1), :, :] = (sw_buf[1][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
+            R = self.read_block_of_frames(vid_source, no_channels, fb, block_N_frames, met_colorspace, ff, cur_block_N_frames)
 
             if self.dump_channels:
                 self.dump_channels.dump_temp_ch(R)
@@ -504,6 +439,126 @@ class cvvdp(vq_metric):
             logging.debug( f"Max memory allocated: {torch.cuda.max_memory_allocated()/1e9} GB" )
 
         return (Q_jod.squeeze(), stats)
+
+    # Get a positive index of a frame for symmetric padding
+    # If a video is too short to match the filter length, in will replicate frames back and forth in a ping-pong manner
+    def _get_symmetric_frame_index( self, frame_ind, frame_count ):
+        is_even = (math.floor((abs(frame_ind)-1)/(frame_count-1)) % 2)==0
+        if is_even:
+            return ((abs(frame_ind)-1) % (frame_count-1))+1
+        else:
+            return (frame_ind % (frame_count-1))
+
+    # Reads a block of frames and applies temporal filter, as needed
+    def read_block_of_frames(self, vid_source, no_channels, fb, block_N_frames, met_colorspace, ff, cur_block_N_frames):
+
+        vid_sz = vid_source.get_video_size() # H, W, F
+        height, width, N_frames = vid_sz
+        batch_sz = vid_source.get_batch_size()
+        fl = self.filter_len
+
+        is_image = (N_frames==1)  # Can run faster on images
+
+        if is_image:
+            R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
+            R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+            R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+
+        else: # This is video
+            #if self.debug: print("Frame %d:\n----" % ff)
+            # Check if video source provides pre-filtered temporal channels (e.g., SPEM extension)
+            is_pre_filtered = getattr(vid_source, 'is_temporally_filtered', False)
+
+            if is_pre_filtered:
+                # Bypass path: frames are already temporally filtered
+                # Output R structure: [T-AchS, R-AchS, T-RG, R-RG, T-YV, R-YV, T-AchT, R-AchT]
+                R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
+
+                for fi in range(cur_block_N_frames):
+                    # Fetch reference first so optical flow is computed and cached
+                    # before test frame needs it (SPEM computes flow from reference only)
+                    R_filt = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace='DKLd65_trans')
+                    T_filt = vid_source.get_test_frame(ff+fi, device=self.device, colorspace='DKLd65_trans')
+
+                    # Map to interleaved 8-channel structure
+                    # Channels 0-2: DKL sustained (Ach, RG, YV)
+                    # Channel 3: DKL Ach-Transient
+                    for ch in range(4):
+                        R[:, ch*2, fi, :, :] = T_filt[:, ch, 0, :, :]
+                        R[:, ch*2+1, fi, :, :] = R_filt[:, ch, 0, :, :]
+
+            else:
+                # Standard path: perform temporal filtering
+                if ff == 0: # First frame
+                    buf_len = fl+block_N_frames-1
+                    fb.sw_buf[0] = torch.zeros((batch_sz,3,buf_len,height,width), device=self.device, dtype=torch.float32)  # In some cases, it should be possible to use float16
+                    fb.sw_buf[1] = torch.zeros((batch_sz,3,buf_len,height,width), device=self.device, dtype=torch.float32)
+
+                    if self.debug and not hasattr( self, 'sw_buf_allocated' ):
+                            # Memory allocated after creating buffers for temporal filters
+                        self.sw_buf_allocated = torch.cuda.max_memory_allocated(self.device)
+
+                    for fi in range(cur_block_N_frames):
+                        ind = fl+fi-1
+                        fb.sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
+                        fb.sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
+
+                    if self.temp_padding == "replicate":
+                        ind = fl-1
+                        fb.sw_buf[0][:,:,0:fl-1,:,:] = fb.sw_buf[0][:,:,ind:ind+1,:,:] # Replicate the first frame
+                        fb.sw_buf[1][:,:,0:fl-1,:,:] = fb.sw_buf[1][:,:,ind:ind+1,:,:] # Replicate the first frame
+
+                    elif self.temp_padding == "symmetric":
+
+                        # If the cur_block_N_frames smaller than the filter length, we need to read those frames ahead
+                        for fi in range(max(fl-cur_block_N_frames,0)):
+                            ind = ff+cur_block_N_frames+fi
+                            fb.ra_buf[0].append(vid_source.get_test_frame(ind, device=self.device, colorspace=met_colorspace))
+                            fb.ra_buf[1].append(vid_source.get_reference_frame(ind, device=self.device, colorspace=met_colorspace))
+
+                        for fi in range(-fl+1,0):
+                            pos_ind = self._get_symmetric_frame_index(fi, N_frames)
+                            buf_ind = fi+fl-1
+                            if pos_ind < cur_block_N_frames: # whether the frame is in current buffer
+                                sw_ind = pos_ind + fl-1
+                                fb.sw_buf[0][:,:,buf_ind:buf_ind+1,:,:] = fb.sw_buf[0][:,:,sw_ind:sw_ind+1,:,:]
+                                fb.sw_buf[1][:,:,buf_ind:buf_ind+1,:,:] = fb.sw_buf[1][:,:,sw_ind:sw_ind+1,:,:]
+                            else: # use the read-ahead buffer
+                                ra_ind = pos_ind - cur_block_N_frames
+                                fb.sw_buf[0][:,:,buf_ind:buf_ind+1,:,:] = fb.ra_buf[0][ra_ind]
+                                fb.sw_buf[1][:,:,buf_ind:buf_ind+1,:,:] = fb.ra_buf[1][ra_ind]
+
+                    else:
+                        raise RuntimeError( f'Unknown padding method "{self.temp_padding}"' )
+                else:
+                    # scroll the sliding window buffers
+                    # Tensor splicing leads to strange errors with videos; switching to torch.roll()
+                    # sw_buf[0][:,:,0:-cur_block_N_frames,:,:] = sw_buf[0][:,:,cur_block_N_frames:,:,:]
+                    # sw_buf[1][:,:,0:-cur_block_N_frames,:,:] = sw_buf[1][:,:,cur_block_N_frames:,:,:]
+                    fb.sw_buf[0] = torch.roll(fb.sw_buf[0], shifts=-block_N_frames, dims=2)
+                    fb.sw_buf[1] = torch.roll(fb.sw_buf[1], shifts=-block_N_frames, dims=2)
+
+                    for fi in range(cur_block_N_frames):
+                        ind=fl+fi-1
+                        if fb.ra_buf[0]: # if read-ahead buffer is not empty
+                            fb.sw_buf[0][:,:,ind:ind+1,:,:] = fb.ra_buf[0].pop(0)
+                            fb.sw_buf[1][:,:,ind:ind+1,:,:] = fb.ra_buf[1].pop(0)
+                        else:
+                            fb.sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
+                            fb.sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
+
+                    # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
+                    # Images do not have the two last channels
+                R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
+
+                for cc in range(no_channels): # Iterate over chromatic and temporal channels
+                        # 1D filter over time (over frames)
+                    corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1])
+                    sw_ch = 0 if cc==3 else cc # color channel in the sliding window
+                    for fi in range(cur_block_N_frames):
+                        R[:,(cc*2+0):(cc*2+1), fi:(fi+1), :, :] = (fb.sw_buf[0][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Test
+                        R[:,(cc*2+1):(cc*2+2), fi:(fi+1), :, :] = (fb.sw_buf[1][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
+        return R
 
     # Determine how many frames we can process in a single batch 
     # Larger batch means faster processing, but it requires more memory
