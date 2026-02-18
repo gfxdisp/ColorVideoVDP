@@ -2,6 +2,7 @@
 
 from asyncio.log import logger
 from functools import cache
+from importlib.resources import path
 import os
 # from turtle import color
 import imageio.v2 as io
@@ -42,7 +43,7 @@ def load_image_as_array(imgfile):
     if ext == '.exr':
         if not pyexr_imported:
             logging.error( "pyexr is needed to read OpenEXR files. Please follow the instriction in README.md to install it." )
-            raise RuntimeError( "pyexr missing" )
+            raise vq_exception( "pyexr missing" )
         precisions = pyexr.open(imgfile).precisions
         assert precisions.count(precisions[0]) == len(precisions), 'All channels must have same precision'
         img = pyexr.read(imgfile, precision=precisions[0])
@@ -71,17 +72,25 @@ def load_image_as_array(imgfile):
 class video_reader:
 
     def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
+
+        if not os.path.isfile(vidfile):
+            raise vq_exception("File \"" + vidfile + "\" not found")
+
         try:
-            if vidfile.lower().endswith('.y4m'):
+            # Counting frames is much slower, but more accurate
+            do_count_frames = vidfile.lower().endswith('.y4m') or frames==-2            
+
+            if do_count_frames:
                 probe = ffmpeg.probe(vidfile, count_frames=None)
             else:
                 probe = ffmpeg.probe(vidfile)
         except:
-            raise RuntimeError("ffmpeg failed to open file \"" + vidfile + "\"")
+            raise vq_exception("ffmpeg failed to open file \"" + vidfile + "\"")
 
         # select the first video stream
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
 
+        self.fname = vidfile
         self.width = int(video_stream['width']) 
         self.src_width = self.width
         self.height = int(video_stream['height'])
@@ -107,7 +116,7 @@ class video_reader:
             else:
                 frames_in_vstream = -1; # Unspecified number of frames
 
-        if frames==-1:
+        if frames<0:
             self.frames = frames_in_vstream
         else:    
             self.frames = frames if frames_in_vstream==-1 else min( frames_in_vstream, frames ) # Use at most as many frames as passed in "frames" argument
@@ -209,7 +218,7 @@ class video_reader_yuv_pytorch(video_reader):
             self.uv_pixels = int(y_channel_pixels/4)
             self.uv_shape = (int(self.y_shape[0]/2), int(self.y_shape[1]/2))
         else:
-            raise RuntimeError("Unrecognized chroma subsampling.")
+            raise vq_exception("Unrecognized chroma subsampling.")
 
         if self.bit_depth > 8:
             self.frame_bytes *= 2
@@ -225,7 +234,7 @@ class video_reader_yuv_pytorch(video_reader):
 
         self.chroma_ss = self.in_pix_fmt[3:6]
         if not self.chroma_ss in ['444', '420']: # TODO: implement and test 422
-            raise RuntimeError(f"Unrecognized chroma subsampling {self.chroma_ss}")
+            raise vq_exception(f"GPU-accelerated decoding cannot handle chroma subsampling {self.chroma_ss}. Run with `--ffmpeg-cc` command-line argument.")
 
         if self.bit_depth>8: 
             self.dtype = np.uint16
@@ -359,8 +368,8 @@ class video_source_video_file(video_source_dm):
             self.test_vidr = self.reader(self.test_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
 
             if self.test_vidr.frames == -1 and self.reference_vidr.frames == -1:
-                logging.error( "Neither test nor reference video contains meta-data with the number of frames. You need to specify it with '--nframes' argument" )
-                raise RuntimeError("Unknown number of frames")
+                logging.error( "Neither test nor reference video contains meta-data with the number of frames. You need to pass '--count-frames' or specify it with '--nframes' argument." )
+                raise vq_exception("Unknown number of frames")
 
             if not self.ignore_framerate_mismatch: # We cannot use the logic below if we have fps mismatch. video_source_temp_resample_file will handle that.
                 if self.test_vidr.frames == -1:
@@ -440,12 +449,12 @@ class video_source_video_file(video_source_dm):
         self.init_readers()
 
         if frame != (vid_reader.curr_frame+1):
-            raise RuntimeError( 'Video can be currently only read frame-by-frame. Random access not implemented.' )
+            raise vq_exception( 'Video can be currently only read frame-by-frame. Random access not implemented.' )
 
         frame_np = vid_reader.get_frame()
 
         if frame_np is None:
-            raise RuntimeError( 'Could not read frame {}'.format(frame) )
+            raise vq_exception( f'Could not read frame {frame} of "{vid_reader.fname}". Try passing "--count-frames" or "-nframes".' )
 
         return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
 
@@ -467,7 +476,7 @@ class video_source_temp_resample_file(video_source_video_file):
     max_fps = 166 # upsample to at most this FPS
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
-        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=-1, full_screen_resize=full_screen_resize, 
+        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize, 
                          resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
 
 
@@ -494,7 +503,7 @@ class video_source_temp_resample_file(video_source_video_file):
         else:
             frames_resampled = min( test_frames_resampled, ref_frames_resampled )
 
-        self.frames = frames_resampled if frames==-1 else frames
+        self.frames = frames_resampled if frames<0 else frames
 
         logger.info( f"Test fps: {test_fps}; reference fps: {ref_fps}. Resampling videos to {self.resample_fps} frames per second. {self.frames} frames will be processed." )
         if test_frames_resampled != ref_frames_resampled:
@@ -544,15 +553,15 @@ class video_source_image_frames(video_source_dm):
 
         if full_screen_resize:
             logging.error("full-screen-resize not implemented for images.")
-            raise RuntimeError( "Not implemented" )
+            raise vq_exception( "Not implemented" )
 
         if test_has_frame_no != ref_has_frame_no:
             logger.error( "Both test and reference names must contain `%0Nd` string to be replaced with a frame number" )
-            raise RuntimeError( "Incorrect file names" )
+            raise vq_exception( "Incorrect file names" )
 
         if (fps > 0) != test_has_frame_no:
             logger.error( "A valid frames-per-second number (--fps) must be provided when input are video frames, or fps should be zero for images." )
-            raise RuntimeError( "Incorrect fps" )
+            raise vq_exception( "Incorrect fps" )
 
         if fps==0:
             self.N = 1
@@ -573,7 +582,7 @@ class video_source_image_frames(video_source_dm):
 
             if frame_count == 0:
                 logger.error( f"No frames found for {test_fname} and {reference_fname}" )
-                raise RuntimeError( "No frames" )
+                raise vq_exception( "No frames" )
 
             logger.info( f"{frame_count} frames found" )
             self.N = frame_count
@@ -680,7 +689,7 @@ class video_source_video_file_preload(video_source_video_file):
             frame_np = self.frame_array_ref[frame]
 
         if frame_np is None:
-            raise RuntimeError( 'Could not read frame {}'.format(frame) )
+            raise vq_exception( 'Could not read frame {}'.format(frame) )
 
         return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
 
@@ -697,7 +706,7 @@ class video_source_matlab( video_source_array ):
             if isinstance( var, np.ndarray ) and var.ndim > 1 and var.ndim <= 4 and var.size>10:
                 return var.astype(np.single) if var.dtype == np.double else var
 
-        raise RuntimeError( 'Cannot find image or video data in the .mat file' )
+        raise vq_exception( 'Cannot find image or video data in the .mat file' )
 
     def __init__( self, test_fname, reference_fname, fps=None, display_photometry='sdr_4k_30', config_paths=[] ):
         test_mat = sio.loadmat(test_fname)
@@ -710,7 +719,7 @@ class video_source_matlab( video_source_array ):
         ref_cnt = self.get_content(ref_mat)
 
         if test_cnt.ndim != ref_cnt.ndim: # or (test_cnt.shape != ref_cnt.shape).any():
-            raise RuntimeError( 'Matlab matrices must have the same number of dimensions and size.' )
+            raise vq_exception( 'Matlab matrices must have the same number of dimensions and size.' )
 
         chn_no=1
         frame_no=1

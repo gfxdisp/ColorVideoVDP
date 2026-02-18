@@ -2,6 +2,11 @@
 * Bug fix: incorrect assert in dm_preview_metric.py
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
 * Fix: YCbCr to RGB transform changed from BT.601 to BT.709 (issue #36)
+* Bug fix: --dump-channels works again (was broken after adding the batch mode)
+* Fix: --device=mps works again (on Apple Silicon)
+* Added: Progress bar
+* Added: --debug will display the full stack trace when error is encountered. Otherwise, the stack trace should be hidden.
+* Added: --count-frames will use slow but accurate method to ensure that we know the exact number of frames in the stream.
 
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)

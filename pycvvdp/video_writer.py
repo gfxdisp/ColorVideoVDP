@@ -1,5 +1,6 @@
 import numpy as np
 import ffmpeg
+import imageio.v2 as iio
 
 class VideoWriter:
 
@@ -88,6 +89,35 @@ class VideoWriter:
             self.process.stdin.close()
             self.process.wait()        
             self.process = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, tb):
+        self.close()
+
+
+
+class ImageWriter:
+
+    def __init__(self, fname, verbose=False):
+        self.fname = fname
+        self.verbose = verbose
+
+    """
+    Write a frame stored as numpy WxHxC matric to an image file. The frame must be in the right, display-encoded colour space:
+    BT.709 + sRGB nonlinearity for SDR
+    BT.2020 + PQ for HDR
+    """
+    def write_frame_rgb(self, rgb):
+        iio.imwrite(self.fname, rgb)
+
+    # Delete or close if program was interrupted
+    def __del__(self):
+        self.close()        
+
+    def close(self):
+        pass
 
     def __enter__(self):
         return self

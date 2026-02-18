@@ -12,6 +12,7 @@ import torch
 import imageio.v2 as imageio
 import re
 import inspect
+import traceback
 
 from pycvvdp.vq_metric import vq_metric_dict
 
@@ -95,6 +96,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
+    parser.add_argument("--count-frames", action='store_true', default=False, help="Use accurate method to count frames in a video. Slower but accurate. Use if you see frame read errors.")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
     parser.add_argument("-m", "--metric", choices=available_metrics, nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
     parser.add_argument("--temp-padding", choices=['replicate', 'circular', 'pingpong'], default='replicate', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "pingpong" - mirror the first frames. "circular" - take the last frames.')
@@ -104,6 +106,7 @@ def parse_args(arg_list=None):
     parser.add_argument("--gpu-mem", type=float, default=None, help='How much GPU memory can we use in GB. Use if CUDA reports out of mem errors, or you want to run multiple instances at the same time.')
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
+    parser.add_argument("--debug", action='store_true', default=False, help="Prints full stack trace when error is encountered.")
     parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and color conversion. Use custom pytorch code by default (faster and less memory).")    
     parser.add_argument("--temp-resample", type=float, nargs="?", default=-1, const=0, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates. An optional argument - the maximum frame rate used when resampling.")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
@@ -262,6 +265,8 @@ def run_on_args(args):
             met_args['gpu_mem'] = args.gpu_mem        
         if 'dump_channels' in constructor_args:
             met_args['dump_channels'] = dump_channels        
+        if 'quiet' in constructor_args:
+            met_args['quiet'] = args.quiet        
         fv = metric_class(**met_args)
         fv.train(False)
         metrics.append( fv )
@@ -289,6 +294,9 @@ def run_on_args(args):
         logging.info(f"Predicting the quality of '{test_file}' compared to '{ref_file}'")
         for mm in metrics:
             preload = False if args.temp_padding == 'replicate' else True
+
+            nframes = -2 if args.count_frames else args.nframes
+
             with torch.no_grad():
 
                 if args.temp_resample>=0:
@@ -299,7 +307,7 @@ def run_on_args(args):
                                                 config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize, 
                                                 resize_resolution=display_geometry.resolution, 
-                                                frames=args.nframes,
+                                                frames=nframes,
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
                 else:
@@ -308,7 +316,7 @@ def run_on_args(args):
                                                 config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize, 
                                                 resize_resolution=display_geometry.resolution, 
-                                                frames=args.nframes,
+                                                frames=nframes,
                                                 fps=args.fps,
                                                 frame_range=frame_range,
                                                 preload=preload,
@@ -383,6 +391,8 @@ def main():
             run_on_args(args)
     except pycvvdp.vq_exception as ex:
         logging.error( str(ex) )
+        if args.debug:
+            traceback.print_exc()
 
 if __name__ == '__main__':
     main()
