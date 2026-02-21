@@ -245,7 +245,11 @@ class video_source_array( video_source_dm ):
         super().__init__(display_photometry=display_photometry, config_paths=config_paths)        
 
         if test_video.shape != reference_video.shape:
-            raise RuntimeError( 'Test and reference image/video tensors must be exactly the same shape' )
+            ind = dim_order.find('B')
+            if ind>=0 and (test_video.shape[ind]==1 or reference_video.shape[ind]==1):
+                pass # We can have a singleton dimension for a batch
+            else:
+                raise RuntimeError( 'Test and reference image/video tensors must be exactly the same shape' )
         
         if len(dim_order) != len(test_video.shape):
             raise RuntimeError( 'Input tensor much have exactly as many dimensions as there are characters in the "dims" parameter' )

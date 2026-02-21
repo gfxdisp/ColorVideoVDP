@@ -20,7 +20,7 @@ import imageio.v2 as io
 from torchvision.transforms import GaussianBlur
 
 debug = False
-save_results = False
+save_results = True
 if save_results:
     output_dir = "outputs"
     os.makedirs(output_dir, exist_ok=True)
