@@ -522,7 +522,7 @@ class video_source_temp_resample_file(video_source_video_file):
 
     def _get_frame( self, vid_reader, frame, device, colorspace ):        
 
-        frame_ind = int(safe_floor(frame/self.resample_fps * vid_reader.avg_fps))
+        frame_ind = int(safe_floor((frame+0.5) * vid_reader.avg_fps/self.resample_fps))
 
         ce = 0 if vid_reader == self.test_vidr else 1
 
