@@ -18,7 +18,7 @@ import torchvision.transforms as tt
 import math
 import copy
 
-from torchmetrics import StructuralSimilarityIndexMeasure
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 import cv2
 #import PIL
@@ -63,7 +63,7 @@ for tt, subsampling in enumerate(ss_type): # For each type of subsampling
 
         if subsampling == 'RGB-ss': # regular subsampling
             I_ss = resize_array(I_ref, dsize=dim_ss)
-            I_test[tt][kk] = resize_array(I_ss, dsize=dim)
+            I_test[tt][kk] = resize_array(I_ss, dsize=dim).clip(0.,1.)
         elif subsampling == 'Chroma-ss Yxy': # chroma subsampling, Yxy
             chroma_ss = resize_array(I_Yxy[:,:,1:3], dsize=dim_ss)
             chroma_rec = resize_array(chroma_ss, dsize=dim)
