@@ -63,19 +63,26 @@ def reduce_chroma( I ):
     Y = srgb2ycbcr(I)
     return torch.diff(Y[1,:,:],dim=-1).abs().sum() + torch.diff(Y[1,:,:],dim=-2).abs().sum() + torch.diff(Y[2,:,:],dim=-1).abs().sum() + torch.diff(Y[2,:,:],dim=-2).abs().sum()
 
+def mix_loss( pred, y ):
+    mse = torch.mean((pred - y)**2)*100
+    alpha = mse / (0.1+mse)
+    cvvdp_loss = cvvdp.loss( pred, y, dim_order="CHW")
+    return alpha * mse + (1-alpha) * cvvdp_loss
+
 I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
 # patch_sz=256
 # I_ref = I_ref[-patch_sz:,-patch_sz:,:]
 
-T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/(2**16-1)
+T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/np.iinfo( I_ref.dtype ).max
 
 # model = ImageRecovery( T_ref, initialization="blurred" )
 model = ImageRecovery( T_ref, initialization="random" )
 
 model.to(device)
 
-#optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0, weight_decay=0, dampening=0)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01 )
+# optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0, weight_decay=0, dampening=0)
+# optimizer = torch.optim.Adam(model.parameters(), lr=0.5, eps=1e-3, amsgrad=True )
+optimizer = torch.optim.Adam(model.parameters(), lr=0.1 )
 
 cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
 
@@ -83,26 +90,58 @@ cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
 loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
 
 # A Mixture of cvvdp loss and L2 works better with random initialization
-# loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW") + 100*torch.mean((pred - y)**2)
+# loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW") + 1*torch.mean((pred - y)**2)
+# loss_fn = mix_loss
 
 plt.ion()
-fig, ax = plt.subplots(1, 2, figsize=(16, 8))
+fig = plt.figure()
+ax = [None]*3
+ax[0] = plt.subplot2grid((2, 2), (0, 0))
+ax[1] = plt.subplot2grid((2, 2), (0, 1))
+ax[2] = plt.subplot2grid((2, 2), (1, 0), colspan=2)
+# fig, ax = plt.subplots(1, 2, figsize=(16, 8))
+ax_gm = ax[2].twinx()  # Second y-axis
 
-for kk in range(1001):
+grad_mag = -1
+
+max_iter = 1001
+
+loss_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
+grad_mag_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
+
+for kk in range(max_iter):
     print( f"Iteration {kk}" )
     optimizer.zero_grad()
     pred = model().clamp(0.,1.)
     loss = loss_fn(pred, T_ref)
 
+    loss_tab[kk] = loss.item()
+
     if kk % 20 == 0:
            
         opt_img = pred.detach().permute((1,2,0)).cpu().numpy()
+        ax[0].clear()
         ax[0].imshow( opt_img )
         ax[0].set_title( "Optimized" )
+        ax[1].clear()
         ax[1].imshow( (I_ref/256).astype(np.uint8) )
         ax[1].set_title( "Target" )
 
-        fig.suptitle( f"Iteration {kk}: loss {loss.item()}" )
+        ax[2].clear()
+        it_x = range(max_iter)
+        ax[2].plot( it_x, loss_tab )
+        ax[2].set_xlabel( 'Iteration' )
+        ax[2].set_ylabel( 'Loss [JOD]' )
+        ax[2].set_yscale( 'log' )
+
+        ax_gm.clear()
+        color2 = 'tab:red'
+        ax_gm.plot( it_x, grad_mag_tab, color=color2, label='Gradient magnitude')
+        ax_gm.yaxis.set_label_position("right")
+        ax_gm.set_ylabel('Gradient magnitude', color=color2)
+        ax_gm.tick_params(axis='y', labelcolor=color2)        
+
+        fig.suptitle( f"Iteration {kk}: loss {loss.item():.4f}" )
         
         for pp in range(2):
             ax[pp].set_xticks([])        
@@ -120,6 +159,9 @@ for kk in range(1001):
 
     # Backpropagation
     loss.backward()
+
+    grad_mag_tab[kk] = model.rec_image.grad.norm(p=2)*255
+
     optimizer.step()
 
 plt.waitforbuttonpress()
