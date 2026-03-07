@@ -1,19 +1,20 @@
 #!/opt/homebrew/anaconda3/envs/cvvdp/bin/python
 """
-cvvdp_per_frame_csv_and_heatmap_v32_2.py
+cvvdp_per_frame_csv_and_heatmap_v33.py
 
 Features
 --------
 • Drag-and-drop friendly (interactive prompts if paths not supplied)
 • Path cleanup for macOS Terminal drag-drop (quotes, escaped spaces, CR)
 • Extract REF+TEST to 16-bit RGB TIFF sequences ONCE (frame index source of truth)
-• Optional full-screen resize is applied during TIFF extraction (ffmpeg scale to --display-res)
-  because ColorVideoVDP does NOT implement --full-screen-resize for IMAGE SEQUENCES.
+• REF is extracted in TWO ways:
+  1) native full-resolution RGB reference
+  2) simulated-4:2:0 reference (444/422 -> 420 -> 444) for encoder-only fairness analysis
+• TIFF extraction uses zscale by default with filter=spline36
 • Per-frame CVVDP JOD + per-frame heatmap PNG (one PNG per source frame)
-  - Optional temporal window: run cvvdp on a multi-frame window (i-k):(i+k), but:
-    - Metric reported is for the window; we log it at the center frame index i
-    - Heatmap output may contain multiple frames; we extract ONLY the CENTER heatmap frame
-• Optional per-frame PU-PSNR-RGB2020 (HDR-aware PSNR variant provided by cvvdp)
+  - Heatmaps are generated from the NATIVE reference analysis
+• Optional temporal window: run cvvdp on a multi-frame window (i-k):(i+k)
+• Optional per-frame PU-PSNR-RGB2020 for BOTH analyses
 • Optional cvvdp debug dumps via:
     --dump-channels temporal|lpyr|difference [...]
   - Can optionally preserve those outputs with:
@@ -28,15 +29,16 @@ Features
 • Automatic PNG cleanup after successful heatmap MOV creation (keeps PNGs if MOV fails)
 • CSV includes legends + options used (# key=value lines)
 
-Notes on temporal artifacts
----------------------------
-- If --temp-window=0 (default): CVVDP runs ONLY on frame i (no temporal measurement).
-- If --temp-window>0: CVVDP runs on frames (i-k):(i+k). This allows the metric to
-  incorporate temporal mechanisms, BUT you must interpret the reported JOD as the
-  quality of that WINDOW. We log it against the center frame i.
-- Heatmaps: when windowing is enabled, CVVDP may output multiple heatmap frames.
-  This script extracts the CENTER heatmap frame (i) so you still get exactly ONE PNG
-  per output frame.
+Two analysis modes written to CSV
+---------------------------------
+jod_total
+    Native reference vs test.
+    This measures real delivered quality (444 reference vs encoded test).
+
+jod_total_ref420sim
+    Simulated-420 reference vs test.
+    This reduces bias from chroma subsampling by putting the reference through
+    444/422 -> 420 -> 444 reconstruction before comparison.
 
 Modes
 -----
@@ -46,73 +48,12 @@ Modes
   raw             : raw perceptual error energy map (implementation-dependent)
 
 USAGE:
-  python cvvdp_per_frame_csv_and_heatmap_v32_2.py REF.mov TEST.mov OUTDIR [options]
-  (or run without args and it will prompt you to drag/drop paths)
+  python cvvdp_per_frame_csv_and_heatmap_v33.py REF.mov TEST.mov OUTDIR [options]
 
 Example:
-  python cvvdp_per_frame_csv_and_heatmap_v32_2.py ref.mov test.mov out \
+  python cvvdp_per_frame_csv_and_heatmap_v33.py ref.mov test.mov out \
     --display NBCU_65inch_hdr_pq_2knit --device mps --mode supra-threshold \
     --temp-window 0 --pu-psnr-rgb2020
-
-IMPORTANT:
-- pix/deg override is OPTIONAL. If not provided, the DISPLAY PROFILE governs pix/deg.
-  Use --pix-per-deg ONLY if you intentionally want to override the display model.
-
-ΔE-ITP
-------
-Removed (prior implementation was not validated for HDR PQ/ICtCp correctness).
-
---dump-channels temporal
-------------------------
-Use when you’re trying to answer: “Is the metric reacting to time the way I think it is?”
-
-Best use-cases:
-    • Validate temporal-window choices (--temp-window, and in general whether motion/temporal masking is kicking in).
-    • Diagnose ‘temporal weirdness’: quality looks worse/better than expected during fast motion, cuts, flashes, flicker, or scrolling text.
-    • Debug framerate / cadence issues (e.g., accidental 23.976 vs 24 vs 59.94 conversions, duplicated frames, bad decimation).
-    • Sanity-check temporal padding (--temp-padding replicate|pingpong|circular) near start/end of clips when windowing is used.
-
-What you typically look for:
-    • “Temporal” intermediate outputs should show motion-related processing behaving sensibly
-      (not “stuck,” not exploding at cuts, not showing obvious cadence artifacts).
-
---dump-channels lpyr
---------------------
-Use when you’re trying to answer: “Which spatial frequencies are triggering the score/heatmap?”
-
-Best use-cases:
-    • Find whether the ‘damage’ is high-frequency (ringing, sharpening halos, mosquito noise) vs mid/low (blur, banding, blocking).
-    • Compare two encodes where the JOD difference is small but you want to know why.
-    • Debug resize/sharpen pipelines (especially if you are scaling in ffmpeg before cvvdp by extracting TIFFs at a display-res).
-
-What you typically look for:
-    • If artifacts are mostly in high bands → expect ringing/noise; mid bands → texture loss;
-      low bands → luminance/contrast structure shifts.
-
---dump-channels difference
---------------------------
-Use when you’re trying to answer: “What exact error field is cvvdp feeding into the final perceptual model?”
-
-Best use-cases:
-    • Explain surprising heatmaps: you see red blobs in weird places and want to know if it’s
-      from color conversion, luma differences, or content structure.
-    • Spot alignment problems (1px shifts, resample mismatch, scaling mismatch, chroma siting issues)
-      because the “difference” stage will often make these scream.
-    • Verify you’re not measuring decode/convert mistakes (wrong transfer interpretation,
-      wrong matrix/range assumptions) rather than actual codec differences.
-
-What you typically look for:
-    • A clean “difference” field that corresponds to real visible changes, not global offsets/tints
-      that imply upstream pipeline issues.
-
-How this ties back to optimized workflows
------------------------------------------
-    • If you’re iterating on settings (temp window, scaling, framerate, padding) and need fast confidence,
-      --dump-channels temporal is the highest value.
-    • If you’re tuning encode settings (bitrate, psychovisual knobs, sharpening, grain),
-      --dump-channels lpyr is the best “why” tool.
-    • If you suspect you’re measuring the wrong thing (colorspace/TF/range mismatch, alignment),
-      --dump-channels difference saves the most time.
 """
 
 import argparse
@@ -309,7 +250,7 @@ def ffmpeg_has_zscale() -> bool:
 
 
 # -------------------------------------------------------------
-# Display-res parsing / scaling flags
+# Display-res parsing
 # -------------------------------------------------------------
 
 def parse_display_res(res: str) -> Tuple[int, int]:
@@ -320,33 +261,32 @@ def parse_display_res(res: str) -> Tuple[int, int]:
     return int(w), int(h)
 
 
-def ffmpeg_scale_flags(full_screen_resize: str) -> str:
-    m = {
-        "bilinear": "bilinear",
-        "bicubic": "bicubic",
-        "nearest": "neighbor",
-        "area": "area",
-    }
-    return m[full_screen_resize]
-
-
 # -------------------------------------------------------------
 # Frame extraction (TIFF)
 # -------------------------------------------------------------
 
-def extract_tiffs(video: str,
-                  out_dir: Path,
-                  prefix: str,
-                  full_screen_resize: str,
-                  display_res: Tuple[int, int],
-                  verbose: bool = False) -> Path:
+def extract_tiffs_native(video: str,
+                         out_dir: Path,
+                         prefix: str,
+                         display_res: Tuple[int, int],
+                         chroma_filter: str,
+                         verbose: bool = False) -> Path:
+    """
+    Extract frames as RGB48 TIFF using zscale for resize, chroma reconstruction,
+    and color conversion.
+    """
     ffmpeg = which_or_raise("ffmpeg")
     out_dir.mkdir(parents=True, exist_ok=True)
     pattern = out_dir / f"{prefix}_%06d.tif"
 
     w, h = display_res
-    flags = ffmpeg_scale_flags(full_screen_resize)
-    vf = f"scale={w}:{h}:flags={flags}"
+    vf = (
+        f"zscale="
+        f"w={w}:h={h}:"
+        f"filter={chroma_filter}:"
+        f"dither=error_diffusion,"
+        f"format=rgb48le"
+    )
 
     run([
         ffmpeg, "-hide_banner", "-y",
@@ -354,7 +294,48 @@ def extract_tiffs(video: str,
         "-vsync", "0",
         "-start_number", "0",
         "-vf", vf,
-        "-pix_fmt", "rgb48le",
+        str(pattern)
+    ], verbose=verbose)
+
+    return pattern
+
+
+def extract_tiffs_ref420sim(video: str,
+                            out_dir: Path,
+                            prefix: str,
+                            display_res: Tuple[int, int],
+                            chroma_filter: str,
+                            verbose: bool = False) -> Path:
+    """
+    Extract reference frames after simulating 4:2:0:
+      source -> scale/convert -> yuv420p10le -> upsample -> rgb48le TIFF
+
+    This is useful for encoder-only fairness analysis when the true reference is 444/422.
+    """
+    ffmpeg = which_or_raise("ffmpeg")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pattern = out_dir / f"{prefix}_%06d.tif"
+
+    w, h = display_res
+    vf = (
+        f"zscale="
+        f"w={w}:h={h}:"
+        f"filter={chroma_filter}:"
+        f"dither=error_diffusion,"
+        f"format=yuv420p10le,"
+        f"zscale="
+        f"w={w}:h={h}:"
+        f"filter={chroma_filter}:"
+        f"dither=error_diffusion,"
+        f"format=rgb48le"
+    )
+
+    run([
+        ffmpeg, "-hide_banner", "-y",
+        "-i", video,
+        "-vsync", "0",
+        "-start_number", "0",
+        "-vf", vf,
         str(pattern)
     ], verbose=verbose)
 
@@ -625,6 +606,54 @@ def run_cvvdp_window_and_heatmap(
             temp_ctx.cleanup()
 
 
+def run_cvvdp_jod_only(
+    cvvdp_exe: str,
+    ref_pat: Path,
+    test_pat: Path,
+    center_frame: int,
+    temp_window: int,
+    display: str,
+    device: str,
+    fps: float,
+    pix_per_deg: Optional[float],
+    temp_resample: bool,
+    temp_padding: str,
+    verbose: bool = False
+) -> float:
+    k = max(0, int(temp_window))
+    start = max(0, int(center_frame) - k)
+    end = int(center_frame) + k
+
+    cmd = [
+        str(cvvdp_exe),
+        "-q",
+        "--ffmpeg-cc",
+        "--device", str(device),
+        "--display", str(display),
+        "--fps", f"{float(fps):.12f}",
+        "--frames", f"{start}:{end}",
+        "--ref", str(ref_pat),
+        "--test", str(test_pat),
+    ]
+
+    if temp_resample:
+        cmd.insert(2, "--temp-resample")
+
+    if temp_padding:
+        cmd.insert(2, temp_padding)
+        cmd.insert(2, "--temp-padding")
+
+    if pix_per_deg is not None:
+        idx = cmd.index("--fps")
+        cmd[idx:idx] = ["--pix-per-deg", str(pix_per_deg)]
+
+    out = run(cmd, verbose=verbose)
+    v = parse_metric_value(out)
+    if v is None:
+        raise RuntimeError(f"Could not parse JOD for frame={center_frame}\n--- output ---\n{out}")
+    return float(v)
+
+
 # -------------------------------------------------------------
 # Run CVVDP: PU-PSNR-RGB2020 per frame (optional)
 # -------------------------------------------------------------
@@ -681,22 +710,10 @@ def encode_png_sequence_to_mov(
     source_is_pq: bool,
     verbose: bool = False
 ) -> None:
-    """
-    Stitch PNGs -> CFR ProRes MOV.
-
-    If source_is_pq=True:
-      Treat heatmap PNGs as full-range RGB graphics (sRGB-ish / BT.709 primaries),
-      convert to linear display light,
-      apply 2x light scaling,
-      convert to PQ BT.2020,
-      then convert to BT.2020nc YUV for ProRes output,
-      and tag output as PQ/BT.2020.
-    """
     ffmpeg = which_or_raise("ffmpeg")
 
     if source_is_pq:
         vf = (
-            # Decode PNG RGB as RGB full-range, assume sRGB transfer + BT.709 primaries
             "zscale="
             "matrixin=gbr:"
             "transferin=bt709:"
@@ -706,12 +723,10 @@ def encode_png_sequence_to_mov(
             "transfer=linear:"
             "primaries=bt2020:"
             "range=full,"
-            # 2x scale in linear display light
             "lutrgb="
             "r='clip(val*2,0,maxval)':"
             "g='clip(val*2,0,maxval)':"
             "b='clip(val*2,0,maxval)',"
-            # Linear BT.2020 RGB -> PQ BT.2020 RGB
             "zscale="
             "matrixin=gbr:"
             "transferin=linear:"
@@ -721,7 +736,6 @@ def encode_png_sequence_to_mov(
             "transfer=smpte2084:"
             "primaries=bt2020:"
             "range=full,"
-            # PQ BT.2020 RGB -> PQ BT.2020 YUV
             "zscale="
             "matrixin=gbr:"
             "transferin=smpte2084:"
@@ -765,7 +779,6 @@ def encode_png_sequence_to_mov(
         ], verbose=verbose)
 
 
-        
 def encode_compare_mov(
     test: str,
     heat_mov: str,
@@ -774,11 +787,6 @@ def encode_compare_mov(
     test_meta: Dict[str, str],
     verbose: bool = False
 ) -> None:
-    """
-    Side-by-side compare MOV (TEST | HEATMAP MOV), CFR, no blending.
-
-    If TEST is PQ, assume HEATMAP MOV is already PQ/BT.2020.
-    """
     ffmpeg = which_or_raise("ffmpeg")
     _, heat_h = ffprobe_wh(heat_mov)
 
@@ -844,6 +852,7 @@ def encode_compare_mov(
             str(out_compare_mov)
         ], verbose=verbose)
 
+
 def cleanup_heatmaps_if_success(heat_dir: Path, heat_mov: Path) -> None:
     try:
         if heat_mov.exists() and heat_mov.stat().st_size > 50_000:
@@ -870,7 +879,7 @@ def args_to_kv_lines(args: argparse.Namespace, extra: Dict[str, str]) -> List[st
     preferred = [
         "display", "pix_per_deg", "mode", "temp_window", "device",
         "pu_psnr_rgb2020",
-        "full_screen_resize", "display_res",
+        "display_res", "chroma_filter",
         "temp_resample", "temp_padding", "dump_channels", "dump_output_dir",
         "no_compare", "keep_work", "limit_frames",
         "verbose",
@@ -896,6 +905,9 @@ def write_csv_header_block(w: csv.writer, heatmap_mode: str, options_lines: List
     w.writerow(["# 3–5   : strong impairment"])
     w.writerow(["# <3    : severe distortion"])
     w.writerow([])
+    w.writerow(["# jod_total = native reference vs test"])
+    w.writerow(["# jod_total_ref420sim = simulated-420 reference vs test"])
+    w.writerow([])
 
     w.writerow([f"# Heatmap mode: {heatmap_mode}"])
     if heatmap_mode == "supra-threshold":
@@ -914,6 +926,7 @@ def write_csv_header_block(w: csv.writer, heatmap_mode: str, options_lines: List
         w.writerow(["# Dark       : low error energy"])
         w.writerow(["# Bright     : high error energy"])
     w.writerow(["# Note: heatmap visualizes spatial perceptual error under the selected display model."])
+    w.writerow(["# Heatmaps/MOV are generated from the native-reference analysis only."])
     w.writerow([])
 
     w.writerow(["# Options used (including defaults):"])
@@ -927,7 +940,7 @@ def write_csv_header_block(w: csv.writer, heatmap_mode: str, options_lines: List
 # -------------------------------------------------------------
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="CVVDP per-frame JOD + heatmap PNG seq + MOV.")
+    ap = argparse.ArgumentParser(description="CVVDP per-frame dual-analysis JOD + heatmap PNG seq + MOV.")
     ap.add_argument("ref", nargs="?", help="Reference video file")
     ap.add_argument("test", nargs="?", help="Test video file")
     ap.add_argument("outdir", nargs="?", help="Output directory")
@@ -943,13 +956,13 @@ def main() -> None:
     ap.add_argument("--device", default="mps")
 
     ap.add_argument("--pu-psnr-rgb2020", dest="pu_psnr_rgb2020", action="store_true",
-                    help="Also compute per-frame pu-psnr-rgb2020 via cvvdp (--metric pu-psnr-rgb2020).")
+                    help="Also compute per-frame pu-psnr-rgb2020 via cvvdp for BOTH analyses.")
 
-    ap.add_argument("--full-screen-resize", default="bicubic",
-                    choices=["bilinear", "bicubic", "nearest", "area"],
-                    help="Applied during TIFF extraction (scale to --display-res).")
     ap.add_argument("--display-res", default="3840x2160",
-                    help="Target resolution for full-screen scaling during extraction.")
+                    help="Target resolution for TIFF extraction.")
+    ap.add_argument("--chroma-filter", default="spline36",
+                    choices=["point", "bilinear", "bicubic", "spline16", "spline36", "lanczos"],
+                    help="zscale filter used for resize and chroma upsampling during TIFF extraction.")
     ap.add_argument("--no-compare", action="store_true")
     ap.add_argument("--keep-work", action="store_true")
     ap.add_argument("--limit-frames", type=int, default=0)
@@ -994,9 +1007,9 @@ def main() -> None:
     ref_meta = ffprobe_stream_meta(ref)
     test_meta = ffprobe_stream_meta(test)
 
-    if is_pq_video(test_meta) and not ffmpeg_has_zscale():
+    if (is_pq_video(test_meta) or is_pq_video(ref_meta)) and not ffmpeg_has_zscale():
         raise RuntimeError(
-            "Source video is PQ, but this ffmpeg build does not include zscale.\n"
+            "PQ source/reference detected, but this ffmpeg build does not include zscale.\n"
             "Install/rebuild ffmpeg with libzimg support."
         )
 
@@ -1017,8 +1030,8 @@ def main() -> None:
         print(f"pix/deg override: {args.pix_per_deg}")
     print(f"temp-window K: {args.temp_window}")
     print(f"pu-psnr-rgb2020: {'ON' if args.pu_psnr_rgb2020 else 'OFF'}")
-    print(f"full-screen-resize: {args.full_screen_resize}  (applied during extraction)")
     print(f"display-res: {args.display_res}")
+    print(f"chroma-filter: {args.chroma_filter}")
     print(f"temp-resample: {'ON' if args.temp_resample else 'OFF'}")
     print(f"temp-padding: {args.temp_padding}")
     print(f"dump-channels: {args.dump_channels if args.dump_channels else '(none)'}")
@@ -1026,7 +1039,8 @@ def main() -> None:
     print("ffmpeg:", which_or_raise("ffmpeg"))
     print("ffprobe:", which_or_raise("ffprobe"))
     print("cvvdp :", cvvdp_exe)
-    print(f"PQ source detected: {is_pq_video(test_meta)}\n")
+    print(f"PQ source detected: {is_pq_video(test_meta)}")
+    print(f"PQ reference detected: {is_pq_video(ref_meta)}\n")
 
     if args.keep_work:
         work_dir = Path(tempfile.mkdtemp(prefix="cvvdp_work_"))
@@ -1038,23 +1052,41 @@ def main() -> None:
     proc: Optional[subprocess.Popen] = None
 
     try:
-        ref_dir = work_dir / "ref"
+        ref_dir_native = work_dir / "ref_native"
+        ref_dir_420sim = work_dir / "ref_420sim"
         test_dir = work_dir / "test"
 
         print("Extracting TIFF sequences (once)…")
-        ref_pat = extract_tiffs(ref, ref_dir, "ref", args.full_screen_resize, display_res, verbose=args.verbose)
-        test_pat = extract_tiffs(test, test_dir, "test", args.full_screen_resize, display_res, verbose=args.verbose)
+        ref_pat_native = extract_tiffs_native(
+            ref, ref_dir_native, "refn",
+            display_res,
+            chroma_filter=args.chroma_filter,
+            verbose=args.verbose
+        )
+        ref_pat_420sim = extract_tiffs_ref420sim(
+            ref, ref_dir_420sim, "refs",
+            display_res,
+            chroma_filter=args.chroma_filter,
+            verbose=args.verbose
+        )
+        test_pat = extract_tiffs_native(
+            test, test_dir, "test",
+            display_res,
+            chroma_filter=args.chroma_filter,
+            verbose=args.verbose
+        )
 
-        n_ref = count_tiffs(ref_dir, "ref")
+        n_ref_native = count_tiffs(ref_dir_native, "refn")
+        n_ref_420sim = count_tiffs(ref_dir_420sim, "refs")
         n_test = count_tiffs(test_dir, "test")
-        n_frames = min(n_ref, n_test)
+        n_frames = min(n_ref_native, n_ref_420sim, n_test)
         if n_frames <= 0:
-            raise RuntimeError("No TIFF frames extracted (ref or test).")
+            raise RuntimeError("No TIFF frames extracted.")
 
         if args.limit_frames and args.limit_frames > 0:
             n_frames = min(n_frames, args.limit_frames)
 
-        print(f"TIFF frames: ref={n_ref}, test={n_test}, using={n_frames}")
+        print(f"TIFF frames: ref_native={n_ref_native}, ref_420sim={n_ref_420sim}, test={n_test}, using={n_frames}")
         print(f"Work dir: {work_dir} {'(kept)' if args.keep_work else '(temp)'}\n")
 
         out_csv = outdir / "metrics_per_frame.csv"
@@ -1070,6 +1102,7 @@ def main() -> None:
             "fps_cvvdp_float": f"{fps:.12f}",
             "tiff_scale_to": f"{display_res[0]}x{display_res[1]}",
             "cvvdp_mode": "interactive" if args.pu_psnr_rgb2020 else "noninteractive_for_metrics",
+            "dual_analysis": "native_and_ref420sim",
         }
         options_lines = args_to_kv_lines(args, extra_opts)
 
@@ -1084,10 +1117,11 @@ def main() -> None:
             headers = [
                 "frame",
                 "jod_total",
+                "jod_total_ref420sim",
                 "time_sec",
             ]
             if args.pu_psnr_rgb2020:
-                headers += ["pu_psnr_rgb2020"]
+                headers += ["pu_psnr_rgb2020", "pu_psnr_rgb2020_ref420sim"]
 
             headers += [
                 "cvvdp_display_model",
@@ -1109,9 +1143,10 @@ def main() -> None:
             for i in range(n_frames):
                 out_png = heat_dir / f"heatmap_{i:06d}.png"
 
+                # Native analysis (also generates heatmap)
                 jod_total = run_cvvdp_window_and_heatmap(
                     cvvdp_exe=cvvdp_exe,
-                    ref_pat=ref_pat,
+                    ref_pat=ref_pat_native,
                     test_pat=test_pat,
                     center_frame=i,
                     temp_window=args.temp_window,
@@ -1128,11 +1163,40 @@ def main() -> None:
                     verbose=args.verbose
                 )
 
-                pu = None
+                # Simulated-420 reference analysis (JOD only)
+                jod_total_ref420sim = run_cvvdp_jod_only(
+                    cvvdp_exe=cvvdp_exe,
+                    ref_pat=ref_pat_420sim,
+                    test_pat=test_pat,
+                    center_frame=i,
+                    temp_window=args.temp_window,
+                    display=args.display,
+                    device=args.device,
+                    fps=fps,
+                    pix_per_deg=args.pix_per_deg,
+                    temp_resample=args.temp_resample,
+                    temp_padding=args.temp_padding,
+                    verbose=args.verbose
+                )
+
+                pu_native = None
+                pu_ref420sim = None
                 if args.pu_psnr_rgb2020:
-                    pu = run_cvvdp_pu_psnr_rgb2020(
+                    pu_native = run_cvvdp_pu_psnr_rgb2020(
                         proc=proc,
-                        ref_pat=ref_pat,
+                        ref_pat=ref_pat_native,
+                        test_pat=test_pat,
+                        center_frame=i,
+                        temp_window=args.temp_window,
+                        display=args.display,
+                        device=args.device,
+                        fps=fps,
+                        pix_per_deg=args.pix_per_deg,
+                        verbose=args.verbose
+                    )
+                    pu_ref420sim = run_cvvdp_pu_psnr_rgb2020(
+                        proc=proc,
+                        ref_pat=ref_pat_420sim,
                         test_pat=test_pat,
                         center_frame=i,
                         temp_window=args.temp_window,
@@ -1146,11 +1210,15 @@ def main() -> None:
                 row = [
                     i,
                     jod_total,
+                    jod_total_ref420sim,
                     f"{i / fps:.6f}",
                 ]
 
                 if args.pu_psnr_rgb2020:
-                    row.append("" if pu is None else pu)
+                    row += [
+                        "" if pu_native is None else pu_native,
+                        "" if pu_ref420sim is None else pu_ref420sim,
+                    ]
 
                 row += [
                     args.display,
@@ -1186,7 +1254,7 @@ def main() -> None:
         heat_mov = outdir / f"heatmap_{args.mode}.mov"
         png_pattern = str(heat_dir / "heatmap_%06d.png")
         print(f"\nEncoding heatmap MOV from PNGs (no blending): {heat_mov}")
-        
+
         encode_png_sequence_to_mov(
             png_pattern,
             fps_ffmpeg,
