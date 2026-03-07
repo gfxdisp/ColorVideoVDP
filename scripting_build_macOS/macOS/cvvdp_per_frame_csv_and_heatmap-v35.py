@@ -1,7 +1,42 @@
 #!/opt/homebrew/anaconda3/envs/cvvdp/bin/python
 """
-cvvdp_per_frame_csv_and_heatmap_v33.py
+cvvdp_per_frame_csv_and_heatmap_v35.py
 
+Usage
+
+usage: cvvdp_per_frame_csv_and_heatmap_subsampOPT-v35.py [-h] [--mode {supra-threshold,threshold,raw}] [--display DISPLAY]
+                                                         [--pix-per-deg PIX_PER_DEG] [--temp-window TEMP_WINDOW] [--device DEVICE]
+                                                         [--display-res DISPLAY_RES]
+                                                         [--chroma-filter {point,bilinear,bicubic,spline16,spline36,lanczos}] [--no-compare]
+                                                         [--keep-work] [--limit-frames LIMIT_FRAMES] [--verbose] [--temp-resample]
+                                                         [--temp-padding {replicate,pingpong,circular}]
+                                                         [--dump-channels {temporal,lpyr,difference} [{temporal,lpyr,difference} ...]]
+                                                         [--dump-output-dir DUMP_OUTPUT_DIR]
+                                                         [ref] [test] [outdir]
+
+Modes
+-----
+--mode supra-threshold | threshold | raw
+  supra-threshold : perceptual supra-threshold difference map (often most useful)
+  threshold       : detection-threshold map
+  raw             : raw perceptual error energy map (implementation-dependent)
+
+Example:
+  python cvvdp_per_frame_csv_and_heatmap_v35.py ref.mov test.mov out \
+    --display NBCU_65inch_hdr_pq_2knit --device mps --mode supra-threshold \
+    --temp-window 0
+
+Two analysis modes written to CSV
+---------------------------------
+jod_total
+    Native reference vs test.
+    This measures real delivered quality (444 reference vs encoded test).
+
+jod_total_ref420sim
+    Simulated-420 reference vs test.
+    This reduces bias from chroma subsampling by putting the reference through
+    444/422 -> 420 -> 444 reconstruction before comparison.
+    
 Features
 --------
 • Drag-and-drop friendly (interactive prompts if paths not supplied)
@@ -14,12 +49,10 @@ Features
 • Per-frame CVVDP JOD + per-frame heatmap PNG (one PNG per source frame)
   - Heatmaps are generated from the NATIVE reference analysis
 • Optional temporal window: run cvvdp on a multi-frame window (i-k):(i+k)
-• Optional per-frame PU-PSNR-RGB2020 for BOTH analyses
 • Optional cvvdp debug dumps via:
     --dump-channels temporal|lpyr|difference [...]
   - Can optionally preserve those outputs with:
     --dump-output-dir /path/to/folder
-• Uses cvvdp INTERACTIVE MODE (-i) only when needed for optional PU-PSNR-RGB2020
 • Heatmap PNG sequence → ProRes MOV (CFR, no frame blending)
 • Optional side-by-side compare MOV: (TEST | HEATMAP MOV)
   - Automatically scales TEST to match HEATMAP height so hstack never fails
@@ -29,49 +62,19 @@ Features
 • Automatic PNG cleanup after successful heatmap MOV creation (keeps PNGs if MOV fails)
 • CSV includes legends + options used (# key=value lines)
 
-Two analysis modes written to CSV
----------------------------------
-jod_total
-    Native reference vs test.
-    This measures real delivered quality (444 reference vs encoded test).
-
-jod_total_ref420sim
-    Simulated-420 reference vs test.
-    This reduces bias from chroma subsampling by putting the reference through
-    444/422 -> 420 -> 444 reconstruction before comparison.
-
-Modes
------
---mode supra-threshold | threshold | raw
-  supra-threshold : perceptual supra-threshold difference map (often most useful)
-  threshold       : detection-threshold map
-  raw             : raw perceptual error energy map (implementation-dependent)
-
-USAGE:
-  python cvvdp_per_frame_csv_and_heatmap_v33.py REF.mov TEST.mov OUTDIR [options]
-
-Example:
-  python cvvdp_per_frame_csv_and_heatmap_v33.py ref.mov test.mov out \
-    --display NBCU_65inch_hdr_pq_2knit --device mps --mode supra-threshold \
-    --temp-window 0 --pu-psnr-rgb2020
 """
 
 import argparse
 import csv
 import json
-import re
-import select
-import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".m4v"}
-_FLOAT_LINE_RE = re.compile(r"^\s*[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*$")
 
 
 # -------------------------------------------------------------
@@ -386,92 +389,6 @@ def parse_metric_value(output: str) -> Optional[float]:
 
 
 # -------------------------------------------------------------
-# Interactive cvvdp helpers
-# -------------------------------------------------------------
-
-def _join_tokens_for_interactive(tokens: List[str]) -> str:
-    return " ".join(shlex.quote(t) for t in tokens)
-
-
-def start_cvvdp_interactive(cvvdp_exe: str, verbose: bool = False) -> subprocess.Popen:
-    cmd = [cvvdp_exe, "-i"]
-    if verbose:
-        print("Starting cvvdp interactive:", " ".join(cmd))
-    p = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    assert p.stdin and p.stdout
-    return p
-
-
-def _read_one_result_block(proc: subprocess.Popen, timeout_sec: float = 180.0) -> str:
-    assert proc.stdout
-    t0 = time.time()
-    lines: List[str] = []
-
-    while True:
-        if time.time() - t0 > timeout_sec:
-            raise RuntimeError("cvvdp interactive read timed out")
-
-        line = proc.stdout.readline()
-        if line == "":
-            raise RuntimeError("cvvdp interactive process ended unexpectedly")
-
-        lines.append(line)
-        s = line.strip()
-
-        if _FLOAT_LINE_RE.match(s) or (s.startswith("cvvdp") and "=" in s):
-            end_t = time.time() + 0.05
-            while time.time() < end_t:
-                r, _, _ = select.select([proc.stdout], [], [], 0.0)
-                if not r:
-                    break
-                more = proc.stdout.readline()
-                if more == "":
-                    break
-                lines.append(more)
-            return "".join(lines)
-
-
-def cvvdp_interactive_run(proc: subprocess.Popen, tokens: List[str], verbose: bool = False) -> str:
-    assert proc is not None
-    assert proc.stdin and proc.stdout
-    line = _join_tokens_for_interactive(tokens) + "\n"
-    if verbose:
-        print("cvvdp(i) <=", line.strip())
-    proc.stdin.write(line)
-    proc.stdin.flush()
-    out = _read_one_result_block(proc)
-    if verbose:
-        print("cvvdp(i) =>", out.strip())
-    return out
-
-
-def stop_cvvdp_interactive(proc: subprocess.Popen) -> None:
-    try:
-        if proc.stdin:
-            proc.stdin.close()
-    except Exception:
-        pass
-    try:
-        proc.terminate()
-    except Exception:
-        pass
-    try:
-        proc.wait(timeout=2.0)
-    except Exception:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-
-
-# -------------------------------------------------------------
 # Heatmap extraction helpers
 # -------------------------------------------------------------
 
@@ -655,51 +572,6 @@ def run_cvvdp_jod_only(
 
 
 # -------------------------------------------------------------
-# Run CVVDP: PU-PSNR-RGB2020 per frame (optional)
-# -------------------------------------------------------------
-
-def run_cvvdp_pu_psnr_rgb2020(
-    proc: subprocess.Popen,
-    ref_pat: Path,
-    test_pat: Path,
-    center_frame: int,
-    temp_window: int,
-    display: str,
-    device: str,
-    fps: float,
-    pix_per_deg: Optional[float],
-    verbose: bool = False
-) -> Optional[float]:
-    k = max(0, int(temp_window))
-    start = max(0, int(center_frame) - k)
-    end = int(center_frame) + k
-
-    cmd = [
-        "-q",
-        "--ffmpeg-cc",
-        "--device", str(device),
-        "--display", str(display),
-        "--metric", "pu-psnr-rgb2020",
-        "--fps", f"{float(fps):.12f}",
-        "--frames", f"{start}:{end}",
-        "--ref", str(ref_pat),
-        "--test", str(test_pat),
-    ]
-    if pix_per_deg is not None:
-        idx = cmd.index("--fps")
-        cmd[idx:idx] = ["--pix-per-deg", str(pix_per_deg)]
-
-    try:
-        out = cvvdp_interactive_run(proc, cmd, verbose=verbose)
-        v = parse_metric_value(out)
-        return None if v is None else float(v)
-    except Exception as e:
-        if verbose:
-            print(f"[warn] pu-psnr-rgb2020 failed on frame {center_frame}: {e}")
-        return None
-
-
-# -------------------------------------------------------------
 # Heatmap MOV + Compare MOV
 # -------------------------------------------------------------
 
@@ -878,7 +750,6 @@ def args_to_kv_lines(args: argparse.Namespace, extra: Dict[str, str]) -> List[st
 
     preferred = [
         "display", "pix_per_deg", "mode", "temp_window", "device",
-        "pu_psnr_rgb2020",
         "display_res", "chroma_filter",
         "temp_resample", "temp_padding", "dump_channels", "dump_output_dir",
         "no_compare", "keep_work", "limit_frames",
@@ -955,9 +826,6 @@ def main() -> None:
                     help="Temporal half-window k. Uses frames (i-k):(i+k). 0 = single-frame only.")
     ap.add_argument("--device", default="mps")
 
-    ap.add_argument("--pu-psnr-rgb2020", dest="pu_psnr_rgb2020", action="store_true",
-                    help="Also compute per-frame pu-psnr-rgb2020 via cvvdp for BOTH analyses.")
-
     ap.add_argument("--display-res", default="3840x2160",
                     help="Target resolution for TIFF extraction.")
     ap.add_argument("--chroma-filter", default="spline36",
@@ -1029,7 +897,6 @@ def main() -> None:
     else:
         print(f"pix/deg override: {args.pix_per_deg}")
     print(f"temp-window K: {args.temp_window}")
-    print(f"pu-psnr-rgb2020: {'ON' if args.pu_psnr_rgb2020 else 'OFF'}")
     print(f"display-res: {args.display_res}")
     print(f"chroma-filter: {args.chroma_filter}")
     print(f"temp-resample: {'ON' if args.temp_resample else 'OFF'}")
@@ -1048,8 +915,6 @@ def main() -> None:
     else:
         temp_ctx = tempfile.TemporaryDirectory(prefix="cvvdp_work_")
         work_dir = Path(temp_ctx.name)
-
-    proc: Optional[subprocess.Popen] = None
 
     try:
         ref_dir_native = work_dir / "ref_native"
@@ -1101,13 +966,10 @@ def main() -> None:
             "fps_ffmpeg": fps_ffmpeg,
             "fps_cvvdp_float": f"{fps:.12f}",
             "tiff_scale_to": f"{display_res[0]}x{display_res[1]}",
-            "cvvdp_mode": "interactive" if args.pu_psnr_rgb2020 else "noninteractive_for_metrics",
+            "cvvdp_mode": "noninteractive_for_metrics",
             "dual_analysis": "native_and_ref420sim",
         }
         options_lines = args_to_kv_lines(args, extra_opts)
-
-        if args.pu_psnr_rgb2020:
-            proc = start_cvvdp_interactive(cvvdp_exe, verbose=args.verbose)
 
         print(f"Building per-frame CSV: {out_csv}")
         with out_csv.open("w", newline="") as f:
@@ -1119,11 +981,6 @@ def main() -> None:
                 "jod_total",
                 "jod_total_ref420sim",
                 "time_sec",
-            ]
-            if args.pu_psnr_rgb2020:
-                headers += ["pu_psnr_rgb2020", "pu_psnr_rgb2020_ref420sim"]
-
-            headers += [
                 "cvvdp_display_model",
                 "pix_per_deg_override",
                 "temp_window_k",
@@ -1179,48 +1036,11 @@ def main() -> None:
                     verbose=args.verbose
                 )
 
-                pu_native = None
-                pu_ref420sim = None
-                if args.pu_psnr_rgb2020:
-                    pu_native = run_cvvdp_pu_psnr_rgb2020(
-                        proc=proc,
-                        ref_pat=ref_pat_native,
-                        test_pat=test_pat,
-                        center_frame=i,
-                        temp_window=args.temp_window,
-                        display=args.display,
-                        device=args.device,
-                        fps=fps,
-                        pix_per_deg=args.pix_per_deg,
-                        verbose=args.verbose
-                    )
-                    pu_ref420sim = run_cvvdp_pu_psnr_rgb2020(
-                        proc=proc,
-                        ref_pat=ref_pat_420sim,
-                        test_pat=test_pat,
-                        center_frame=i,
-                        temp_window=args.temp_window,
-                        display=args.display,
-                        device=args.device,
-                        fps=fps,
-                        pix_per_deg=args.pix_per_deg,
-                        verbose=args.verbose
-                    )
-
                 row = [
                     i,
                     jod_total,
                     jod_total_ref420sim,
                     f"{i / fps:.6f}",
-                ]
-
-                if args.pu_psnr_rgb2020:
-                    row += [
-                        "" if pu_native is None else pu_native,
-                        "" if pu_ref420sim is None else pu_ref420sim,
-                    ]
-
-                row += [
                     args.display,
                     "" if args.pix_per_deg is None else str(args.pix_per_deg),
                     args.temp_window,
@@ -1291,8 +1111,6 @@ def main() -> None:
             print(f"  Kept workdir: {work_dir}")
 
     finally:
-        if proc is not None:
-            stop_cvvdp_interactive(proc)
         if temp_ctx is not None:
             temp_ctx.cleanup()
 
