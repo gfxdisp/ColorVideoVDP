@@ -183,7 +183,7 @@ will be read assuming 1280 px width and 720 px height, 25 frames per second, 420
 
 Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`. 
 
-The colour space specification (709, 2020 etc.) is currently ignored. Instead, the colour space must be explicitly specified in the [display specification](#display-specification).
+The colour space specification (709, 2020 etc.) is currently ignored. Instead, the colour space must be explicitly specified in the [display specification](#display-specification) by selecting a display model from the [configuration files](pycvvdp/vvdp_data/README.md).
 
 Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
 
