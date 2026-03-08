@@ -333,6 +333,19 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+
+* v0.5.6 (?)
+  - added `--debug` and `--count-frames`
+  - various bug fixes
+  - progress bar shown when video is processed
+  - added support for `--temp-padding=symmetric`
+  - added support for 422 chroma subsampling
+  - fixed support for YUV files
+
+* v0.5.5 (31/10/2025)
+  - Fixed distograms
+  - `--temp-resample` accepts an optional parameter - the maximum frame rate to use for temporal resampling
+
 * v0.5.4 (24/September/2025)
   - Fixed memory leak
 
