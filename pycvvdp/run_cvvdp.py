@@ -293,7 +293,7 @@ def run_on_args(args):
             res_fh.write( f"{test_file}, {ref_file}" )
         logging.info(f"Predicting the quality of '{test_file}' compared to '{ref_file}'")
         for mm in metrics:
-            preload = False if args.temp_padding == 'replicate' else True
+            preload = False
 
             nframes = -2 if args.count_frames else args.nframes
 

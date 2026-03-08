@@ -121,6 +121,7 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
 - [Display specification](#display-specification)
     - [Custom specification](#custom-display-specification)
 - [HDR content](#hdr-content)
+- [Yuv files](#yuv-files)
 - [Reporting metric results](#reporting-metric-results)
 - [Predicting quality scores](#predicted-quality-scores)
 - [Usage](#example-usage)
@@ -150,7 +151,7 @@ You can use this [online calculator](https://www.cl.cam.ac.uk/research/rainbow/p
 
 ### Custom display specification
 
-If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`. The format of `display_models.json` is explained [here](tree/main/pycvvdp/vvdp_data#readme).
+If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`. The format of `display_models.json` is explained [here](pycvvdp/vvdp_data/README.md).
 
 If you run the metric from Python code, the display photometry and geometry can be specified by passing `display_name` parameter to the metric. Alternatively, if you need more flexibility in specifying display geometry (size, viewing distance) and its colorimetry, you can instead pass objects of the classes `vvdp_display_geometry`, `vvdp_display_photo_gog` for most SDR displays, and `vvdp_display_photo_absolute` for HDR displays. You can also create your own subclasses of those classes for custom display specification. 
 
@@ -169,6 +170,24 @@ pip install pyexr
 ```bash
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 ```
+
+## YUV files
+
+ColorVideoVDP can natively read .yuv RAW video files (without ffmpeg) if their filename contains all metadata. For example, a file
+
+```
+ferris-bicubic-bicubic_1280x720p25_420_8bit_sdr.yuv
+```
+
+will be read assuming 1280 px width and 720 px height, 25 frames per second, 420 chroma subsampling, 8 bits per colour channel, and BT709 (SDR) colour space. 
+
+Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`. 
+
+The colour space specification (709, 2020 etc.) is currently ignored. Instead, the colour space must be explicitly specified in the [display specification](#display-specification) by selecting a display model from the [configuration files](pycvvdp/vvdp_data/README.md).
+
+Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
+
+Add `-verbose` to check whether the metadata was correctly decoded. It is also worth running with `-m dm-preview` to check that the files are correctly decoded. 
 
 ## Reporting metric results
 
@@ -314,6 +333,19 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+
+* v0.5.6 (?)
+  - added `--debug` and `--count-frames`
+  - various bug fixes
+  - progress bar shown when video is processed
+  - added support for `--temp-padding=symmetric`
+  - added support for 422 chroma subsampling
+  - fixed support for YUV files
+
+* v0.5.5 (31/10/2025)
+  - Fixed distograms
+  - `--temp-resample` accepts an optional parameter - the maximum frame rate to use for temporal resampling
+
 * v0.5.4 (24/September/2025)
   - Fixed memory leak
 

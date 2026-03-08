@@ -2,6 +2,7 @@ from video_source import *
 import re
 
 import logging
+from asyncio.log import logger
 
 def decode_video_props( fname ):
     vprops = dict()
@@ -10,44 +11,53 @@ def decode_video_props( fname ):
 
     vprops["fps"] = 24
     vprops["bit_depth"] = 8
-    vprops["color_space"] = '2020'
+    vprops["color_space"] = '709'
     vprops["chroma_ss"] = '420'
 
     bname = os.path.splitext(os.path.basename(fname))[0]
     fp = bname.split("_")
 
-    res_match = re.compile( r'(\d+)x(\d+)p?' )
+    res_match = re.compile( r'(\d+)x(\d+)p?(\d+)?' )
 
     for field in fp:
 
         if res_match.match( field ):
-            res = field.split( "x")
-            if len(res) != 2:
+            nums = re.findall(r"\d+", field) 
+            if len(nums)<2 or len(nums)>3:
                 raise ValueError("Cannot decode the resolution")
-            vprops["width"]=int(res[0])
-            vprops["height"]=int(res[1])
+            vprops["width"]=int(nums[0])
+            vprops["height"]=int(nums[1])
+            if len(nums)==3:
+                vprops["fps"]=int(nums[2])
             continue
 
         if field.endswith("fps"):
             vprops["fps"] = float(field[:-3])
+            continue
 
-        if field=="444" or field=="420":
+        if field=="444" or field=="420" or field=="422":
             vprops["chroma_ss"]=field
+            continue
 
-        if field=="10" or field=="10b":
+        if field=="10" or field=="10b" or field=="10bit":
             vprops["bit_depth"]=10
+            continue
 
-        if field=="8" or field=="8b":
+        if field=="8" or field=="8b" or field=="8bit":
             vprops["bit_depth"]=8
+            continue
 
         if field=="2020" or field=="709":
             vprops["color_space"]=field
+            continue
 
-        if field=="bt709":
+        if field=="bt709" or field=="sdr":
             vprops["color_space"]="709"
+            continue
 
-        if field=="ct2020" or field=="pq2020":
+        if field=="ct2020" or field=="pq2020" or field=="hdr":
             vprops["color_space"]="2020"
+            continue
 
     return vprops
 
@@ -89,10 +99,16 @@ class YUVReader:
             self.frame_bytes *= 3
             self.uv_pixels = self.y_pixels
             self.uv_shape = self.y_shape
-        else: # Chroma sub-sampling
+        elif vprops["chroma_ss"]=="420": 
             self.frame_bytes = self.frame_bytes*3/2
             self.uv_pixels = int(self.y_pixels/4)
             self.uv_shape = (int(self.y_shape[0]/2), int(self.y_shape[1]/2))
+        elif vprops["chroma_ss"]=="422": 
+            self.frame_bytes = self.frame_bytes*2
+            self.uv_pixels = int(self.y_pixels/2)
+            self.uv_shape = (int(self.y_shape[0]), int(self.y_shape[1]/2))
+        else:
+            raise RuntimeError( f'Unsupported chroma subsampling {vprops["chroma_ss"]}' )
 
         self.frame_pixels = self.frame_bytes
         if vprops["bit_depth"]>8:
@@ -126,32 +142,6 @@ class YUVReader:
         v = self.mm[offset+self.y_pixels+self.uv_pixels:offset+self.y_pixels+2*self.uv_pixels]
 
         return (np.reshape(Y,self.y_shape,'C'),np.reshape(u,self.uv_shape,'C'),np.reshape(v,self.uv_shape,'C'))
-
-    # Return display-encoded (sRGB) BT.709 RGB image
-    def get_frame_rgb_rec709( self, frame_index ):
-
-        (Y,u,v) = self.get_frame_yuv(frame_index)
-
-        YUV = fixed2float( np.concatenate( (Y[:,:,np.newaxis],\
-            convert420to444(u)[:,:,np.newaxis],\
-            convert420to444(v)[:,:,np.newaxis]), axis=2), self.bit_depth)
-
-        RGB = (np.reshape( YUV, (self.y_pixels, 3), order='F' ) @ ycbcr2rgb_rec709.transpose()).reshape( (*self.y_shape, 3 ), order='F' )
-
-        return RGB
-
-    # Return display-encoded (PQ) BT.2020 RGB image
-    def get_frame_rgb_rec2020( self, frame_index ):
-
-        (Y,u,v) = self.get_frame_yuv(frame_index)
-
-        YUV = fixed2float( np.concatenate( (Y[:,:,np.newaxis],\
-            convert420to444(u)[:,:,np.newaxis],\
-            convert420to444(v)[:,:,np.newaxis]), axis=2), self.bit_depth)
-
-        RGB = (np.reshape( YUV, (self.y_pixels, 3), order='F' ) @ ycbcr2rgb_rec2020.transpose()).reshape( (*self.y_shape, 3 ), order='F' )
-
-        return RGB
 
     # Return RGB PyTorch tensor
     def get_frame_rgb_tensor( self, frame_index, device ):
@@ -220,8 +210,13 @@ class YUVReader:
         if self.chroma_ss=="420":
             # TODO: Replace with a proper filter.
             uv_upscaled = torch.nn.functional.interpolate(uv, scale_factor=2, mode='bilinear')
-        else:
+        if self.chroma_ss=="422":
+            # TODO: Replace with a proper filter.
+            uv_upscaled = torch.nn.functional.interpolate(uv, scale_factor=(1, 2), mode='bilinear')
+        elif self.chroma_ss=="444":
             uv_upscaled = uv
+        else:
+            raise RuntimeError( f'Unsupported chroma subsampling {self.chroma_ss}' )
 
         Yuv[...,1:] = uv_upscaled.squeeze().permute(1,2,0)
 
@@ -241,6 +236,9 @@ class video_reader_yuv(YUVReader):
 
     def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
         super().__init__(vidfile)
+        self.src_width = self.width
+        self.src_height = self.height
+        self.in_pix_fmt = 'yuv' + self.chroma_ss + 'p'
         self.resize_fn=resize_fn
         self.resize_width = resize_width
         self.resize_height = resize_height        
@@ -256,10 +254,10 @@ class video_reader_yuv(YUVReader):
     def unpack(self, frame_index, device):
         RGB = self.get_frame_rgb_tensor(frame_index, device)
 
-        if not self.resize_fn is None and (vid_reader.height != self.resize_height or vid_reader.width != self.resize_width):
-            RGB = torch.nn.functional.interpolate(RGB.view(1,RGB.shape[0],RGB.shape[1],RGB.shape[2]),
+        if not self.resize_fn is None and (self.height != self.resize_height or self.width != self.resize_width):
+            RGB = torch.nn.functional.interpolate(RGB.permute( (2,0,1) ).unsqueeze(0),
                                                 size=(self.resize_height, self.resize_width),
-                                                mode=self.resize_fn).view(RGB_bcfhw.shape[0],self.resize_height,self.resize_width).clip(0.,1.)
+                                                mode=self.resize_fn).squeeze(0).permute( (1,2,0) ).clip(0.,1.)
         return RGB
 
 

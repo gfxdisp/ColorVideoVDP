@@ -9,6 +9,8 @@
 * Added: `--count-frames` will use slow but accurate method to ensure that we know the exact number of frames in the stream.
 * Added: `--temp-padding=symmetric` is now implemented.
 * Fixed: reduced frame delay with `--temp-resample`
+* Fixed: support for reading Yuv files
+* Added: 422 chroma subsampling is now natively supported
 
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)
