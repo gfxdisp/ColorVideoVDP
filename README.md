@@ -121,6 +121,7 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
 - [Display specification](#display-specification)
     - [Custom specification](#custom-display-specification)
 - [HDR content](#hdr-content)
+- [Yuv files](#yuv-files)
 - [Reporting metric results](#reporting-metric-results)
 - [Predicting quality scores](#predicted-quality-scores)
 - [Usage](#example-usage)
@@ -169,6 +170,22 @@ pip install pyexr
 ```bash
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 ```
+
+## YUV files
+
+ColorVideoVDP can natively read .yuv RAW video files (without ffmpeg) if their filename contains all metadata. For example, file
+
+```
+ferris-bicubic-bicubic_1280x720p25_420_8bit_sdr.yuv
+```
+
+will be read assuming 1280 px width and 720 px height, 25 frames per second, 420 chroma subsampling, 8 bits per colour channel, and BT709 (SDR) color space. 
+
+Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`.
+
+Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
+
+Add `-verbose` to check whether metadata was correctly decoded. It is also worth running with `-m dm-preview` to check that the files are correctly decoded. 
 
 ## Reporting metric results
 
