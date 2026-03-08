@@ -29,34 +29,35 @@ def decode_video_props( fname ):
             vprops["height"]=int(nums[1])
             if len(nums)==3:
                 vprops["fps"]=int(nums[2])
-
-            # res = field.split( "x")
-            # if len(res) != 2:
-            #     raise ValueError("Cannot decode the resolution")
-            # vprops["width"]=int(res[0])
-            # vprops["height"]=int(res[1])
             continue
 
         if field.endswith("fps"):
             vprops["fps"] = float(field[:-3])
+            continue
 
         if field=="444" or field=="420" or field=="422":
             vprops["chroma_ss"]=field
+            continue
 
         if field=="10" or field=="10b" or field=="10bit":
             vprops["bit_depth"]=10
+            continue
 
         if field=="8" or field=="8b" or field=="8bit":
             vprops["bit_depth"]=8
+            continue
 
         if field=="2020" or field=="709":
             vprops["color_space"]=field
+            continue
 
         if field=="bt709" or field=="sdr":
             vprops["color_space"]="709"
+            continue
 
         if field=="ct2020" or field=="pq2020" or field=="hdr":
             vprops["color_space"]="2020"
+            continue
 
     return vprops
 
@@ -141,32 +142,6 @@ class YUVReader:
         v = self.mm[offset+self.y_pixels+self.uv_pixels:offset+self.y_pixels+2*self.uv_pixels]
 
         return (np.reshape(Y,self.y_shape,'C'),np.reshape(u,self.uv_shape,'C'),np.reshape(v,self.uv_shape,'C'))
-
-    # # Return display-encoded (sRGB) BT.709 RGB image
-    # def get_frame_rgb_rec709( self, frame_index ):
-
-    #     (Y,u,v) = self.get_frame_yuv(frame_index)
-
-    #     YUV = fixed2float( np.concatenate( (Y[:,:,np.newaxis],\
-    #         convert420to444(u)[:,:,np.newaxis],\
-    #         convert420to444(v)[:,:,np.newaxis]), axis=2), self.bit_depth)
-
-    #     RGB = (np.reshape( YUV, (self.y_pixels, 3), order='F' ) @ ycbcr2rgb_rec709.transpose()).reshape( (*self.y_shape, 3 ), order='F' )
-
-    #     return RGB
-
-    # # Return display-encoded (PQ) BT.2020 RGB image
-    # def get_frame_rgb_rec2020( self, frame_index ):
-
-    #     (Y,u,v) = self.get_frame_yuv(frame_index)
-
-    #     YUV = fixed2float( np.concatenate( (Y[:,:,np.newaxis],\
-    #         convert420to444(u)[:,:,np.newaxis],\
-    #         convert420to444(v)[:,:,np.newaxis]), axis=2), self.bit_depth)
-
-    #     RGB = (np.reshape( YUV, (self.y_pixels, 3), order='F' ) @ ycbcr2rgb_rec2020.transpose()).reshape( (*self.y_shape, 3 ), order='F' )
-
-    #     return RGB
 
     # Return RGB PyTorch tensor
     def get_frame_rgb_tensor( self, frame_index, device ):

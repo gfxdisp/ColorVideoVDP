@@ -173,15 +173,17 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 
 ## YUV files
 
-ColorVideoVDP can natively read .yuv RAW video files (without ffmpeg) if their filename contains all metadata. For example, file
+ColorVideoVDP can natively read .yuv RAW video files (without ffmpeg) if their filename contains all metadata. For example, a file
 
 ```
 ferris-bicubic-bicubic_1280x720p25_420_8bit_sdr.yuv
 ```
 
-will be read assuming 1280 px width and 720 px height, 25 frames per second, 420 chroma subsampling, 8 bits per colour channel, and BT709 (SDR) color space. 
+will be read assuming 1280 px width and 720 px height, 25 frames per second, 420 chroma subsampling, 8 bits per colour channel, and BT709 (SDR) colour space. 
 
-Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`.
+Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`. 
+
+The colour space specifictaion (709, 2020 etc.) is currently ignored. Instead, the colour space must be explicitly specified in the [display specification](#display-specification).
 
 Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
 
