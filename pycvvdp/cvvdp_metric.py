@@ -225,6 +225,12 @@ class cvvdp(vq_metric):
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
+        self.weighted_pooling = parameters.get('weighted_pooling', False)
+        self.wp_spatial_base = torch.as_tensor( parameters.get('wp_spatial_base', 0), dtype=torch.float32, device=self.device )
+        self.wp_spatial_epsilon = torch.as_tensor( parameters.get('wp_spatial_epsilon', -5), dtype=torch.float32, device=self.device )
+        self.wp_temp_base = torch.as_tensor( parameters.get('wp_temp_base', 0), dtype=torch.float32, device=self.device )
+        self.wp_temp_epsilon = torch.as_tensor( parameters.get('wp_temp_epsilon', -5), dtype=torch.float32, device=self.device )
+
         # other parameters
         self.debug = False
 
@@ -630,12 +636,12 @@ class cvvdp(vq_metric):
         if not self.block_channels is None:
             Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels                
         else:
-            Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels
+            Q_tc = self.lp_norm(Q_sc, self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels
 
         if is_image:
             Q = Q_tc * t_int
         else:
-            Q = self.lp_norm(Q_tc,     self.beta_t,   dim=2, normalize=True)   # Sum across frames
+            Q = self.lp_norm(Q_tc, self.beta_t, dim=2, normalize=True, wp_base=self.wp_temp_base, wp_epsilon=self.wp_temp_epsilon)   # Sum across frames
 
         Q = Q.squeeze()
 
@@ -719,7 +725,7 @@ class cvvdp(vq_metric):
 
             #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
 
-            Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
+            Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False, wp_base=self.wp_spatial_base, wp_epsilon=self.wp_spatial_epsilon) # Pool across all pixels (spatial pooling)
 
             if self.do_heatmap:
 
@@ -1029,25 +1035,36 @@ class cvvdp(vq_metric):
         #
         return torch.log10(1.0 + W)
 
-    def lp_norm(self, x, p, dim=0, normalize=True, keepdim=True):
+    def lp_norm(self, x, p, dim=0, normalize=True, keepdim=True, wp_base=0, wp_epsilon=-5):
         if dim is None:
             dim = 0
 
-        if normalize:
-            if isinstance(dim, tuple):
-                N = 1.0
-                for dd in dim:
-                    N *= x.shape[dd]
-            else:
-                N = x.shape[dim]
-        else:
-            N = 1.0
+        if self.weighted_pooling and normalize:
+            w = x / (x+ 10**wp_base)
+            N = w.sum( dim=dim, keepdim=keepdim ) + 10**wp_epsilon
 
-        if isinstance( p, torch.Tensor ): 
-            # p is a Tensor if it is being optimized. In that case, we need the formula for the norm
-            return safe_pow( torch.sum( safe_pow(x, p), dim=dim, keepdim=keepdim)/float(N), 1/p) 
+            if isinstance( p, torch.Tensor ):
+                # p is a Tensor if it is being optimized. In that case, we need a differentiable formula for the norm
+                return safe_pow( torch.sum( safe_pow(x*w, p), dim=dim, keepdim=keepdim)/N, 1/p)
+            else:
+                return torch.norm(x*w, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
+
         else:
-            return torch.norm(x, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
+            if normalize:
+                if isinstance(dim, tuple):
+                    N = 1.0
+                    for dd in dim:
+                        N *= x.shape[dd]
+                else:
+                    N = x.shape[dim]
+            else:
+                N = 1.0
+
+            if isinstance( p, torch.Tensor ): 
+                # p is a Tensor if it is being optimized. In that case, we need a differentiable for the norm
+                return safe_pow( torch.sum( safe_pow(x, p), dim=dim, keepdim=keepdim)/float(N), 1/p) 
+            else:
+                return torch.norm(x, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
 
     # Return temporal filters
     # F[0] - Y sustained
