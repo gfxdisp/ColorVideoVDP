@@ -210,7 +210,7 @@ class YUVReader:
         if self.chroma_ss=="420":
             # TODO: Replace with a proper filter.
             uv_upscaled = torch.nn.functional.interpolate(uv, scale_factor=2, mode='bilinear')
-        if self.chroma_ss=="422":
+        elif self.chroma_ss=="422":
             # TODO: Replace with a proper filter.
             uv_upscaled = torch.nn.functional.interpolate(uv, scale_factor=(1, 2), mode='bilinear')
         elif self.chroma_ss=="444":
