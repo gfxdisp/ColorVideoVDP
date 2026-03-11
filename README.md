@@ -121,6 +121,7 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
 - [Display specification](#display-specification)
     - [Custom specification](#custom-display-specification)
 - [HDR content](#hdr-content)
+- [Yuv files](#yuv-files)
 - [Reporting metric results](#reporting-metric-results)
 - [Predicting quality scores](#predicted-quality-scores)
 - [Usage](#example-usage)
@@ -138,19 +139,19 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
 
 ## Display specification
 
-Unlike most image quality metrics, ColorVideoVDP needs physical specification of the display (e.g. its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-paths` parameter (see [Configuration files](#configuration-files)). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
+Unlike most image quality metrics, ColorVideoVDP needs physical specification of the display (e.g., its size, resolution, peak brightness) and viewing conditions (viewing distance, ambient light) to compute accurate predictions. The specifications of the displays are stored in [vvdp_data/display_models.json](pycvvdp/vvdp_data/display_models.json). You can add the exact specification of your display to this file, or create a new JSON file and pass the directory it is located in as `--config-paths` parameter (see [Configuration files](#configuration-files)). If the display specification is unknown to you, you are encouraged to use one of the standard display specifications listed on the top of that file, for example `standard_4k`, or `standard_fhd`. If you use one of the standard displays, there is a better chance that your results will be comparable with other studies. 
 
 You specify the display by passing `--display` argument to `cvvdp`. Run with `--display ?` to get a list of available display models. 
 
 Note the the specification in `display_models.json` is for the display and not the image. If you select to use `standard_4k` with the resolution of 3840x2160 for your display and pass a 1920x1080 image, the metric will assume that the image occupies one quarter of that display (the central portion). If the image resolution happens to be larger than the display resolution, it will *not* be cropped and instead ColorVideoVDP will assume a larger display. If you want to enlarge (or shrink) the image to the full resolution of the display, pass `--full-screen-resize {fast_bilinear,bilinear,bicubic,lanczos}` option (for now it works with video only). 
 
-The command line version of ColorVideoVDP can take as input HDR video streams encoded using the PQ transfer function. To correctly model HDR content, it is necessary to pass a display model with correct color space and transfer function (with the field `colorspace="BT.2020-PQ"`), for example `standard_hdr_pq`.
+The display model also determines the colour space and transfer function (EOTF) used for the input content. For example, when the input is an HDR video encoded using PQ EOTF,  you need to pass -d standard_hdr_pq. See [HDR content](#hdr-content) for more information. 
 
 You can use this [online calculator](https://www.cl.cam.ac.uk/research/rainbow/projects/display_calc/) to check or compute display geometric parameters. 
 
 ### Custom display specification
 
-If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`. The format of `display_models.json` is explained [here](tree/main/pycvvdp/vvdp_data#readme).
+If you run the metric from the command line, we recommend that you create a directory with a copy of `display_models.json`, add a new display specification in that file and then add to the command line `--config-paths <path-to-dir-with-json-file> --display <name-of-display-spec>`. The format of `display_models.json` is explained [here](pycvvdp/vvdp_data/README.md).
 
 If you run the metric from Python code, the display photometry and geometry can be specified by passing `display_name` parameter to the metric. Alternatively, if you need more flexibility in specifying display geometry (size, viewing distance) and its colorimetry, you can instead pass objects of the classes `vvdp_display_geometry`, `vvdp_display_photo_gog` for most SDR displays, and `vvdp_display_photo_absolute` for HDR displays. You can also create your own subclasses of those classes for custom display specification. 
 
@@ -158,22 +159,37 @@ If you run the metric from Python code, the display photometry and geometry can 
 
 (Python command line only) You can use the metric to compare: 
 
-* HDR video files encoded using PQ EOTF function (SMPTE ST 2084). Pass the video files as `--test` and `--ref` arguments and specify `--display standard_hdr_pq`.
+* HDR video files encoded using PQ (SMPTE ST 2084) or HLG EOTF functions. Pass the video files as `--test` and `--ref` arguments and specify `--display standard_hdr_pq` or `--display standard_hdr_hlg`.
 
-* OpenEXR images. The images *MUST* contain absolute linear color values (color graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. Note that the default installation skips the [PyEXR](https://pypi.org/project/PyEXR/) package, which is required to read `.exr` files. To install, run:
-```bash
-conda install -c conda-forge openexr-python   # or "sudo apt install openxr" on Linux machines
-pip install pyexr
-```
+* OpenEXR images. The images *MUST* contain absolute linear color values (color graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. 
+
 **Troubleshooting on Linux:** You may need to update your library path by adding the following line to your `~/.bashrc`:
 ```bash
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/conda/miniconda3/lib
 ```
 
+## YUV files
+
+ColorVideoVDP can natively (without ffmpeg) read .yuv RAW video files if their filename contains all metadata. For example, a file
+
+```
+ferris-bicubic-bicubic_1280x720p25_420_8bit_sdr.yuv
+```
+
+will be read assuming 1280 px width and 720 px height, 25 frames per second, 420 chroma subsampling, 8 bits per colour channel, and BT709 (SDR) colour space. 
+
+Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`. 
+
+The colour space specification (709, 2020 etc.) is currently ignored. Instead, the colour space must be explicitly specified in the [display specification](#display-specification) by selecting a display model from the [configuration files](pycvvdp/vvdp_data/README.md).
+
+Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
+
+Add `-verbose` to check whether the metadata was correctly decoded. It is also worth running with `-m dm-preview` to check that the files are correctly decoded. 
+
 ## Reporting metric results
 
 When reporting the results of the metric, please include the string returned by the metric, such as:
-`"ColorVideoVDP v0.5.0, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
+`"ColorVideoVDP v0.5.6, 75.4 [pix/deg], Lpeak=200, Lblack=0.5979 [cd/m^2], (standard_4k)"`
 This is to ensure that you provide enough details to reproduce your results. 
 
 ## Predicted quality scores
@@ -314,6 +330,19 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+
+* v0.5.6 (?)
+  - added `--debug` and `--count-frames`
+  - various bug fixes
+  - progress bar shown when video is processed
+  - added support for `--temp-padding=symmetric`
+  - added support for 422 chroma subsampling
+  - fixed support for YUV files
+
+* v0.5.5 (31/October/2025)
+  - Fixed distograms
+  - `--temp-resample` accepts an optional parameter - the maximum frame rate to use for temporal resampling
+
 * v0.5.4 (24/September/2025)
   - Fixed memory leak
 

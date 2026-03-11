@@ -217,6 +217,10 @@ class video_reader_yuv_pytorch(video_reader):
             self.frame_bytes = y_channel_pixels*3//2
             self.uv_pixels = int(y_channel_pixels/4)
             self.uv_shape = (int(self.y_shape[0]/2), int(self.y_shape[1]/2))
+        elif self.chroma_ss == "422":
+            self.frame_bytes = y_channel_pixels*2
+            self.uv_pixels = int(y_channel_pixels/2)
+            self.uv_shape = (int(self.y_shape[0]), int(self.y_shape[1]/2))
         else:
             raise vq_exception("Unrecognized chroma subsampling.")
 
@@ -233,7 +237,7 @@ class video_reader_yuv_pytorch(video_reader):
 
 
         self.chroma_ss = self.in_pix_fmt[3:6]
-        if not self.chroma_ss in ['444', '420']: # TODO: implement and test 422
+        if not self.chroma_ss in ['444', '420', '422']: 
             raise vq_exception(f"GPU-accelerated decoding cannot handle chroma subsampling {self.chroma_ss}. Run with `--ffmpeg-cc` command-line argument.")
 
         if self.bit_depth>8: 
@@ -307,8 +311,13 @@ class video_reader_yuv_pytorch(video_reader):
         if self.chroma_ss=="420":
             # TODO: Replace with a proper filter.
             uv_upscaled = torch.nn.functional.interpolate(uv, scale_factor=2, mode='bilinear')
-        else:
+        elif self.chroma_ss=="422":
+            # TODO: Replace with a proper filter.
+            uv_upscaled = torch.nn.functional.interpolate(uv, scale_factor=(1,2), mode='bilinear')
+        elif self.chroma_ss=="444":
             uv_upscaled = uv
+        else:
+            raise RuntimeError( f'Unknown chroma subsampling {self.chroma_ss}' )
 
         Yuv[...,1:] = uv_upscaled.squeeze().permute(1,2,0)
 
@@ -349,7 +358,6 @@ class video_source_video_file(video_source_dm):
         self.ignore_framerate_mismatch = ignore_framerate_mismatch 
 
         super().__init__(display_photometry=display_photometry, config_paths=config_paths)
-
 
         # Resolutions may be different here because upscaling may happen on the GPU
         # if self.test_vidr.height != self.reference_vidr.height or self.test_vidr.width != self.reference_vidr.width:
@@ -522,7 +530,7 @@ class video_source_temp_resample_file(video_source_video_file):
 
     def _get_frame( self, vid_reader, frame, device, colorspace ):        
 
-        frame_ind = int(safe_floor(frame/self.resample_fps * vid_reader.avg_fps))
+        frame_ind = int(safe_floor((frame+0.5) * vid_reader.avg_fps/self.resample_fps))
 
         ce = 0 if vid_reader == self.test_vidr else 1
 
