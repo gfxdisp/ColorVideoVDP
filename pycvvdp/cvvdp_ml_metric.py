@@ -680,6 +680,62 @@ class cvvdp_ml_transformer(cvvdp_ml):
 
 register_metric( cvvdp_ml_transformer )
 
+# Adds a saliency module to the cvvdp_ml
+class cvvdp_ml_entropy(cvvdp_ml):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, config_paths=[], device=None, **kwargs):
+
+        self.set_device( device )
+        super().__init__(config_paths=config_paths, device=device, **kwargs)
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        no_bands = len(features)
+        batch_sz = features[0].shape[0]
+
+        Q_JOD = torch.ones((batch_sz), device=self.device)*10.
+
+        is_image = (features[0].shape[4]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[batch,frames,width,height,channels,stat]
+            f = features[bb]
+            
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0:4] + (1,f.shape[5])), device=self.device)), dim=4) # Add the missing channel
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0  
+
+            
+            entropy = 0.5 * torch.log2(1 + (f[..., 3] + 1e-8) / (f[..., 5] + 1e-8)) 
+            f_D = torch.stack( (f[..., 4], entropy), dim=-1 ).flatten( start_dim=4 )
+
+            D_all = self.feature_net(f_D) 
+            D_all = F.relu(D_all) /no_bands
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
+
+        assert(not Q_JOD.isnan().any())
+        return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-Entropy"
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(D_all.shape[0],-1).mean(dim=1)
+
+register_metric( cvvdp_ml_entropy )
 
 # """
 # ColorVideoVDP metric with ML head as a no-reference metric.
