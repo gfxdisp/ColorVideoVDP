@@ -598,12 +598,9 @@ class cvvdp_ml_dino(cvvdp_ml_dino_base):
 
     def __init__(self, device=None, **kwargs):
         self.set_device(device)
-
-        super().__init__(device=device, **kwargs)
-
         ch_no = 4
         stats_no = 2
-        dino_dim = getattr(self.dino, "num_features", 768)
+        dino_dim = 768
         mlp_in_channels = stats_no * ch_no + dino_dim
         self.feature_net = MLP(
             in_channels=mlp_in_channels,
@@ -611,6 +608,8 @@ class cvvdp_ml_dino(cvvdp_ml_dino_base):
             activation_layer=torch.nn.ReLU,
             dropout=0.2,
         ).to(self.device)
+
+        super().__init__(device=device, **kwargs)
 
         self.train(False)
 
