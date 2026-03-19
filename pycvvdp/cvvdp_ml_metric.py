@@ -21,6 +21,7 @@ from datetime import date
 from torchvision.ops import MLP
 import torch.nn as nn
 import torch.nn.functional as F
+import timm
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
@@ -459,6 +460,224 @@ class cvvdp_ml(cvvdp_ml_base):
         assert(not Q_JOD.isnan())
         return Q_JOD
 
+
+class cvvdp_ml_dino_base(cvvdp_ml_base):
+
+    def __init__(self, dino_net='dino_v1', dino_token='cls', device=None, **kwargs):
+
+        self.set_device(device)
+
+        super().__init__(device=device, **kwargs)
+
+        self.dino_net = dino_net
+        self.dino_token = dino_token
+        self.dino_colorspace = 'display_encoded_01'
+
+        if self.dino_net != 'dino_v1':
+            raise ValueError(f"Unsupported DINO backbone: {self.dino_net}. Only 'dino_v1' is currently supported.")
+
+        self.dino = self._create_timm_model([
+            "vit_base_patch16_224.dino",
+        ])
+
+        self.dino_mean = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32, device=self.device).view(1, 3, 1, 1)
+        self.dino_std = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32, device=self.device).view(1, 3, 1, 1)
+        
+    def predict_video_source(self, vid_source):
+        assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+
+        features, heatmap = self.extract_features(vid_source)
+        dino_features = self.extract_features_dino(vid_source)
+        Q_jod = self.do_pooling_and_jods(features, dino_features)
+
+        vid_sz = vid_source.get_video_size() # H, W, F
+        height, width, N_frames = vid_sz
+
+        stats = {}
+        rho_band = self.lpyr.get_freqs()
+        stats['rho_band'] = rho_band # The spatial frequency per band in cpd
+        fps = vid_source.get_frames_per_second()
+        stats['frames_per_second'] = fps
+        stats['width'] = width
+        stats['height'] = height
+        stats['N_frames'] = N_frames
+
+        if self.dump_channels:
+            self.dump_channels.close()
+
+        if self.do_heatmap:
+            stats['heatmap'] = heatmap
+
+        return (Q_jod.squeeze(), stats)
+
+    @abstractmethod
+    def do_pooling_and_jods(self, features, dino_features):
+        """
+        """
+
+    def _create_timm_model(self, candidates):
+        errors = []
+        for model_name in candidates:
+            try:
+                return timm.create_model(model_name, pretrained=True).to(self.device).eval()
+            except Exception as exc:
+                errors.append(f"{model_name}: {exc}")
+
+        raise RuntimeError(
+            f"None of the requested timm models could be loaded: {candidates}. "
+            f"Errors: {' ; '.join(errors)}"
+        )
+
+    @staticmethod
+    def _forward_tokens(model, patches):
+        feats = model.forward_features(patches)
+
+        if isinstance(feats, dict):
+            cls_tokens = feats.get("x_norm_clstoken")
+            patch_tokens = feats.get("x_norm_patchtokens")
+
+            if cls_tokens is not None and patch_tokens is not None:
+                return torch.cat([cls_tokens.unsqueeze(1), patch_tokens], dim=1)
+
+            x_norm = feats.get("x_norm")
+            if isinstance(x_norm, torch.Tensor) and x_norm.ndim == 3:
+                return x_norm
+
+            for value in feats.values():
+                if isinstance(value, torch.Tensor) and value.ndim == 3:
+                    return value
+
+            raise RuntimeError("Could not extract token tensor from timm forward_features dict output.")
+
+        if isinstance(feats, (list, tuple)):
+            for value in feats:
+                if isinstance(value, torch.Tensor) and value.ndim == 3:
+                    return value
+            raise RuntimeError("Could not extract token tensor from timm forward_features sequence output.")
+
+        if isinstance(feats, torch.Tensor) and feats.ndim == 3:
+            return feats
+
+        raise RuntimeError("Unsupported forward_features output format for timm DINO model.")
+
+    @staticmethod
+    @torch.no_grad()
+    def tokens_dino(model, patches, token='cls'):
+        tokens = cvvdp_ml_dino_base._forward_tokens(model, patches)
+
+        if token == 'cls':
+            return tokens[:, 0]
+        elif token == 'patch':
+            return tokens[:, 1:]
+        else:
+            raise ValueError(f"Unsupported token type: {token}")
+
+    @torch.no_grad()
+    def extract_features_dino(self, vid_source):
+        _, _, N_frames = vid_source.get_video_size()
+
+        ref_features = []
+
+        for ff in range(N_frames):
+            ref_frame = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.dino_colorspace).squeeze(2).clamp(min=0, max=1)
+
+            ref_frame = Func.interpolate(ref_frame, size=(224, 224), mode='bilinear', align_corners=False)
+
+            ref_frame = (ref_frame - self.dino_mean) / self.dino_std
+
+            ref_cls = self.tokens_dino(self.dino, ref_frame, token=self.dino_token)
+
+            ref_features.append(ref_cls)
+
+        ref_features = torch.stack(ref_features, dim=1)
+
+        return [ref_features]
+
+
+class cvvdp_ml_dino(cvvdp_ml_dino_base):
+
+    def __init__(self, device=None, **kwargs):
+        self.set_device(device)
+
+        super().__init__(device=device, **kwargs)
+
+        ch_no = 4
+        stats_no = 2
+        dino_dim = getattr(self.dino, "num_features", 768)
+        mlp_in_channels = stats_no * ch_no + dino_dim
+        self.feature_net = MLP(
+            in_channels=mlp_in_channels,
+            hidden_channels=[256, 128, 1],
+            activation_layer=torch.nn.ReLU,
+            dropout=0.2,
+        ).to(self.device)
+
+        self.train(False)
+
+    def get_nets_to_load(self):
+        return ['feature_net'] if hasattr(self, 'feature_net') else []
+
+    def do_pooling_and_jods(self, features, dino_features):
+        no_bands = len(features)
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        dino_ref = dino_features[0]
+        if dino_ref.dim() == 2:
+            dino_ref = dino_ref.unsqueeze(0)
+        dino_ref = dino_ref.to(self.device)
+
+        for bb in range(no_bands):
+            f = features[bb]
+
+            if is_image:
+                if f.dim() == 6:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+                else:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+
+            if self.disabled_features is not None:
+                if f.dim() == 6:
+                    f[..., self.disabled_features] = 0
+                else:
+                    f[:, :, :, :, self.disabled_features] = 0
+
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+            if f_d.dim() == 5:
+                if dino_ref.shape[0] == 1 and f_d.shape[0] > 1:
+                    dino_ref_cur = dino_ref.expand(f_d.shape[0], -1, -1)
+                else:
+                    dino_ref_cur = dino_ref
+                dino_map = dino_ref_cur[:, :, None, None, :].expand(-1, -1, f_d.shape[2], f_d.shape[3], -1)
+            else:
+                dino_ref_cur = dino_ref.squeeze(0)
+                dino_map = dino_ref_cur[:, None, None, :].expand(-1, f_d.shape[1], f_d.shape[2], -1)
+
+            f_cat = torch.cat((f_d, dino_map), dim=-1)
+            d_all = self.feature_net(f_cat)
+
+            is_base_band = (bb == no_bands - 1)
+            if is_base_band:
+                d_all *= self.baseband_weight
+
+            if is_image:
+                d_all *= self.image_int
+
+            q_jod -= d_all.view(-1).mean() / no_bands
+
+        assert not q_jod.isnan()
+        return q_jod
+
+
+register_metric(cvvdp_ml_dino)
+
 # Adds a saliency module to the cvvdp_ml
 class cvvdp_ml_saliency(cvvdp_ml):
 
@@ -680,7 +899,148 @@ class cvvdp_ml_transformer(cvvdp_ml):
 
 register_metric( cvvdp_ml_transformer )
 
-# Adds a saliency module to the cvvdp_ml
+
+class RegressionTransformerBands(nn.Module):
+    def __init__(self,
+                 in_channels=24,
+                 dim=256,
+                 depth=4,
+                 heads=8,
+                 dropout=0.1,
+                 max_bands=16):
+        super().__init__()
+        self.dim = dim
+        self.max_bands = max_bands
+
+        self.patch_embed = nn.Sequential(
+            Rearrange('b c h w -> b h w c'),
+            nn.Linear(in_channels, dim),
+            Rearrange('b h w c -> b (h w) c')
+        )
+
+        self.spatial_pos_mlp = nn.Sequential(
+            nn.Linear(2, dim // 2),
+            nn.GELU(),
+            nn.Linear(dim // 2, dim)
+        )
+        self.band_pos_embed = nn.Embedding(max_bands, dim)
+        self.baseband_flag_embed = nn.Embedding(2, dim)
+
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer=nn.TransformerEncoderLayer(
+                d_model=dim,
+                nhead=heads,
+                dim_feedforward=dim * 4,
+                dropout=dropout,
+                activation='gelu',
+                batch_first=True,
+                norm_first=True
+            ),
+            num_layers=depth
+        )
+        self.reg_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 1),
+            nn.ReLU()
+        )
+
+    def get_spatial_position_embedding(self, h, w, device):
+        y_coords = (torch.arange(h, device=device).float() + 0.5) / h
+        x_coords = (torch.arange(w, device=device).float() + 0.5) / w
+        grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
+        pos_embed = self.spatial_pos_mlp(grid)
+        return pos_embed.view(1, h * w, self.dim)
+
+    def forward(self, band_features):
+        total_bands = len(band_features)
+        if total_bands > self.max_bands:
+            raise RuntimeError(f"Number of bands ({total_bands}) exceeds max_bands ({self.max_bands})")
+
+        all_band_tokens = []
+        batch_sz = band_features[0].shape[0]
+        frame_count = band_features[0].shape[1]
+
+        for band_idx, feat in enumerate(band_features):
+            B, D, H, W, C = feat.shape
+            feat = feat.reshape(B * D, H, W, C).permute(0, 3, 1, 2)
+
+            tokens = self.patch_embed(feat)
+            tokens = tokens + self.get_spatial_position_embedding(H, W, feat.device)
+
+            band_index_tensor = torch.full((1,), band_idx, dtype=torch.long, device=feat.device)
+            band_pos = self.band_pos_embed(band_index_tensor).view(1, 1, self.dim)
+            tokens = tokens + band_pos
+
+            is_baseband = 1 if band_idx == (total_bands - 1) else 0
+            baseband_flag_tensor = torch.full((1,), is_baseband, dtype=torch.long, device=feat.device)
+            baseband_pos = self.baseband_flag_embed(baseband_flag_tensor).view(1, 1, self.dim)
+            tokens = tokens + baseband_pos
+
+            all_band_tokens.append(tokens)
+
+        x = torch.cat(all_band_tokens, dim=1)
+        cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x = self.transformer(x)
+
+        cls_feat = x[:, 0]
+        y = self.reg_head(cls_feat).squeeze(-1).reshape(batch_sz, frame_count)
+        return y.mean(dim=1, keepdim=False)
+
+
+class cvvdp_ml_transformer_bands(cvvdp_ml):
+    def __init__(self,
+                 dim=256,
+                 config_paths=[],
+                 **kwargs):
+
+        self.set_device(kwargs.get('device'))
+
+        self.transformer_net = RegressionTransformerBands(
+            in_channels=24,
+            dim=dim
+        ).to(self.device)
+
+        super().__init__(config_paths=config_paths, **kwargs)
+
+    def get_nets_to_load(self):
+        return ['transformer_net']
+
+    def do_pooling_and_jods(self, features):
+        batch_sz = features[0].shape[0]
+        Q_JOD = torch.ones((batch_sz), device=self.device) * 10.
+        is_image = (features[0].shape[4] == 3)
+
+        input_features = []
+        for f in features:
+            f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
+
+            if is_image:
+                f = torch.cat((f, torch.zeros((f.shape[0:4] + (1, f.shape[5])), device=self.device)), dim=4)
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f_all = torch.cat([
+                f[..., 0:4].flatten(start_dim=4),
+                f[..., 4:].flatten(start_dim=4)
+            ], dim=-1)
+
+            input_features.append(f_all)
+
+        delta = self.transformer_net(input_features)
+        if is_image:
+            delta *= self.image_int
+        Q_JOD -= delta
+
+        return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-Transformer-Bands"
+
+
+register_metric(cvvdp_ml_transformer_bands)
+
 class cvvdp_ml_entropy(cvvdp_ml):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
@@ -736,6 +1096,74 @@ class cvvdp_ml_entropy(cvvdp_ml):
         return D_all.view(D_all.shape[0],-1).mean(dim=1)
 
 register_metric( cvvdp_ml_entropy )
+
+class cvvdp_ml_snr(cvvdp_ml_base):
+
+    # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
+    # random_init - do not load NN from a checkpoint file, use a random initialization
+    def __init__(self, config_paths=[], device=None, **kwargs):
+
+        self.set_device( device )
+
+        dropout = 0.2
+        hidden_dims = 48
+        num_layers = 4
+        ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
+        stats_no = 4 # mean D, var D, snr, entropy
+        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        super().__init__(config_paths=config_paths, device=device, **kwargs)
+    
+    def get_nets_to_load(self):
+        return [ 'feature_net' ]
+
+    # Perform pooling with per-band weights and map to JODs
+    def do_pooling_and_jods(self, features):
+
+        no_bands = len(features)
+        batch_sz = features[0].shape[0]
+
+        Q_JOD = torch.ones((batch_sz), device=self.device)*10.
+
+        is_image = (features[0].shape[4]==3) # if 3 channels, it is an image
+
+        for bb in range(no_bands):
+
+            #F[batch,frames,width,height,channels,stat]
+            f = features[bb]
+            
+            if is_image:
+                f = torch.cat( (f, torch.zeros((f.shape[0:4] + (1,f.shape[5])), device=self.device)), dim=4) # Add the missing channel
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0  
+
+            
+            entropy = 0.5 * torch.log2(1 + (f[..., 3] + 1e-8) / (f[..., 5] + 1e-8)) 
+            snr = 10 * torch.log10( 1 + (f[..., 4]**2 + 1e-8) / (f[..., 2]**2 + 1e-8) )
+            f_D = torch.stack( (f[..., 4], f[..., 5], snr, entropy), dim=-1 ).flatten( start_dim=4 )
+
+            D_all = self.feature_net(f_D) 
+            D_all = F.relu(D_all) /no_bands
+
+            is_base_band = (bb==no_bands-1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
+
+        assert(not Q_JOD.isnan().any())
+        return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-SNR"
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(D_all.shape[0],-1).mean(dim=1)
+
+register_metric( cvvdp_ml_snr )
 
 # """
 # ColorVideoVDP metric with ML head as a no-reference metric.
