@@ -218,6 +218,22 @@ class cvvdp(vq_metric):
         self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
         self.bfilt_duration = parameters['bfilt_duration']
 
+        # # Information-weighted spatial pooling (IW-SSIM style)
+        # self.use_iw_pooling = True if parameters.get('iw_pooling', 'off') == 'on' else False
+        # self.iw_noise_var = parameters.get('iw_noise_var', 0.01)  # Neural-noise floor for info-weight
+        # self.iw_method = parameters.get('iw_method', 'simple')    # 'simple' or 'gsm'
+        # if self.use_iw_pooling:
+        #     if self.iw_method == 'gsm':
+        #         # Larger 13-tap Gaussian (sigma=3.0) for per-eigenmode local variance estimation,
+        #         # consistent with IW-SSIM's 3-pixel-sigma window for stable covariance estimates
+        #         gsm_sigma = 3.0
+        #         gsm_ks = int(gsm_sigma * 4) + 1  # = 13
+        #         self.iw_blur = GaussianBlur(gsm_ks, gsm_sigma)
+        #     else:  # 'simple'
+        #         # 7-tap Gaussian (sigma=1.5) for local variance estimation
+        #         iw_sigma = 1.5
+        #         iw_ks = int(iw_sigma * 4) + 1  # = 7
+        #         self.iw_blur = GaussianBlur(iw_ks, iw_sigma)
         self.omega = [0, 5]
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
@@ -719,6 +735,10 @@ class cvvdp(vq_metric):
 
             #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
 
+            # if self.use_iw_pooling:
+            #     W_iw = self.compute_band_info_weights(R_f, D)
+            #     Q_per_ch_block[:,:,:,bb] = self.iw_lp_norm(D, W_iw, self.beta)  
+            # else:
             Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
             if self.do_heatmap:
@@ -1028,6 +1048,143 @@ class cvvdp(vq_metric):
         # G = log10( B/A );
         #
         return torch.log10(1.0 + W)
+
+    # def compute_band_info_weights(self, R_f, D=None):
+    #     """Dispatch to the selected IW weight estimation method."""
+    #     if self.iw_method == 'gsm':
+    #         return self._compute_iw_weights_gsm(R_f)
+    #     else:
+    #         return self._compute_iw_weights_simple(R_f, D)
+
+    # def _compute_iw_weights_simple(self, R_f, D):
+    #     """
+    #     Simplified IW weight: single Gaussian-windowed local variance,
+    #     with denominator estimated from local distortion variance.
+
+    #         W = log2(1 + var_R / (var_D + eps))
+
+    #     R_f : Tensor [B, C, F, H, W] - reference contrast band
+    #     D   : Tensor [B, C, F, H, W] - post-masking distortion band
+    #     """
+    #     if D is None:
+    #         raise RuntimeError("IW simple mode requires distortion tensor D")
+    #     B, C, F, H, W = R_f.shape
+    #     R_flat = R_f.reshape(B * C * F, 1, H, W)
+    #     D_flat = D.reshape(B * C * F, 1, H, W)
+    #     ks = self.iw_blur.kernel_size[0]
+    #     if H > ks and W > ks:
+    #         mu_R  = self.iw_blur(R_flat)
+    #         var_R = (self.iw_blur(R_flat * R_flat) - mu_R * mu_R).clamp(min=0.)
+    #         mu_D  = self.iw_blur(D_flat)
+    #         var_D = (self.iw_blur(D_flat * D_flat) - mu_D * mu_D).clamp(min=0.)
+    #     else:
+    #         var_R = (R_flat - R_flat.mean(dim=(-2, -1), keepdim=True)).pow(2)
+    #         var_D = (D_flat - D_flat.mean(dim=(-2, -1), keepdim=True)).pow(2)
+    #     eps = max(float(self.iw_noise_var), 1e-10)
+    #     return torch.log2(1. + var_R / (var_D + eps)).view(B, C, F, H, W)
+
+    # def _compute_iw_weights_gsm(self, R_f):
+    #     """
+    #     Data-driven GSM IW weight, faithful to the IW-SSIM / VIF formulation.
+
+    #     For each band, a patch covariance matrix C_u is estimated from the
+    #     band's own statistics (no fixed filters), then eigendecomposed.  Each
+    #     eigenmode j gives a decorrelated response e_j. Distortion is projected
+    #     onto the same eigenbasis to produce d_j, and local information is:
+
+    #         info_j = log2(1 + Var[e_j] / (Var[d_j] + eps))
+
+    #     summed over all M = patch_size² eigenmodes to give W.
+
+    #     Because the eigenvectors are derived from the band itself, this
+    #     automatically adapts to the texture statistics at each scale and
+    #     content, unlike any fixed oriented-filter approximation.
+
+    #     R_f : Tensor [B, C, F, H, W] - reference contrast band
+    #     """
+    #     B, C, F, H, W = R_f.shape
+    #     N = B * C * F
+    #     patch_size = 3          # 3×3 neighbourhood → M=9 eigenmodes
+    #     M = patch_size * patch_size
+    #     pad = patch_size // 2
+    #     ks_blur = self.iw_blur.kernel_size[0]
+
+    #     R_flat = R_f.reshape(N, 1, H, W)
+
+    #     # -----------------------------------------------------------------
+    #     # 1. Extract patch vectors via unfold: [N, M, H*W]
+    #     #    Each column is the M-dimensional neighbourhood at one pixel.
+    #     # -----------------------------------------------------------------
+    #     if H < patch_size or W < patch_size:
+    #         # Band too small for patch extraction; fall back to simple
+    #         return self._compute_iw_weights_simple(R_f)
+
+    #     patches = Func.unfold(R_flat, kernel_size=patch_size, padding=pad)  # [N, M, H*W]
+
+    #     # -----------------------------------------------------------------
+    #     # 2. Estimate patch covariance C_u: [N, M, M]
+    #     #    C_u = (1/HW) · patches @ patches^T
+    #     #    This is the sample covariance of the M-dimensional patch vectors,
+    #     #    averaged over all spatial positions in this band/frame.
+    #     # -----------------------------------------------------------------
+    #     C_u = torch.bmm(patches, patches.transpose(1, 2)) / (H * W)  # [N, M, M]
+
+    #     # -----------------------------------------------------------------
+    #     # 3. Eigendecomposition (symmetric → eigh, returns ascending order)
+    #     #    eigvecs: [N, M, M] — columns are eigenvectors v_j
+    #     #    eigvals: [N, M]    — eigenvalues λ_j (≥ 0 after clamp)
+    #     # -----------------------------------------------------------------
+    #     eigvals, eigvecs = torch.linalg.eigh(C_u)   # ascending order
+    #     eigvals = eigvals.clamp(min=0.)
+
+    #     # -----------------------------------------------------------------
+    #     # 4. Project patches onto eigenvectors: e_j = v_j^T · patch
+    #     #    proj: [N, M, H*W] — mode responses at every spatial position
+    #     # -----------------------------------------------------------------
+    #     proj = torch.bmm(eigvecs.transpose(1, 2), patches)  # [N, M, H*W]
+    #     proj = proj.view(N, M, H, W)
+
+    #     # -----------------------------------------------------------------
+    #     # 5. Per-eigenmode: Gaussian-windowed local variance of e_j,
+    #     #    MMSE noise subtraction, and information accumulation.
+    #     #
+    #     #    Var[e_j] ≈ s²·λ_j + σ_n²  →  s²·λ_j = max(0, Var[e_j] - σ_n²)
+    #     #    info_j   = log2(1 + s²·λ_j / σ_n²)
+    #     # -----------------------------------------------------------------
+    #     W_iw = torch.zeros(N, 1, H, W, device=R_flat.device)
+    #     for j in range(M):
+    #         e_j = proj[:, j:j+1, :, :]              # [N, 1, H, W]
+    #         if H > ks_blur and W > ks_blur:
+    #             mu_j  = self.iw_blur(e_j)
+    #             var_j = (self.iw_blur(e_j * e_j) - mu_j * mu_j).clamp(min=0.)
+    #         else:
+    #             var_j = (e_j - e_j.mean(dim=(-2, -1), keepdim=True)).pow(2)
+    #         s2_j  = (var_j - self.iw_noise_var).clamp(min=0.)
+    #         W_iw += torch.log2(1. + s2_j / self.iw_noise_var)
+
+    #     return W_iw.view(B, C, F, H, W)
+
+    # def iw_lp_norm(self, x, w, p, dim=(-2, -1)):
+    #     """
+    #     Information-weighted p-norm spatial pooling.
+
+    #         Q = ( sum(w * x^p) / sum(w) )^(1/p)
+
+    #     Regions with higher information content (larger w) contribute more
+    #     to the pooled distortion, analogous to IW-SSIM's weighted averaging.
+
+    #     x : Tensor  - distortion values (non-negative)
+    #     w : Tensor  - information weights (same shape as x)
+    #     p : scalar or Tensor - pooling exponent (same role as self.beta)
+    #     """
+    #     w_sum = w.sum(dim=dim, keepdim=False).clamp(min=1e-10)
+    #     if isinstance(p, torch.Tensor):
+    #         return safe_pow(
+    #             torch.sum(w * safe_pow(x, p), dim=dim, keepdim=False) / w_sum,
+    #             1. / p
+    #         )
+    #     else:
+    #         return (torch.sum(w * (x ** p), dim=dim, keepdim=False) / w_sum) ** (1. / p)
 
     def lp_norm(self, x, p, dim=0, normalize=True, keepdim=True):
         if dim is None:
