@@ -10,3 +10,4 @@ PyEXR>=0.3.10
 einops>=0.8.1
 huggingface_hub>=0.33.4
 nvidia-ml-py
+timm>=1.0.0
