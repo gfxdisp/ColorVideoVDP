@@ -677,6 +677,669 @@ class cvvdp_ml_dino(cvvdp_ml_dino_base):
 
 register_metric(cvvdp_ml_dino)
 
+
+class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
+    """
+    DINO-fusion model that combines spatial/band features with DINO embeddings.
+    
+    Architecture:
+    1. Embed 8 input features to 128 dimensions using feature_net
+    2. Average or max pool embeddings across all spatial patches and bands
+    3. Concatenate pooled embeddings (128) with DINO features (768) = 896 dims
+    4. Pass through final MLP to predict quality score
+    5. Average across frames
+    """
+
+    def __init__(self, device=None, pool_type='avg', **kwargs):
+        """
+        Args:
+            device: torch device
+            pool_type: 'avg' for average pooling or 'max' for max pooling
+        """
+        self.set_device(device)
+        
+        # Feature embedding: 8 features -> 128 dimensions
+        embedding_dim = 128
+        self.feature_net = nn.Sequential(
+            nn.Linear(8, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, embedding_dim),
+        ).to(self.device)
+        
+        # Final MLP: (embedding_dim + dino_dim) -> 1
+        # embedding_dim=128, dino_dim=768, so input is 896
+        dino_dim = 768
+        mlp_in_channels = embedding_dim + dino_dim
+        self.quality_net = MLP(
+            in_channels=mlp_in_channels,
+            hidden_channels=[512, 256, 1],
+            activation_layer=torch.nn.ReLU,
+            dropout=0.2,
+        ).to(self.device)
+        
+        self.pool_type = pool_type
+        self.embedding_dim = embedding_dim
+        
+        super().__init__(device=device, **kwargs)
+        
+        self.train(False)
+
+    def get_nets_to_load(self):
+        return ['feature_net', 'quality_net'] if hasattr(self, 'feature_net') else []
+
+    def do_pooling_and_jods(self, features, dino_features):
+        """
+        Args:
+            features: list of tensors, one per band [batch, frames, width, height, channels, stats]
+            dino_features: list of tensors [batch, frames, dino_dim] or [batch*frames, dino_dim]
+        
+        Returns:
+            Q_jod: quality score (scalar)
+        """
+        no_bands = len(features)
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        dino_ref = dino_features[0]
+        if dino_ref.dim() == 2:
+            dino_ref = dino_ref.unsqueeze(1)  # [batch*frames, dino_dim] -> [batch, frames, dino_dim] if needed
+        dino_ref = dino_ref.to(self.device)
+
+        # Collect pooled embeddings per band to avoid shape mismatch
+        # across pyramid bands with different spatial resolutions.
+        band_embeddings = []
+        
+        for bb in range(no_bands):
+            f = features[bb]
+
+            if is_image:
+                if f.dim() == 6:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+                else:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+
+            if self.disabled_features is not None:
+                if f.dim() == 6:
+                    f[..., self.disabled_features] = 0
+                else:
+                    f[:, :, :, :, self.disabled_features] = 0
+
+            # Extract and normalize the difference stats
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            
+            # Flatten the last 2 dimensions to get stats concatenated
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)  # flatten the stats dimension
+            
+            # f_d shape: [batch, frames, width, height, 8] or [batch, width, height, 8]
+            if f_d.dim() == 5:
+                batch, frames, height, width, _ = f_d.shape
+                f_d_flat = f_d.reshape(-1, 8)
+                embeddings = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+
+                if self.pool_type == 'avg':
+                    embeddings = embeddings.mean(dim=2)
+                elif self.pool_type == 'max':
+                    embeddings, _ = embeddings.max(dim=2)
+                else:
+                    raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+            elif f_d.dim() == 4:
+                batch, height, width, _ = f_d.shape
+                frames = 1
+                f_d_flat = f_d.reshape(-1, 8)
+                embeddings = self.feature_net(f_d_flat).reshape(batch, height * width, self.embedding_dim)
+
+                if self.pool_type == 'avg':
+                    embeddings = embeddings.mean(dim=1, keepdim=True)
+                elif self.pool_type == 'max':
+                    embeddings, _ = embeddings.max(dim=1, keepdim=True)
+                else:
+                    raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+            else:
+                raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
+
+            band_embeddings.append(embeddings)
+
+        # band_embeddings: list of [batch, frames, embedding_dim]
+        band_embeddings = torch.stack(band_embeddings, dim=2)  # [batch, frames, bands, embedding_dim]
+
+        baseband_weight = self.baseband_weight
+        if isinstance(baseband_weight, torch.Tensor):
+            if baseband_weight.numel() > 1:
+                baseband_weight = baseband_weight.mean()
+            baseband_weight = baseband_weight.to(self.device)
+
+        band_weights = torch.ones((1, 1, no_bands, 1), device=self.device, dtype=band_embeddings.dtype)
+        band_weights[:, :, no_bands - 1, :] = baseband_weight
+        weighted_band_embeddings = band_embeddings * band_weights
+
+        # Aggregate across bands
+        if self.pool_type == 'avg':
+            pooled_embeddings = weighted_band_embeddings.sum(dim=2) / band_weights.sum(dim=2).clamp_min(1e-8)
+        elif self.pool_type == 'max':
+            pooled_embeddings, _ = weighted_band_embeddings.max(dim=2)
+        else:
+            raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+        batch, frames, _ = pooled_embeddings.shape
+
+        # Prepare DINO features for concatenation
+        if dino_ref.dim() == 2:
+            if dino_ref.shape[0] == frames:
+                dino_ref = dino_ref.unsqueeze(0)
+            else:
+                dino_ref = dino_ref.unsqueeze(1)
+
+        if dino_ref.dim() == 3 and dino_ref.shape[0] == 1 and batch > 1:
+            dino_ref = dino_ref.expand(batch, -1, -1)
+
+        # Ensure dimensional consistency
+        if dino_ref.shape[1] != frames:
+            if dino_ref.shape[1] == 1:
+                dino_ref = dino_ref.expand(-1, frames, -1)
+            else:
+                min_frames = min(dino_ref.shape[1], frames)
+                dino_ref = dino_ref[:, :min_frames, :]
+                pooled_embeddings = pooled_embeddings[:, :min_frames, :]
+                frames = min_frames
+
+        # Concatenate pooled embeddings with DINO features
+        combined_features = torch.cat((pooled_embeddings, dino_ref), dim=-1)  # [batch, frames, 896]
+        
+        # Reshape for MLP
+        combined_flat = combined_features.reshape(-1, self.embedding_dim + 768)
+        
+        # Predict quality differences
+        delta = self.quality_net(combined_flat)  # [batch*frames, 1]
+
+        # Reshape back and average across frames
+        delta = delta.reshape(batch, frames)
+        delta = delta.mean(dim=-1).mean()  # Average across frames and batch
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod = q_jod - delta
+
+        assert not q_jod.isnan()
+        return q_jod
+
+
+register_metric(cvvdp_ml_dino_fusion)
+
+
+class cvvdp_ml_dino_attention(cvvdp_ml_dino_base):
+
+    def __init__(self, device=None, **kwargs):
+        self.set_device(device)
+
+        self.embedding_dim = 128
+        dino_dim = 768
+
+        self.feature_net = nn.Sequential(
+            nn.Linear(8, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, self.embedding_dim),
+        ).to(self.device)
+
+        self.query_proj = nn.Sequential(
+            nn.Linear(dino_dim, self.embedding_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+        ).to(self.device)
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.embedding_dim,
+            num_heads=8,
+            dropout=0.1,
+            batch_first=True,
+        ).to(self.device)
+
+        self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
+
+        self.quality_net = MLP(
+            in_channels=self.embedding_dim,
+            hidden_channels=[384, 128, 1],
+            activation_layer=torch.nn.ReLU,
+            dropout=0.2,
+        ).to(self.device)
+
+        super().__init__(device=device, **kwargs)
+
+        self.train(False)
+
+    def get_nets_to_load(self):
+        return ['feature_net', 'query_proj', 'cross_attn', 'attn_norm', 'quality_net']
+
+    def do_pooling_and_jods(self, features, dino_features):
+        no_bands = len(features)
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        baseband_weight = self.baseband_weight
+        if isinstance(baseband_weight, torch.Tensor):
+            if baseband_weight.numel() > 1:
+                baseband_weight = baseband_weight.mean()
+            baseband_weight = baseband_weight.to(self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        band_tokens = []
+        for bb in range(no_bands):
+            f = features[bb]
+
+            if f.dim() == 4:
+                f = f.unsqueeze(0)
+
+            if is_image:
+                f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+            bsz, nframes, hsz, wsz, _ = f_d.shape
+            f_d_flat = f_d.reshape(-1, 8)
+            emb = self.feature_net(f_d_flat).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
+
+            band_tokens.append(emb)
+
+        token_bank = torch.cat(band_tokens, dim=2)
+
+        dino_ref = dino_features[0].to(self.device)
+        if dino_ref.dim() == 2:
+            dino_ref = dino_ref.unsqueeze(0)
+
+        if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
+            dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
+
+        if dino_ref.shape[1] != token_bank.shape[1]:
+            if dino_ref.shape[1] == 1:
+                dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
+            else:
+                min_frames = min(dino_ref.shape[1], token_bank.shape[1])
+                dino_ref = dino_ref[:, :min_frames, :]
+                token_bank = token_bank[:, :min_frames, :, :]
+
+        bsz, nframes, ntokens, _ = token_bank.shape
+        query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
+        key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
+
+        attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
+        attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
+
+        delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod -= delta.mean(dim=1).mean()
+
+        assert not q_jod.isnan()
+        return q_jod
+
+
+register_metric(cvvdp_ml_dino_attention)
+
+
+class cvvdp_ml_dino_attention_v2(cvvdp_ml_dino_base):
+
+    def __init__(self, device=None, dim=128, max_bands=16, **kwargs):
+        self.set_device(device)
+
+        self.embedding_dim = dim
+        self.max_bands = max_bands
+        dino_dim = 768
+
+        self.feature_net = nn.Sequential(
+            nn.Linear(8, 256),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, self.embedding_dim),
+        ).to(self.device)
+
+        self.spatial_pos_mlp = nn.Sequential(
+            nn.Linear(2, self.embedding_dim // 2),
+            nn.GELU(),
+            nn.Linear(self.embedding_dim // 2, self.embedding_dim)
+        ).to(self.device)
+
+        self.band_pos_embed = nn.Embedding(self.max_bands, self.embedding_dim).to(self.device)
+        self.baseband_flag_embed = nn.Embedding(2, self.embedding_dim).to(self.device)
+
+        self.query_proj = nn.Sequential(
+            nn.Linear(dino_dim, self.embedding_dim),
+            nn.GELU(),
+            nn.Dropout(0.2),
+        ).to(self.device)
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.embedding_dim,
+            num_heads=8,
+            dropout=0.1,
+            batch_first=True,
+        ).to(self.device)
+
+        self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
+
+        self.quality_net = MLP(
+            in_channels=self.embedding_dim,
+            hidden_channels=[256, 64, 1],
+            activation_layer=torch.nn.ReLU,
+            dropout=0.2,
+        ).to(self.device)
+
+        super().__init__(device=device, **kwargs)
+
+        self.train(False)
+
+    def get_nets_to_load(self):
+        return [
+            'feature_net',
+            'spatial_pos_mlp',
+            'band_pos_embed',
+            'baseband_flag_embed',
+            'query_proj',
+            'cross_attn',
+            'attn_norm',
+            'quality_net'
+        ]
+
+    def _get_spatial_position_embedding(self, h, w, device):
+        y_coords = (torch.arange(h, device=device).float() + 0.5) / h
+        x_coords = (torch.arange(w, device=device).float() + 0.5) / w
+        grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
+        pos_embed = self.spatial_pos_mlp(grid)
+        return pos_embed.view(1, 1, h * w, self.embedding_dim)
+
+    def do_pooling_and_jods(self, features, dino_features):
+        no_bands = len(features)
+        if no_bands > self.max_bands:
+            raise RuntimeError(f"Number of bands ({no_bands}) exceeds max_bands ({self.max_bands})")
+
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        band_tokens = []
+        for bb in range(no_bands):
+            f = features[bb]
+
+            if f.dim() == 4:
+                f = f.unsqueeze(0)
+
+            if is_image:
+                f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+            bsz, nframes, hsz, wsz, _ = f_d.shape
+            emb = self.feature_net(f_d.reshape(-1, 8)).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
+
+            spatial_pos = self._get_spatial_position_embedding(hsz, wsz, f.device)
+            emb = emb + spatial_pos
+
+            band_index = torch.as_tensor([bb], dtype=torch.long, device=f.device)
+            band_pos = self.band_pos_embed(band_index).view(1, 1, 1, self.embedding_dim)
+            emb = emb + band_pos
+
+            is_baseband = 1 if bb == (no_bands - 1) else 0
+            baseband_index = torch.as_tensor([is_baseband], dtype=torch.long, device=f.device)
+            baseband_pos = self.baseband_flag_embed(baseband_index).view(1, 1, 1, self.embedding_dim)
+            emb = emb + baseband_pos
+
+            band_tokens.append(emb)
+
+        token_bank = torch.cat(band_tokens, dim=2)
+
+        dino_ref = dino_features[0].to(self.device)
+        if dino_ref.dim() == 2:
+            dino_ref = dino_ref.unsqueeze(0)
+
+        if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
+            dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
+
+        if dino_ref.shape[1] != token_bank.shape[1]:
+            if dino_ref.shape[1] == 1:
+                dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
+            else:
+                min_frames = min(dino_ref.shape[1], token_bank.shape[1])
+                dino_ref = dino_ref[:, :min_frames, :]
+                token_bank = token_bank[:, :min_frames, :, :]
+
+        bsz, nframes, ntokens, _ = token_bank.shape
+        query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
+        key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
+
+        attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
+        attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
+
+        delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod -= delta.mean(dim=1).mean()
+
+        assert not q_jod.isnan()
+        return q_jod
+
+
+register_metric(cvvdp_ml_dino_attention_v2)
+
+
+class cvvdp_ml_dino_attention_hybrid(cvvdp_ml_dino_base):
+
+    def __init__(self, device=None, dim=128, max_bands=16, tokens_per_band=16, use_positional=True, **kwargs):
+        self.set_device(device)
+
+        self.embedding_dim = dim
+        self.max_bands = max_bands
+        self.tokens_per_band = tokens_per_band
+        self.use_positional = use_positional
+        dino_dim = 768
+
+        self.feature_net = nn.Sequential(
+            nn.Linear(8, 256),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, self.embedding_dim),
+        ).to(self.device)
+
+        if self.use_positional:
+            self.spatial_pos_mlp = nn.Sequential(
+                nn.Linear(2, self.embedding_dim // 2),
+                nn.GELU(),
+                nn.Linear(self.embedding_dim // 2, self.embedding_dim)
+            ).to(self.device)
+
+            self.band_pos_embed = nn.Embedding(self.max_bands, self.embedding_dim).to(self.device)
+            self.baseband_flag_embed = nn.Embedding(2, self.embedding_dim).to(self.device)
+
+            self.spatial_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
+            self.band_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
+            self.baseband_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
+
+        self.query_proj = nn.Sequential(
+            nn.Linear(dino_dim, self.embedding_dim),
+            nn.GELU(),
+            nn.Dropout(0.2),
+        ).to(self.device)
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.embedding_dim,
+            num_heads=8,
+            dropout=0.1,
+            batch_first=True,
+        ).to(self.device)
+
+        self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
+
+        self.quality_net = MLP(
+            in_channels=self.embedding_dim,
+            hidden_channels=[384, 128, 1],
+            activation_layer=torch.nn.ReLU,
+            dropout=0.2,
+        ).to(self.device)
+
+        super().__init__(device=device, **kwargs)
+
+        self.train(False)
+
+    def get_nets_to_load(self):
+        nets = [
+            'feature_net',
+            'query_proj',
+            'cross_attn',
+            'attn_norm',
+            'quality_net'
+        ]
+        if self.use_positional:
+            nets.extend([
+                'spatial_pos_mlp',
+                'band_pos_embed',
+                'baseband_flag_embed'
+            ])
+        return nets
+
+    def _get_spatial_position_embedding(self, h, w, device):
+        y_coords = (torch.arange(h, device=device).float() + 0.5) / h
+        x_coords = (torch.arange(w, device=device).float() + 0.5) / w
+        grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
+        pos_embed = self.spatial_pos_mlp(grid)
+        return pos_embed.view(1, 1, h * w, self.embedding_dim)
+
+    def _reduce_spatial_tokens(self, emb, hsz, wsz):
+        if self.tokens_per_band is None or self.tokens_per_band <= 0:
+            return emb
+
+        max_tokens = hsz * wsz
+        if self.tokens_per_band >= max_tokens:
+            return emb
+
+        pool_h = max(1, int(math.sqrt(self.tokens_per_band)))
+        pool_w = max(1, int(math.ceil(self.tokens_per_band / pool_h)))
+
+        bsz, nframes, _, emb_dim = emb.shape
+        emb_map = emb.reshape(bsz * nframes, hsz, wsz, emb_dim).permute(0, 3, 1, 2)
+        pooled = Func.adaptive_avg_pool2d(emb_map, output_size=(pool_h, pool_w))
+        pooled = pooled.permute(0, 2, 3, 1).reshape(bsz, nframes, pool_h * pool_w, emb_dim)
+
+        if pooled.shape[2] > self.tokens_per_band:
+            pooled = pooled[:, :, :self.tokens_per_band, :]
+
+        return pooled
+
+    def do_pooling_and_jods(self, features, dino_features):
+        no_bands = len(features)
+        if no_bands > self.max_bands:
+            raise RuntimeError(f"Number of bands ({no_bands}) exceeds max_bands ({self.max_bands})")
+
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        baseband_weight = self.baseband_weight
+        if isinstance(baseband_weight, torch.Tensor):
+            if baseband_weight.numel() > 1:
+                baseband_weight = baseband_weight.mean()
+            baseband_weight = baseband_weight.to(self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        band_tokens = []
+        for bb in range(no_bands):
+            f = features[bb]
+
+            if f.dim() == 4:
+                f = f.unsqueeze(0)
+
+            if is_image:
+                f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+            bsz, nframes, hsz, wsz, _ = f_d.shape
+            emb = self.feature_net(f_d.reshape(-1, 8)).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
+
+            if self.use_positional:
+                spatial_pos = self._get_spatial_position_embedding(hsz, wsz, f.device)
+                emb = emb + self.spatial_pos_scale * spatial_pos
+
+                band_index = torch.as_tensor([bb], dtype=torch.long, device=f.device)
+                band_pos = self.band_pos_embed(band_index).view(1, 1, 1, self.embedding_dim)
+                emb = emb + self.band_pos_scale * band_pos
+
+                is_baseband = 1 if bb == (no_bands - 1) else 0
+                baseband_index = torch.as_tensor([is_baseband], dtype=torch.long, device=f.device)
+                baseband_pos = self.baseband_flag_embed(baseband_index).view(1, 1, 1, self.embedding_dim)
+                emb = emb + self.baseband_pos_scale * baseband_pos
+
+            if bb == (no_bands - 1):
+                emb = emb * baseband_weight
+
+            emb = self._reduce_spatial_tokens(emb, hsz, wsz)
+            band_tokens.append(emb)
+
+        token_bank = torch.cat(band_tokens, dim=2)
+
+        dino_ref = dino_features[0].to(self.device)
+        if dino_ref.dim() == 2:
+            dino_ref = dino_ref.unsqueeze(0)
+
+        if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
+            dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
+
+        if dino_ref.shape[1] != token_bank.shape[1]:
+            if dino_ref.shape[1] == 1:
+                dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
+            else:
+                min_frames = min(dino_ref.shape[1], token_bank.shape[1])
+                dino_ref = dino_ref[:, :min_frames, :]
+                token_bank = token_bank[:, :min_frames, :, :]
+
+        bsz, nframes, ntokens, _ = token_bank.shape
+        query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
+        key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
+
+        attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
+        attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
+
+        delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod -= delta.mean(dim=1).mean()
+
+        assert not q_jod.isnan()
+        return q_jod
+
+
+register_metric(cvvdp_ml_dino_attention_hybrid)
+
 # Adds a saliency module to the cvvdp_ml
 class cvvdp_ml_saliency(cvvdp_ml):
 
