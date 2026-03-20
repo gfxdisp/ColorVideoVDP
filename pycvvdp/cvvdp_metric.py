@@ -5,6 +5,8 @@ try:
 except ImportError:
     from numpy.lib.shape_base import expand_dims
 import math
+import importlib
+import types
 import torch
 from torch.utils import checkpoint
 from torch.functional import Tensor
@@ -53,7 +55,7 @@ from interp import interp1, interp3, interp1dim2
 
 import pycvvdp.utils as utils
 
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry, XYZ_to_LMS2006, LMS2006_to_DKLd65, XYZ_to_RGB709, XYZ_to_RGB2020
 from pycvvdp.csf import castleCSF
 
 # import gc
@@ -94,6 +96,238 @@ def pow_neg( x:Tensor, p ):
 
     min_v = torch.as_tensor( 0.00001, device=x.device )
     return (torch.max(x,min_v) ** p) + (torch.max(-x,min_v) ** p) - min_v**p
+
+
+class MDSViTNetSaliency:
+    """Extract saliency maps using MDS-ViTNet (TranSalNet multi-decoder + CNNMerge)."""
+
+    def __init__(
+        self,
+        device=None,
+        repo_path=None,
+        vit_weights_path=None,
+        merge_weights_path=None,
+        target_width=384,
+        target_height=288,
+        pad_to_multiple=32,
+        threshold=0.1,
+        saliency_gamma=1.0,
+        saliency_batch_size=8,
+    ):
+        if device is None:
+            if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                self.device = torch.device('cuda:0')
+            else:
+                self.device = torch.device('cpu')
+        else:
+            self.device = device
+
+        self.threshold = threshold
+        self.saliency_gamma = saliency_gamma
+        self.target_width = int(target_width)
+        self.target_height = int(target_height)
+        self.pad_to_multiple = int(pad_to_multiple)
+        self.saliency_batch_size = max(1, int(saliency_batch_size))
+
+        if repo_path is None:
+            raise FileNotFoundError("MDS-ViTNet repository path is not provided.")
+
+        self.repo_path = os.path.abspath(repo_path)
+        if not os.path.isdir(self.repo_path):
+            raise FileNotFoundError(f"MDS-ViTNet repository not found: {self.repo_path}")
+
+        if vit_weights_path is None or merge_weights_path is None:
+            raise FileNotFoundError("MDS-ViTNet weights paths must be provided.")
+
+        self.vit_weights_path = os.path.abspath(vit_weights_path)
+        self.merge_weights_path = os.path.abspath(merge_weights_path)
+
+        if not os.path.isfile(self.vit_weights_path):
+            raise FileNotFoundError(f"MDS-ViTNet ViT weights not found: {self.vit_weights_path}")
+        if not os.path.isfile(self.merge_weights_path):
+            raise FileNotFoundError(f"MDS-ViTNet merge weights not found: {self.merge_weights_path}")
+
+        self.mean = torch.tensor([0.485, 0.456, 0.406], device=self.device).view(1, 3, 1, 1)
+        self.std = torch.tensor([0.229, 0.224, 0.225], device=self.device).view(1, 3, 1, 1)
+
+        self.model_vit, self.model_merge = self._load_models()
+
+    def _load_models(self):
+        model_dir = os.path.join(self.repo_path, 'model')
+        utils_dir = os.path.join(self.repo_path, 'utils')
+        if not os.path.isdir(model_dir):
+            raise FileNotFoundError(f"MDS-ViTNet model directory not found: {model_dir}")
+        if not os.path.isdir(utils_dir):
+            raise FileNotFoundError(f"MDS-ViTNet utils directory not found: {utils_dir}")
+
+        importlib.invalidate_caches()
+
+        saved_modules = {}
+
+        def _stash_and_clear(prefix):
+            keys = [name for name in sys.modules if name == prefix or name.startswith(prefix + '.')]
+            for key in keys:
+                saved_modules[key] = sys.modules[key]
+                del sys.modules[key]
+
+        def _install_namespace_package(name, path):
+            pkg = types.ModuleType(name)
+            pkg.__package__ = name
+            pkg.__path__ = [path]
+            spec = importlib.machinery.ModuleSpec(name=name, loader=None, is_package=True)
+            spec.submodule_search_locations = [path]
+            pkg.__spec__ = spec
+            sys.modules[name] = pkg
+
+        _stash_and_clear('model')
+        _stash_and_clear('utils')
+
+        _install_namespace_package('model', model_dir)
+        _install_namespace_package('utils', utils_dir)
+
+        try:
+            mds_vit_module = importlib.import_module('model.TranSalNet_ViT_multidecoder')
+            merge_module = importlib.import_module('model.Merge_CNN_model')
+        finally:
+            for name in [key for key in sys.modules if key == 'model' or key.startswith('model.') or key == 'utils' or key.startswith('utils.')]:
+                del sys.modules[name]
+            sys.modules.update(saved_modules)
+
+        # Avoid downloading torchvision pretrained Swin weights during initialization;
+        # full trained weights are loaded from checkpoint files below.
+        try:
+            import torchvision.models as tv_models
+
+            def _swin_t_no_pretrain(*args, **kwargs):
+                try:
+                    return tv_models.swin_t(weights=None)
+                except TypeError:
+                    return tv_models.swin_t(pretrained=False)
+
+            mds_vit_module.swin_t = _swin_t_no_pretrain
+        except Exception:
+            pass
+
+        # Make TransEncoder robust to variable token length by interpolating
+        # learned positional embeddings along the token dimension.
+        if hasattr(mds_vit_module, 'TransEncoder'):
+            def _transencoder_forward_dynamic(module_self, x):
+                a, b = x.shape[2], x.shape[3]
+                x = module_self.patch_embeddings(x)
+                x = x.flatten(2)
+                x = x.transpose(-1, -2)
+
+                pos = module_self.position_embeddings
+                if pos.shape[1] != x.shape[1]:
+                    pos = Func.interpolate(
+                        pos.transpose(1, 2),
+                        size=x.shape[1],
+                        mode='linear',
+                        align_corners=False,
+                    ).transpose(1, 2)
+
+                embeddings = x + pos
+                x = module_self.transformer_encoder(embeddings)
+                B, n_patch, hidden = x.shape
+                x = x.permute(0, 2, 1)
+                x = x.contiguous().view(B, hidden, a, b)
+                return x
+
+            mds_vit_module.TransEncoder.forward = _transencoder_forward_dynamic
+
+        model_vit = mds_vit_module.TranSalNet().to(self.device)
+        model_merge = merge_module.CNNMerge().to(self.device)
+
+        model_vit.load_state_dict(torch.load(self.vit_weights_path, map_location=self.device))
+        model_merge.load_state_dict(torch.load(self.merge_weights_path, map_location=self.device))
+
+        model_vit.eval()
+        model_merge.eval()
+
+        return model_vit, model_merge
+
+    @torch.no_grad()
+    def extract_saliency(self, frames):
+        """
+        Args:
+            frames: Tensor [B,3,H,W] in display-encoded [0,1]
+        Returns:
+            saliency: Tensor [B,1,H,W] in [threshold,1]
+        """
+        B, _, H, W = frames.shape
+
+        if H != self.target_height or W != self.target_width:
+            frames_proc = Func.interpolate(
+                frames,
+                size=(self.target_height, self.target_width),
+                mode='bilinear',
+                align_corners=False,
+            )
+        else:
+            frames_proc = frames
+
+        if self.pad_to_multiple > 1:
+            proc_h, proc_w = frames_proc.shape[-2], frames_proc.shape[-1]
+            pad_h = (self.pad_to_multiple - (proc_h % self.pad_to_multiple)) % self.pad_to_multiple
+            pad_w = (self.pad_to_multiple - (proc_w % self.pad_to_multiple)) % self.pad_to_multiple
+            if pad_h > 0 or pad_w > 0:
+                frames_in = Func.pad(frames_proc, (0, pad_w, 0, pad_h), mode='replicate')
+            else:
+                frames_in = frames_proc
+        else:
+            pad_h, pad_w = 0, 0
+            frames_in = frames_proc
+
+        frames_normalized = (frames_in - self.mean) / self.std
+
+        # Process in chunks to avoid GPU OOM on large batches
+        chunk_size = min(self.saliency_batch_size, B)
+        saliency_list = []
+        
+        for start_idx in range(0, B, chunk_size):
+            end_idx = min(start_idx + chunk_size, B)
+            chunk = frames_normalized[start_idx:end_idx]
+            
+            m1_chunk, m2_chunk = self.model_vit(chunk)
+            saliency_chunk = self.model_merge(m1_chunk, m2_chunk)
+            saliency_list.append(saliency_chunk)
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        
+        saliency = torch.cat(saliency_list, dim=0)
+
+        if saliency.shape[-2:] != frames_in.shape[-2:]:
+            saliency = Func.interpolate(
+                saliency,
+                size=frames_in.shape[-2:],
+                mode='bilinear',
+                align_corners=False,
+            )
+
+        sal_min = saliency.view(B, -1).min(dim=1)[0].view(B, 1, 1, 1)
+        sal_max = saliency.view(B, -1).max(dim=1)[0].view(B, 1, 1, 1)
+        sal_norm = (saliency - sal_min) / (sal_max - sal_min + 1e-8)
+        sal_norm = torch.clamp(sal_norm, min=0.0, max=1.0)
+
+        if self.saliency_gamma != 1.0:
+            gamma = max(float(self.saliency_gamma), 1e-6)
+            sal_norm = torch.pow(sal_norm, gamma)
+
+        sal_out = torch.clamp(sal_norm, min=self.threshold)
+
+        if pad_h > 0 or pad_w > 0:
+            sal_out = sal_out[:, :, :frames_proc.shape[-2], :frames_proc.shape[-1]]
+
+        if sal_out.shape[-2] != H or sal_out.shape[-1] != W:
+            sal_out = Func.interpolate(
+                sal_out,
+                size=(H, W),
+                mode='bilinear',
+                align_corners=False,
+            )
+
+        return sal_out
 
 
 class cvvdp_frame_buffers:
@@ -240,6 +474,67 @@ class cvvdp(vq_metric):
 
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
+        
+        # Saliency backend selection
+        # Allowed values: 'none' or 'mds_vitnet'
+        self.saliency_backend = str(parameters.get('saliency_backend', 'none')).lower()
+
+        if self.saliency_backend not in {'none', 'mds_vitnet'}:
+            logging.warning(f"Unknown saliency backend '{self.saliency_backend}'. Disabling saliency.")
+            self.saliency_backend = 'none'
+
+        self.saliency_extractor = None
+
+        if self.saliency_backend == 'mds_vitnet':
+            repo_default = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'external', 'MDS-ViTNet'))
+
+            def _resolve_path(path_value, default_path):
+                if path_value is None or str(path_value).strip() == '':
+                    return default_path
+                p = str(path_value)
+                if os.path.isabs(p):
+                    return p
+                p_cfg = os.path.abspath(os.path.join(os.path.dirname(self.parameters_file), p))
+                if os.path.exists(p_cfg):
+                    return p_cfg
+                return os.path.abspath(p)
+
+            repo_path = _resolve_path(parameters.get('mds_vitnet_repo_path', repo_default), repo_default)
+            vit_weights_default = os.path.join(repo_path, 'weights', 'ViT_multidecoder.pth')
+            merge_weights_default = os.path.join(repo_path, 'weights', 'CNNMerge.pth')
+            vit_weights_path = _resolve_path(parameters.get('mds_vitnet_vit_weights', vit_weights_default), vit_weights_default)
+            merge_weights_path = _resolve_path(parameters.get('mds_vitnet_merge_weights', merge_weights_default), merge_weights_default)
+            target_width = int(parameters.get('mds_vitnet_target_width', 384))
+            target_height = int(parameters.get('mds_vitnet_target_height', 288))
+            pad_to_multiple = int(parameters.get('mds_vitnet_pad_to_multiple', 32))
+            saliency_batch_size = int(parameters.get('mds_vitnet_batch_size', 8))
+
+            try:
+                self.saliency_extractor = MDSViTNetSaliency(
+                    device=self.device,
+                    repo_path=repo_path,
+                    vit_weights_path=vit_weights_path,
+                    merge_weights_path=merge_weights_path,
+                    target_width=target_width,
+                    target_height=target_height,
+                    pad_to_multiple=pad_to_multiple,
+                    threshold=parameters.get('saliency_threshold', 0.1),
+                    saliency_gamma=parameters.get('saliency_gamma', 1.0),
+                    saliency_batch_size=saliency_batch_size,
+                )
+                logging.info(
+                    f"MDS-ViTNet saliency enabled (repo={repo_path}, target={target_width}x{target_height}, pad_to_multiple={pad_to_multiple})"
+                )
+            except Exception as e:
+                logging.warning(f"Failed to initialize MDS-ViTNet saliency: {e}. Disabling saliency.")
+                self.saliency_backend = 'none'
+                self.saliency_extractor = None
+
+        # Saliency weighting controls: conservative blend to avoid global scale shift
+        self.saliency_strength = float(parameters.get('saliency_strength', 0.25))
+        self.saliency_strength = max(0.0, min(1.0, self.saliency_strength))
+        self.saliency_norm_mean = True if parameters.get('saliency_norm_mean', True) else False
+        self.apply_saliency_weighting = (self.saliency_extractor is not None) and (self.saliency_strength > 0.0)
         
         # other parameters
         self.debug = False
@@ -391,15 +686,23 @@ class cvvdp(vq_metric):
             cur_block_N_frames = min(block_N_frames,N_frames-ff) # How many frames in this block?
 
             R = self.read_block_of_frames(vid_source, no_channels, fb, block_N_frames, met_colorspace, ff, cur_block_N_frames)
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Derive display-encoded frames from the already-read metric-space block
+            R_display = None
+            if self.apply_saliency_weighting:
+                R_display = self.metric_to_display_encoded_01(R, met_colorspace)
 
             if self.dump_channels:
                 self.dump_channels.dump_temp_ch(R)
 
             if self.use_checkpoints:
                 # Used for training
-                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, use_reentrant=False)
+                Q_per_ch_block, heatmap_block = checkpoint.checkpoint(self.process_block_of_frames, R, vid_sz, temp_ch, self.lpyr, is_image, R_display, use_reentrant=False)
             else:
-                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image)
+                Q_per_ch_block, heatmap_block = self.process_block_of_frames(R, vid_sz, temp_ch, self.lpyr, is_image, R_display)
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((batch_sz,Q_per_ch_block.shape[1], N_frames, Q_per_ch_block.shape[3]), device=self.device)
@@ -455,6 +758,56 @@ class cvvdp(vq_metric):
             logging.debug( f"Max memory allocated: {torch.cuda.max_memory_allocated()/1e9} GB" )
 
         return (Q_jod.squeeze(), stats)
+
+    def metric_to_display_encoded_01(self, R, met_colorspace):
+        dtype = R.dtype
+        device = R.device
+
+        dkl_from_lms = torch.tensor(LMS2006_to_DKLd65, dtype=dtype, device=device)
+        lms_from_dkl = torch.linalg.inv(dkl_from_lms)
+        xyz_from_lms = torch.linalg.inv(torch.tensor(XYZ_to_LMS2006, dtype=dtype, device=device))
+
+        model_eotf = str(getattr(self.display_photometry, 'EOTF', '')).upper()
+        is_hdr_source = model_eotf in {'PQ', 'HLG'}
+
+        xyz_to_rgb = torch.tensor(XYZ_to_RGB2020 if is_hdr_source else XYZ_to_RGB709, dtype=dtype, device=device)
+
+        def _lin2srgb(rgb_lin):
+            return torch.where(
+                rgb_lin > 0.0031308,
+                1.055 * torch.pow(rgb_lin.clamp(min=0.0), 1.0 / 2.4) - 0.055,
+                12.92 * rgb_lin,
+            )
+
+        def _metric_triplet_to_display_encoded(dkl_triplet):
+            lms_like = torch.einsum('ij,bjfhw->bifhw', lms_from_dkl, dkl_triplet)
+            if met_colorspace == 'logLMS_DKLd65':
+                lms = torch.pow(torch.tensor(10.0, dtype=dtype, device=device), lms_like)
+            else:
+                lms = lms_like
+
+            xyz_lin = torch.einsum('ij,bjfhw->bifhw', xyz_from_lms, lms)
+            rgb_lin = torch.einsum('ij,bjfhw->bifhw', xyz_to_rgb, xyz_lin).clamp(min=0.0)
+
+            if is_hdr_source:
+                if not hasattr(self, '_pu_encoder'):
+                    self._pu_encoder = utils.PU()
+                pu_max = self._pu_encoder.encode(torch.tensor(10000.0, dtype=dtype, device=device))
+                encoded = self._pu_encoder.encode(rgb_lin) / pu_max
+            else:
+                encoded = _lin2srgb(rgb_lin)
+
+            return encoded.clamp(0.0, 1.0)
+
+        test_dkl = R[:, [0, 2, 4], :, :, :]
+        ref_dkl = R[:, [1, 3, 5], :, :, :]
+        test_disp = _metric_triplet_to_display_encoded(test_dkl)
+        ref_disp = _metric_triplet_to_display_encoded(ref_dkl)
+
+        R_display = torch.empty((R.shape[0], 6, R.shape[2], R.shape[3], R.shape[4]), dtype=dtype, device=device)
+        R_display[:, 0::2, :, :, :] = test_disp
+        R_display[:, 1::2, :, :, :] = ref_disp
+        return R_display
 
     # Get a positive index of a frame for symmetric padding
     # If a video is too short to match the filter length, in will replicate frames back and forth in a ping-pong manner
@@ -605,8 +958,10 @@ class cvvdp(vq_metric):
         c = 320 if not self.training_mode else 800 # A different value for training
 
         max_frames = int(math.floor((mem_avail-a-pix_cnt*(self.filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
+        # max_frames = max(1, int(max_frames * 0.6))  # Conservative safety factor to avoid OOM
+        # max_frames = min(max_frames, 32)  # Cap at 32 frames per block max
 
-        block_N_frames = max(1, min(max_frames,N_frames))  # Process so many frames in one pass 
+        block_N_frames = max(1, min(max_frames, N_frames))  # Process so many frames in one pass 
         return block_N_frames
 
 
@@ -673,8 +1028,9 @@ class cvvdp(vq_metric):
         Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
         return Q_JOD
 
-    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
-        # R[batch,channels,frames,width,height]
+    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image, R_display=None):
+        # R[batch,channels,frames,width,height] - in DKL colorspace
+        # R_display[batch,channels,frames,width,height] - in display_encoded_01 colorspace (for saliency extraction)
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
         batch_sz = R.shape[0]
@@ -684,8 +1040,34 @@ class cvvdp(vq_metric):
         # if self.contrast=="log":
         #     R = lms2006_to_dkld65( torch.log10(R.clip(min=1e-5)) )
 
+        # Extract reference saliency from display-encoded frames if saliency weighting is enabled
+        saliency_ref = None          # [batch,frames,height,width]
+        saliency_gbands = None       # Gaussian pyramid of saliency (if available)
+        if self.apply_saliency_weighting and R_display is not None:
+            # R_display channels are interleaved: [T_R, R_R, T_G, R_G, T_B, R_B]
+            # Extract reference RGB frames only for saliency computation -> [B,3,F,H,W]
+            R_frames = R_display[:, 1::2, :, :, :]  # Reference frames in display_encoded_01
+            
+            # Flatten reference frames for saliency extraction
+            R_frames_flat = R_frames.reshape(-1, R_frames.shape[1], R_frames.shape[-2], R_frames.shape[-1])
+            
+            # Extract saliency only from reference frames
+            with torch.no_grad():
+                R_sal = self.saliency_extractor.extract_saliency(R_frames_flat)
+            
+            # Reshape to [batch,frames,height,width]
+            if R_sal is not None:
+                saliency_ref = R_sal.reshape(batch_sz, R_frames.shape[2], R_sal.shape[-2], R_sal.shape[-1])
+
         # Perform Laplacian pyramid decomposition
         B_bands, L_bkg_pyr = lpyr.decompose(R)
+
+        # Build Gaussian saliency pyramid once per block (preferred over Laplacian saliency)
+        if saliency_ref is not None:
+            try:
+                _, saliency_gbands = lpyr.decompose(saliency_ref.unsqueeze(1))
+            except Exception:
+                saliency_gbands = None
 
         if self.debug: assert len(B_bands) == lpyr.get_band_count()
 
@@ -735,11 +1117,38 @@ class cvvdp(vq_metric):
 
             #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
 
+            # Apply saliency weighting to spatial pooling if available
+            D_weighted = D
+            if saliency_ref is not None:
+                # Prefer Gaussian saliency band at this scale; fallback to simple resizing
+                if saliency_gbands is not None and hasattr(lpyr, 'get_gband'):
+                    sal_ref = lpyr.get_gband(saliency_gbands, bb).squeeze(1)
+                else:
+                    sal_ref = Func.interpolate(
+                        saliency_ref.unsqueeze(1).reshape(-1, 1, saliency_ref.shape[-2], saliency_ref.shape[-1]),
+                        size=(ch_height, ch_width),
+                        mode='bilinear',
+                        align_corners=False
+                    ).reshape(batch_sz, block_N_frames, ch_height, ch_width)
+                # Normalize to keep average saliency weight close to 1 (prevents global scale drift)
+                sal_w = sal_ref
+                if self.saliency_norm_mean:
+                    sal_mean = sal_w.mean(dim=(-2, -1), keepdim=True).clamp(min=1e-6)
+                    sal_w = sal_w / sal_mean
+
+                # Conservative blend with uniform weights (alpha=0 -> no saliency, alpha=1 -> full saliency)
+                alpha = self.saliency_strength
+                if alpha < 1.0:
+                    sal_w = (1.0 - alpha) + alpha * sal_w
+
+                # Apply saliency as a spatial weight (expand channels dimension)
+                D_weighted = D * sal_w.unsqueeze(1)
+
             # if self.use_iw_pooling:
             #     W_iw = self.compute_band_info_weights(R_f, D)
             #     Q_per_ch_block[:,:,:,bb] = self.iw_lp_norm(D, W_iw, self.beta)  
             # else:
-            Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
+            Q_per_ch_block[:,:,:,bb] = self.lp_norm(D_weighted, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
             if self.do_heatmap:
 

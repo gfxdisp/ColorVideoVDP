@@ -68,5 +68,17 @@
     "d_max": 2.5642454624176025,
     "image_int": 0.577918291091919,
     "Bloch_int": "off",
-    "bfilt_duration": 0.4
+    "bfilt_duration": 0.4,
+    "saliency_backend": "mds_vitnet",
+    "saliency_threshold": 0.1,
+    "saliency_gamma": 1,
+    "mds_vitnet_repo_path": "external/MDS-ViTNet",
+    "mds_vitnet_vit_weights": "external/MDS-ViTNet/weights/ViT_multidecoder.pth",
+    "mds_vitnet_merge_weights": "external/MDS-ViTNet/weights/CNNMerge.pth",
+    "mds_vitnet_target_width": 384,
+    "mds_vitnet_target_height": 288,
+    "mds_vitnet_batch_size": 4,
+    "mds_vitnet_pad_to_multiple": 32,
+    "saliency_strength": 1.0,
+    "saliency_norm_mean": true
 }
