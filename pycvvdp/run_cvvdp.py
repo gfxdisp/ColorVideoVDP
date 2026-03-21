@@ -120,6 +120,27 @@ def extract_per_frame_jod_series(stats):
             if arr is not None:
                 return arr
 
+    if "Q_per_ch" in stats:
+        value = stats["Q_per_ch"]
+
+        if torch.is_tensor(value):
+            arr = value.detach().cpu().numpy()
+        elif isinstance(value, np.ndarray):
+            arr = value
+        else:
+            arr = np.asarray(value)
+
+        # Expected shape in your build: (1, channels, frames, bands)
+        if arr.ndim == 4:
+            return arr.mean(axis=(0, 1, 3)).astype(np.float64, copy=False)
+
+        # Fallbacks for possible future variants
+        if arr.ndim == 3:
+            return arr.mean(axis=(0, 2)).astype(np.float64, copy=False)
+
+        if arr.ndim == 2:
+            return arr.mean(axis=0).astype(np.float64, copy=False)
+
     return None
 
 
@@ -384,6 +405,14 @@ def run_on_args(args):
                 mm.set_base_fname(base_fname)
 
                 Q_pred, stats = mm.predict_video_source(vs)
+                if not stats is None:
+                    print("STATS KEYS:", list(stats.keys()))
+                    for k, v in stats.items():
+                        try:
+                            shape = tuple(v.shape)
+                        except Exception:
+                            shape = type(v).__name__
+                        print(f"STAT {k}: {shape}")
                 if args.quiet:
                     print( "{Q:0.4f}".format(Q=Q_pred) )
                 else:
