@@ -130,12 +130,28 @@ def extract_per_frame_jod_series(stats):
         else:
             arr = np.asarray(value)
 
+        rho = stats.get("rho_band")
+        if torch.is_tensor(rho):
+            rho = rho.detach().cpu().numpy()
+        elif rho is not None and not isinstance(rho, np.ndarray):
+            rho = np.asarray(rho)
+
         # Expected shape in your build: (1, channels, frames, bands)
         if arr.ndim == 4:
+            if rho is not None and rho.ndim == 1 and rho.shape[0] == arr.shape[3]:
+                weighted = arr * rho.reshape(1, 1, 1, -1)
+                denom = float(np.sum(rho))
+                if denom > 0:
+                    return (weighted.sum(axis=3) / denom).mean(axis=(0, 1)).astype(np.float64, copy=False)
             return arr.mean(axis=(0, 1, 3)).astype(np.float64, copy=False)
 
         # Fallbacks for possible future variants
         if arr.ndim == 3:
+            if rho is not None and rho.ndim == 1 and rho.shape[0] == arr.shape[2]:
+                weighted = arr * rho.reshape(1, 1, -1)
+                denom = float(np.sum(rho))
+                if denom > 0:
+                    return (weighted.sum(axis=2) / denom).mean(axis=0).astype(np.float64, copy=False)
             return arr.mean(axis=(0, 2)).astype(np.float64, copy=False)
 
         if arr.ndim == 2:
@@ -414,10 +430,14 @@ def run_on_args(args):
                             shape = type(v).__name__
                         print(f"STAT {k}: {shape}")
                 if args.quiet:
-                    print( "{Q:0.4f}".format(Q=Q_pred) )
+                    print(f"JOD: {Q_pred:0.4f}")
                 else:
                     units_str = f" [{mm.quality_unit()}]"
-                    print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
+                    print("{met_name}={Q:0.4f}{units}".format(
+                        met_name=mm.short_name(),
+                        Q=Q_pred,
+                        units=units_str
+                    ))
                 if not res_fh is None:
                     res_fh.write( f", {Q_pred}" )
 
