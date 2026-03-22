@@ -11,6 +11,7 @@
 * Fixed: reduced frame delay with `--temp-resample`
 * Fixed: support for reading Yuv files
 * Added: 422 chroma subsampling is now natively supported
+* Added: new display models in the `display_models.json`
 
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)
