@@ -22,6 +22,8 @@ from torchvision.ops import MLP
 import torch.nn as nn
 import torch.nn.functional as F
 import timm
+from pathlib import Path
+import importlib.util
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
@@ -594,6 +596,142 @@ class cvvdp_ml_dino_base(cvvdp_ml_base):
         return [ref_features]
 
 
+class cvvdp_ml_saliency_base(cvvdp_ml_base):
+
+    def __init__(self, device=None, stsanet_weights=None, stsanet_resolution=(224, 384), stsanet_clip_len=32, **kwargs):
+
+        self.set_device(device)
+
+        super().__init__(device=device, **kwargs)
+
+        self.requires_saliency_features = True
+        self.stsanet_clip_len = int(stsanet_clip_len)
+        self.stsanet_left_context = self.stsanet_clip_len // 2 - 1
+        self.stsanet_right_context = self.stsanet_clip_len // 2
+        self.stsanet_resolution = tuple(stsanet_resolution)
+        self.saliency_colorspace = 'display_encoded_01'
+        self.stsanet_weights = stsanet_weights
+
+        self.stsanet = self._create_stsanet_model().to(self.device).eval()
+        for param in self.stsanet.parameters():
+            param.requires_grad = False
+
+    def predict_video_source(self, vid_source):
+        assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+
+        features, heatmap = self.extract_features(vid_source)
+        saliency_features = self.extract_features_saliency(vid_source)
+        Q_jod = self.do_pooling_and_jods(features, saliency_features)
+
+        vid_sz = vid_source.get_video_size() # H, W, F
+        height, width, N_frames = vid_sz
+
+        stats = {}
+        rho_band = self.lpyr.get_freqs()
+        stats['rho_band'] = rho_band # The spatial frequency per band in cpd
+        fps = vid_source.get_frames_per_second()
+        stats['frames_per_second'] = fps
+        stats['width'] = width
+        stats['height'] = height
+        stats['N_frames'] = N_frames
+
+        if self.dump_channels:
+            self.dump_channels.close()
+
+        if self.do_heatmap:
+            stats['heatmap'] = heatmap
+
+        return (Q_jod.squeeze(), stats)
+
+    @abstractmethod
+    def do_pooling_and_jods(self, features, saliency_features):
+        """
+        """
+
+    def _get_project_root(self):
+        return Path(__file__).resolve().parents[2]
+
+    def _get_stsanet_weights_path(self):
+        if self.stsanet_weights is not None and self.stsanet_weights != '':
+            return Path(self.stsanet_weights)
+        return self._get_project_root() / 'external' / 'STSANet' / 'STSANet_fine-tuned_on_UCF.pth'
+
+    def _import_stsanet_class(self):
+        stsa_model_path = self._get_project_root() / 'external' / 'STSANet' / 'STSA_model.py'
+        if not stsa_model_path.exists():
+            raise RuntimeError(f'STSANet model file not found: {stsa_model_path}')
+
+        module_name = 'external_stsanet_module'
+        spec = importlib.util.spec_from_file_location(module_name, str(stsa_model_path))
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f'Could not load STSANet module from: {stsa_model_path}')
+
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if not hasattr(module, 'STSANet'):
+            raise RuntimeError(f'Module {stsa_model_path} does not expose STSANet class.')
+
+        return module.STSANet
+
+    def _create_stsanet_model(self):
+        stsanet_cls = self._import_stsanet_class()
+        model = stsanet_cls()
+
+        weights_path = self._get_stsanet_weights_path()
+        if not weights_path.exists():
+            logging.warning(f'STSANet weights not found at {weights_path}. Using random initialization.')
+            return model
+
+        checkpoint = torch.load(str(weights_path), map_location=self.device)
+        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            checkpoint = checkpoint['state_dict']
+
+        try:
+            model.load_state_dict(checkpoint, strict=False)
+        except RuntimeError:
+            remapped = {k.split('.', 1)[1]: v for k, v in checkpoint.items() if isinstance(k, str) and '.' in k}
+            model.load_state_dict(remapped, strict=False)
+
+        logging.info(f'Loaded STSANet weights from: {weights_path}')
+        return model
+
+    def _build_stsanet_clip(self, ref_video, center_index):
+        total_frames = ref_video.shape[0]
+        clip_indices = [
+            min(max(center_index - self.stsanet_left_context + offset, 0), total_frames - 1)
+            for offset in range(self.stsanet_clip_len)
+        ]
+        clip = ref_video[clip_indices, :, :, :]
+        clip = clip.permute(1, 0, 2, 3).unsqueeze(0)
+        return clip
+
+    @torch.no_grad()
+    def extract_features_saliency(self, vid_source):
+        _, _, N_frames = vid_source.get_video_size()
+        target_h, target_w = self.stsanet_resolution
+
+        if N_frames <= 0:
+            return [torch.empty((1, 0, target_h, target_w), dtype=torch.float32, device=self.device)]
+
+        ref_frames = []
+        for ff in range(N_frames):
+            ref_frame = vid_source.get_reference_frame(ff, device=self.device, colorspace=self.saliency_colorspace).squeeze(2).clamp(min=0, max=1)
+            ref_frame = Func.interpolate(ref_frame, size=(target_h, target_w), mode='bilinear', align_corners=False)
+            ref_frames.append(ref_frame.squeeze(0))
+
+        ref_video = torch.stack(ref_frames, dim=0)
+
+        saliency_maps = []
+        self.stsanet.eval()
+        for ff in range(N_frames):
+            clip = self._build_stsanet_clip(ref_video, ff)
+            sal_map = self.stsanet(clip).squeeze(0)
+            saliency_maps.append(sal_map)
+
+        saliency_maps = torch.stack(saliency_maps, dim=0).unsqueeze(0)
+        return [saliency_maps]
+
+
 class cvvdp_ml_dino(cvvdp_ml_dino_base):
 
     def __init__(self, device=None, **kwargs):
@@ -871,6 +1009,156 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
 
 
 register_metric(cvvdp_ml_dino_fusion)
+
+
+class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
+    """
+    Simplified DINO-fusion model with lightweight linear heads.
+    """
+
+    def __init__(self, device=None, pool_type='avg', **kwargs):
+        self.set_device(device)
+
+        embedding_dim = 128
+        self.feature_net = nn.Linear(8, embedding_dim).to(self.device)
+
+        dino_dim = 768
+        mlp_in_channels = embedding_dim + dino_dim
+        self.quality_net = nn.Sequential(
+            nn.LayerNorm(mlp_in_channels),
+            nn.Linear(mlp_in_channels, 1),
+            nn.ReLU(),
+        ).to(self.device)
+
+        self.pool_type = pool_type
+        self.embedding_dim = embedding_dim
+
+        super().__init__(device=device, **kwargs)
+
+        self.train(False)
+
+    def get_nets_to_load(self):
+        return ['feature_net', 'quality_net'] if hasattr(self, 'feature_net') else []
+
+    def do_pooling_and_jods(self, features, dino_features):
+        no_bands = len(features)
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        dino_ref = dino_features[0]
+        if dino_ref.dim() == 2:
+            dino_ref = dino_ref.unsqueeze(1)
+        dino_ref = dino_ref.to(self.device)
+
+        band_embeddings = []
+
+        for bb in range(no_bands):
+            f = features[bb]
+
+            if is_image:
+                if f.dim() == 6:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+                else:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+
+            if self.disabled_features is not None:
+                if f.dim() == 6:
+                    f[..., self.disabled_features] = 0
+                else:
+                    f[:, :, :, :, self.disabled_features] = 0
+
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+            if f_d.dim() == 5:
+                batch, frames, height, width, _ = f_d.shape
+                f_d_flat = f_d.reshape(-1, 8)
+                embeddings = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+
+                if self.pool_type == 'avg':
+                    embeddings = embeddings.mean(dim=2)
+                elif self.pool_type == 'max':
+                    embeddings, _ = embeddings.max(dim=2)
+                else:
+                    raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+            elif f_d.dim() == 4:
+                batch, height, width, _ = f_d.shape
+                frames = 1
+                f_d_flat = f_d.reshape(-1, 8)
+                embeddings = self.feature_net(f_d_flat).reshape(batch, height * width, self.embedding_dim)
+
+                if self.pool_type == 'avg':
+                    embeddings = embeddings.mean(dim=1, keepdim=True)
+                elif self.pool_type == 'max':
+                    embeddings, _ = embeddings.max(dim=1, keepdim=True)
+                else:
+                    raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+            else:
+                raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
+
+            band_embeddings.append(embeddings)
+
+        band_embeddings = torch.stack(band_embeddings, dim=2)
+
+        baseband_weight = self.baseband_weight
+        if isinstance(baseband_weight, torch.Tensor):
+            if baseband_weight.numel() > 1:
+                baseband_weight = baseband_weight.mean()
+            baseband_weight = baseband_weight.to(self.device)
+
+        band_weights = torch.ones((1, 1, no_bands, 1), device=self.device, dtype=band_embeddings.dtype)
+        band_weights[:, :, no_bands - 1, :] = baseband_weight
+        weighted_band_embeddings = band_embeddings * band_weights
+
+        if self.pool_type == 'avg':
+            pooled_embeddings = weighted_band_embeddings.sum(dim=2) / band_weights.sum(dim=2).clamp_min(1e-8)
+        elif self.pool_type == 'max':
+            pooled_embeddings, _ = weighted_band_embeddings.max(dim=2)
+        else:
+            raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+        batch, frames, _ = pooled_embeddings.shape
+
+        if dino_ref.dim() == 2:
+            if dino_ref.shape[0] == frames:
+                dino_ref = dino_ref.unsqueeze(0)
+            else:
+                dino_ref = dino_ref.unsqueeze(1)
+
+        if dino_ref.dim() == 3 and dino_ref.shape[0] == 1 and batch > 1:
+            dino_ref = dino_ref.expand(batch, -1, -1)
+
+        if dino_ref.shape[1] != frames:
+            if dino_ref.shape[1] == 1:
+                dino_ref = dino_ref.expand(-1, frames, -1)
+            else:
+                min_frames = min(dino_ref.shape[1], frames)
+                dino_ref = dino_ref[:, :min_frames, :]
+                pooled_embeddings = pooled_embeddings[:, :min_frames, :]
+                frames = min_frames
+
+        combined_features = torch.cat((pooled_embeddings, dino_ref), dim=-1)
+        combined_flat = combined_features.reshape(-1, self.embedding_dim + 768)
+        delta = self.quality_net(combined_flat)
+
+        delta = delta.reshape(batch, frames)
+        delta = delta.mean(dim=-1).mean()
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod = q_jod - delta
+
+        assert not q_jod.isnan()
+        return q_jod
+
+
+register_metric(cvvdp_ml_dino_fusion_simplified)
 
 
 class cvvdp_ml_dino_attention(cvvdp_ml_dino_base):
@@ -1429,6 +1717,195 @@ class cvvdp_ml_saliency(cvvdp_ml):
     
 
 register_metric( cvvdp_ml_saliency )
+
+
+class cvvdp_ml_saliency_v2(cvvdp_ml_saliency):
+
+    def __init__(self,
+                 config_paths=[],
+                 device=None,
+                 saliency_norm_eps=1e-8,
+                 positive_floor=1e-6,
+                 distortion_weight_alpha=1.0,
+                 distortion_weight_eps=1e-8,
+                 distortion_weight_power=1.0,
+                 distortion_weight_max=5.0,
+                 **kwargs):
+
+        self.saliency_norm_eps = saliency_norm_eps
+        self.positive_floor = positive_floor
+        self.distortion_weight_alpha = distortion_weight_alpha
+        self.distortion_weight_eps = distortion_weight_eps
+        self.distortion_weight_power = distortion_weight_power
+        self.distortion_weight_max = distortion_weight_max
+        super().__init__(config_paths=config_paths, device=device, **kwargs)
+
+    def _normalize_across_band_patches(self, weights):
+        eps = torch.as_tensor(self.saliency_norm_eps, dtype=weights.dtype, device=weights.device).clamp_min(1e-12)
+        denom = weights.sum(dim=(1, 2, 3), keepdim=True).clamp_min(eps)
+        patch_count = float(weights.shape[1] * weights.shape[2] * weights.shape[3])
+        return (weights / denom) * patch_count
+
+    def _compute_distortion_weight(self, f):
+        eps = torch.as_tensor(self.distortion_weight_eps, dtype=f.dtype, device=f.device).clamp_min(1e-12)
+        power = torch.as_tensor(self.distortion_weight_power, dtype=f.dtype, device=f.device).clamp_min(0.0)
+        alpha = torch.as_tensor(self.distortion_weight_alpha, dtype=f.dtype, device=f.device).clamp(0.0, 1.0)
+
+        local_dist = torch.mean(torch.abs(f[..., 4]), dim=4, keepdim=True)
+        local_dist = torch.pow(local_dist + eps, power)
+        dist_mean = local_dist.mean(dim=(1, 2, 3), keepdim=True).clamp_min(eps)
+        dist_weight = local_dist / dist_mean
+
+        if self.distortion_weight_max is not None:
+            max_weight = torch.as_tensor(self.distortion_weight_max, dtype=f.dtype, device=f.device).clamp_min(1.0)
+            dist_weight = torch.clamp(dist_weight, max=max_weight)
+
+        dist_weight = (1.0 - alpha) + alpha * dist_weight
+
+        return dist_weight
+
+    def do_pooling_and_jods(self, features):
+        no_bands = len(features)
+        batch_sz = features[0].shape[0]
+
+        Q_JOD = torch.ones((batch_sz), device=self.device) * 10.
+
+        is_image = (features[0].shape[4] == 3)
+
+        for bb in range(no_bands):
+            f = features[bb]
+
+            f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
+
+            if is_image:
+                f = torch.cat((f, torch.zeros((f.shape[0:4] + (1, f.shape[5])), device=self.device)), dim=4)
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            f_TR = f[..., 0:4].flatten(start_dim=4)
+            f_D = f[..., 4:].flatten(start_dim=4)
+
+            att = F.softplus(self.att_net(f_TR)) + self.positive_floor
+            att = self._normalize_across_band_patches(att)
+
+            dist_weight = self._compute_distortion_weight(f)
+
+            D_all = F.softplus(self.feature_net(f_D)) + self.positive_floor
+            D_all = D_all * att * dist_weight / no_bands
+
+            is_base_band = (bb == no_bands - 1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
+
+        assert(not Q_JOD.isnan().any())
+        return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-Saliency-v2"
+
+
+register_metric(cvvdp_ml_saliency_v2)
+
+
+class cvvdp_ml_saliency_plus(cvvdp_ml_saliency_base):
+
+    def __init__(self, config_paths=[], device=None, saliency_min=1e-4, saliency_band_smoothing=True, **kwargs):
+
+        self.set_device(device)
+
+        dropout = 0.2
+        hidden_dims = 24
+        num_layers = 3
+        ch_no = 4
+        stats_no = 2
+        self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
+
+        self.saliency_min = saliency_min
+        self.saliency_band_smoothing = saliency_band_smoothing
+
+        super().__init__(config_paths=config_paths, device=device, **kwargs)
+
+    def get_nets_to_load(self):
+        return ['feature_net']
+
+    def _compute_band_saliency(self, saliency_maps, target_h, target_w, band_index, no_bands):
+        batch_sz, no_frames, src_h, src_w = saliency_maps.shape
+        sal_map = saliency_maps.reshape(batch_sz * no_frames, 1, src_h, src_w)
+
+        if self.saliency_band_smoothing and no_bands > 1:
+            norm_pos = float(band_index) / float(no_bands - 1)
+            smooth_steps = int(round(norm_pos * 3.0))
+            kernel = 1 + 2 * smooth_steps
+            if kernel > 1:
+                sal_map = Func.avg_pool2d(sal_map, kernel_size=kernel, stride=1, padding=kernel // 2)
+
+        sal_map = Func.adaptive_avg_pool2d(sal_map, output_size=(target_h, target_w))
+        sal_map = sal_map.reshape(batch_sz, no_frames, target_h, target_w)
+
+        sal_map = sal_map / sal_map.mean(dim=(2, 3), keepdim=True).clamp_min(self.saliency_min)
+        sal_map = sal_map.clamp_min(self.saliency_min)
+        return sal_map
+
+    def do_pooling_and_jods(self, features, saliency_features):
+
+        no_bands = len(features)
+        batch_sz = features[0].shape[0]
+
+        Q_JOD = torch.ones((batch_sz), device=self.device) * 10.
+
+        is_image = (features[0].shape[4] == 3)
+
+        saliency_maps = saliency_features[0].to(self.device)
+        if saliency_maps.dim() == 3:
+            saliency_maps = saliency_maps[None, ...]
+
+        if saliency_maps.dim() != 4:
+            raise RuntimeError(f"Expected saliency_features[0] to have 4 dims [B,F,H,W], got {saliency_maps.shape}")
+
+        for bb in range(no_bands):
+            f = features[bb]
+
+            f[..., 1::2] = torch.sqrt(torch.abs(f[..., 1::2]))
+
+            if is_image:
+                f = torch.cat((f, torch.zeros((f.shape[0:4] + (1, f.shape[5])), device=self.device)), dim=4)
+            if self.disabled_features is not None:
+                f[..., self.disabled_features] = 0
+
+            target_h, target_w = f.shape[2], f.shape[3]
+            band_saliency = self._compute_band_saliency(saliency_maps, target_h, target_w, bb, no_bands)
+
+            f_D = f[..., 4:] * band_saliency[..., None, None]
+            f_D = f_D.flatten(start_dim=4)
+
+            D_all = self.feature_net(f_D)
+            D_all = F.relu(D_all) / no_bands
+
+            is_base_band = (bb == no_bands - 1)
+            if is_base_band:
+                D_all *= self.baseband_weight
+
+            if is_image:
+                D_all *= self.image_int
+
+            Q_JOD -= self.spatiotemporal_pooling(D_all)
+
+        assert(not Q_JOD.isnan().any())
+        return Q_JOD
+
+    def full_name(self):
+        return "ColorVideoVDP-ML-Saliency-Plus"
+
+    def spatiotemporal_pooling(self, D_all):
+        return D_all.view(D_all.shape[0], -1).mean(dim=1)
+
+
+register_metric(cvvdp_ml_saliency_plus)
 
 
 class RegressionTransformer(nn.Module):
