@@ -686,13 +686,44 @@ class cvvdp_ml_saliency_base(cvvdp_ml_base):
         if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
             checkpoint = checkpoint['state_dict']
 
-        try:
-            model.load_state_dict(checkpoint, strict=False)
-        except RuntimeError:
-            remapped = {k.split('.', 1)[1]: v for k, v in checkpoint.items() if isinstance(k, str) and '.' in k}
-            model.load_state_dict(remapped, strict=False)
+        if not isinstance(checkpoint, dict):
+            raise RuntimeError(f'Unexpected STSANet checkpoint format at {weights_path}: expected a state_dict-like mapping.')
 
-        logging.info(f'Loaded STSANet weights from: {weights_path}')
+        model_keys = set(model.state_dict().keys())
+
+        candidates = [('raw', checkpoint)]
+        remapped = {k.split('.', 1)[1]: v for k, v in checkpoint.items() if isinstance(k, str) and '.' in k}
+        if len(remapped) > 0:
+            candidates.append(('stripped_prefix', remapped))
+
+        best_name = None
+        best_state = None
+        best_overlap = -1
+        for cand_name, cand_state in candidates:
+            overlap = len(model_keys.intersection(cand_state.keys()))
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_name = cand_name
+                best_state = cand_state
+
+        if best_overlap <= 0:
+            raise RuntimeError(
+                f'Could not match STSANet checkpoint keys to model keys for {weights_path}. '
+                f'Please verify that weights correspond to external/STSANet/STSA_model.py.'
+            )
+
+        incompatible = model.load_state_dict(best_state, strict=False)
+        matched_params = len(model_keys) - len(incompatible.missing_keys)
+        if matched_params <= 0:
+            raise RuntimeError(
+                f'STSANet checkpoint load resulted in 0 matched parameters from {weights_path}. '
+                f'Chosen mapping: {best_name}.'
+            )
+
+        logging.info(
+            f'Loaded STSANet weights from: {weights_path} using {best_name} mapping '
+            f'({matched_params}/{len(model_keys)} params matched).'
+        )
         return model
 
     def _build_stsanet_clip(self, ref_video, center_index):
