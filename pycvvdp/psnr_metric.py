@@ -93,7 +93,7 @@ class pu_psnr_y(vq_metric):
             T_enc = self.pu.encode(T)
             R_enc = self.pu.encode(R)
 
-            mse += torch.mean( (T - R)**2, dim=(1,2,3,4) )
+            mse += torch.mean( (T_enc - R_enc)**2, dim=(1,2,3,4) )
         
         psnr = 20*torch.log10( self.max_I/torch.sqrt(mse/N_frames) ) 
 

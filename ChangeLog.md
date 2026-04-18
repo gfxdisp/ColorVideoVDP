@@ -12,6 +12,7 @@
 * Fixed: support for reading Yuv files
 * Added: 422 chroma subsampling is now natively supported
 * Added: new display models in the `display_models.json`
+* Fixed: pu_psnr_y was compared linear instead of PU21 values (thanks to jgerster0)
 
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)
