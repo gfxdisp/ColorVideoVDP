@@ -233,6 +233,50 @@
     "max_luminance": 300,   
     "contrast": 3000,
     "E_ambient": 0,
-    "source": "https://www.eizo.com/products/coloredge/cg3146/" }
- 
+    "source": "https://www.eizo.com/products/coloredge/cg3146/" },
+
+    "65inch_hdr_pq_4knit": {
+      "name": "65-inch 4K HDR OLED monitor, peak luminance 4000 cd/m^2, viewed under low light levels (5 lux), seen from 2 x display height",
+      "colorspace": "BT.2020-PQ",
+      "resolution": [3840, 2160],
+      "viewing_distance_meters": 1.98,
+      "diagonal_size_inches": 65,
+      "max_luminance": 4000,
+      "contrast": 1000000,
+      "E_ambient": 5,
+      "source": "none" },
+      
+    "65inch_hdr_pq_2Knit": {
+      "name": "65-inch 4K HDR OLED monitor, peak luminance 2000 cd/m^2, viewed under low light levels (5 lux), seen from 2 x display height",
+      "colorspace": "BT.2020-PQ",
+      "resolution": [3840, 2160],
+      "viewing_distance_meters": 1.98,
+      "diagonal_size_inches": 65,
+      "max_luminance": 2000,
+      "contrast": 1000000,
+      "E_ambient": 5,
+      "source": "none" },
+      
+    "65inch_hdr_pq_1Knit": {
+      "name": "65-inch 4K OLED HDR monitor, peak luminance 1000 cd/m^2, viewed under low light levels (5 lux), seen from 2 x display height",
+      "colorspace": "BT.2020-PQ",
+      "resolution": [3840, 2160],
+      "viewing_distance_meters": 1.98,
+      "diagonal_size_inches": 65,
+      "max_luminance": 1000,
+      "contrast": 1000000,
+      "E_ambient": 5,
+      "source": "none" },    
+
+    "lg_oled_2026_hdr_pq": {
+      "name": "65-inch LG OLED G6 2026 HDR",
+      "colorspace": "BT.2020-PQ",
+      "resolution": [3840, 2160],
+      "viewing_distance_inches": 86.62,
+      "diagonal_size_inches": 64.9,
+      "max_luminance": 3000,
+      "min_luminance": 0.0005,
+      "E_ambient": 5,
+      "source": "https://www.avforums.com/reviews/lg-g6-oled65g6-oled-tv-review.23399/" }      
+
 }
