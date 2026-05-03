@@ -44,7 +44,7 @@ conda install ffmpeg conda-forge::freeimage
 3. Install PyTorch by following [these instructions](https://pytorch.org/get-started/locally/) (OS-specific). **If you have an Nvidia GPU with appropriate drivers, it is recommended to install with conda for proper CUDA support**. To use MPS on a Mac, please install torch>=2.1.0. You may also want to install CUDA toolkit via conda:
 
 ```bash
-conda install nvidia/label/cuda-12.9.1::cuda-toolkit
+conda install nvidia::cuda-toolkit
 ```
 
 4a. Install from sources
