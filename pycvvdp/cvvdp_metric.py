@@ -1040,8 +1040,8 @@ class cvvdp(vq_metric):
             dim = 0
 
         if self.weighted_pooling and normalize:
-            w = x / (x+ 10**wp_base)
-            N = w.sum( dim=dim, keepdim=keepdim ) + 10**wp_epsilon
+            w = x / (x+ 10**wp_base) + 10**wp_epsilon
+            N = w.sum( dim=dim, keepdim=keepdim ) 
 
             if isinstance( p, torch.Tensor ):
                 # p is a Tensor if it is being optimized. In that case, we need a differentiable formula for the norm
