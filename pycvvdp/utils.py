@@ -5,6 +5,9 @@ import json
 import torch.nn.functional as Func
 import math
 from functools import cache
+import logging
+import sys
+import re
 
 from pycvvdp.interp import interp1, interp1q
 #from PIL import Image
@@ -237,3 +240,28 @@ class PU():
         V_p = ((V/self.p[6] + self.p[5]).clip(min=0))**(1/self.p[4])
         Y = ((V_p - self.p[0]).clip(min=0)/(self.p[1] - self.p[2]*V_p))**(1/self.p[3])
         return Y
+
+def get_best_device( device_name='auto' ):
+    device_name = device_name.lower()
+    if device_name == 'auto': # Auto-detect CUDA or MPS
+        if torch.cuda.is_available():
+            device_name = 'cuda'
+        elif torch.backends.mps.is_available():
+            device_name = 'mps'
+        else:
+            logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')            
+            device_name = 'cpu'
+
+    if device_name.startswith('cuda') and torch.cuda.is_available():
+        device = torch.device(device_name)
+    elif device_name == 'mps':
+        torch_version = list(map(int, re.search(r'\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
+        assert torch_version[0] > 2 or (torch_version[0] == 2 and torch_version[1] > 0), f'Please use torch>=2.1.0 with MPS. Current version is {torch.__version__}.'
+        assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
+        device = torch.device(device_name)
+    else:
+        if device_name != 'cpu':
+            logging.warning(f'The requested device ({device_name}) is not found, reverting to CPU. This may result in slow execution.')
+        device = torch.device('cpu')
+
+    return device

@@ -87,7 +87,7 @@ def parse_args(arg_list=None):
     parser = argparse.ArgumentParser(description="Evaluate ColorVideoVDP on a set of videos")
     parser.add_argument("-t", "--test", type=str, nargs='+', required = False, help="list of test images/videos")
     parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
-    parser.add_argument("--device", type=str,  default='cuda', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda', 'cuda:0', 'cuda:1', ...]")
+    parser.add_argument("--device", type=str,  default='auto', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda', 'cuda:0', 'cuda:1', ...]")
     parser.add_argument("--heatmap", type=str, default="none", help="type of difference map (none, raw, threshold, supra-threshold).")
     parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
@@ -162,21 +162,32 @@ def run_on_args(args):
     #     device = torch.device('cuda:' + str(args.gpu))
     # else:
     #     device = torch.device('cpu')
-    args.device = args.device.lower()
-    if args.device.startswith('cuda') and torch.cuda.is_available():
-        device = torch.device(args.device)
-    elif args.device == 'mps':
-        torch_version = list(map(int, re.search(r'\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
-        assert torch_version[0] > 2 or (torch_version[0] == 2 and torch_version[1] > 0), f'Please use torch>=2.1.0 with MPS. Current version is {torch.__version__}.'
-        logging.warn('MPS support is experimental. Please report any issues encountered.')
-        assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
-        device = torch.device(args.device)
-    else:
-        if args.device != 'cpu':
-            logging.warning(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
-        device = torch.device('cpu')
+
+    device = utils.get_best_device(args.device)
+    # args.device = args.device.lower()
+    # if args.device == 'auto': # Auto-detect CUDA or MPS
+    #     if torch.cuda.is_available():
+    #         args.device = 'cuda'
+    #     elif torch.backends.mps.is_available():
+    #         args.device = 'mps'
+    #     else:
+    #         logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')            
+    #         args.device = 'cpu'
+
+    # if args.device.startswith('cuda') and torch.cuda.is_available():
+    #     device = torch.device(args.device)
+    # elif args.device == 'mps':
+    #     torch_version = list(map(int, re.search(r'\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
+    #     assert torch_version[0] > 2 or (torch_version[0] == 2 and torch_version[1] > 0), f'Please use torch>=2.1.0 with MPS. Current version is {torch.__version__}.'
+    #     assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
+    #     device = torch.device(args.device)
+    # else:
+    #     if args.device != 'cpu':
+    #         logging.warning(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
+    #     device = torch.device('cpu')
 
     logging.info("Running on device: " + str(device))
+
 
     heatmap_types = ["raw", "threshold", "supra-threshold"]
 

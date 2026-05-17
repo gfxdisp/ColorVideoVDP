@@ -122,6 +122,8 @@ class cvvdp(vq_metric):
         if device is None:
             if torch.cuda.is_available() and torch.cuda.device_count()>0:
                 self.device = torch.device('cuda')
+            elif torch.backends.mps.is_available():
+                self.device = torch.device('mps')
             else:
                 self.device = torch.device('cpu')
         else:
