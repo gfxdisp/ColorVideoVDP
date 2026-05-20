@@ -73,5 +73,6 @@
     "wp_spatial_epsilon": -3,
     "wp_spatial_base": 0,
     "wp_temp_epsilon": -3,
-    "wp_temp_base": 0
+    "wp_temp_base": 0,
+    "spatial_padding": "symmetric"
 }

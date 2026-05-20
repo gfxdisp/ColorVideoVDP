@@ -8,6 +8,7 @@ import numpy as np
 #import sys
 import math
 #import torch.autograd.profiler as profiler
+from pycvvdp.vq_metric import vq_exception
 
 def ceildiv(a, b):
     return -(-a // b)
@@ -15,47 +16,44 @@ def ceildiv(a, b):
 # Decimated Laplacian pyramid
 class lpyr_dec():
 
-    def __init__(self, W, H, ppd, device):
+    min_freq = 0.2
+
+    def __init__(self, W, H, ppd, device, padding_type='zero', padding_value=0.0001):
         self.device = device
         self.ppd = ppd
-        self.min_freq = 0.2
         self.W = W
         self.H = H
+        self.padding_type = padding_type
+        self.padding_value = padding_value
 
-        max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
+        assert padding_type in ['zero', 'valid', 'symmetric']
 
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
-
-        # print(max_levels)
-        # print(bands)
-        # sys.exit(0)
-
-        invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
-
-        if invalid_bands.shape[-2] == 0:
-            max_band = max_levels
+        if padding_type=='valid':
+            # The baseband must be at least 9x9 to support the kernel
+            max_levels = int(np.floor(np.log2(min(self.H, self.W)/9)))
         else:
-            max_band = invalid_bands[0][0]
+            max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
-        # max_band+1 below converts index into count
-        self.height = np.clip(max_band+1, 0, max_levels) # int(np.clip(max(np.ceil(np.log2(ppd)), 1.0)))
-        self.band_freqs = np.array([1.0] + [0.3228 * 2.0 **(-f) for f in range(self.height)]) * self.ppd/2.0
+        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
 
-        self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
-        self.pyr_ind = self.height * [None]   # index to the elements at each level
+        invalid_bands = np.argwhere(bands <= lpyr_dec.min_freq)
+        max_band = int(invalid_bands[0][0])-1 if len(invalid_bands)>0 else max_levels
 
-        cH = H
-        cW = W
-        for ll in range(self.height):
-            self.pyr_shape[ll] = (cH, cW)
-            cH = ceildiv(H,2)
-            cW = ceildiv(W,2)
+        if max_band<1:
+            raise vq_exception( "The Nyquist frequency of the image is too small. Check whether the pixels_per_degree parameter is correct." )
+        
+        self.height = max_band+1 # +1 to accommodate the base band
+        self.band_freqs = bands[:self.height]
+
+        # self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
+        # self.pyr_ind = self.height * [None]   # index to the elements at each level
+
 
     def get_freqs(self):
         return self.band_freqs
 
     def get_band_count(self):
-        return self.height+1
+        return self.height
 
     def get_band(self, bands, band):
         if band == 0 or band == (len(bands)-1):
@@ -92,7 +90,7 @@ class lpyr_dec():
 
         # self.image = image
 
-        return self.laplacian_pyramid_dec(image, self.height+1)
+        return self.laplacian_pyramid_dec(image, self.height)
 
     def reconstruct(self, bands):
         img = bands[-1]
@@ -170,73 +168,80 @@ class lpyr_dec():
 
             return torch.cat((beg, x, end), axis)
 
-    def get_kernels( self, im, kernel_a = 0.4 ):
+    @cache
+    def get_kernels( self, kernel_a = 0.4, device=None, dtype=torch.float32 ):
 
-        # ch_dim = len(im.shape)-2
-        # if hasattr(self, "K_horiz") and ch_dim==self.K_ch_dim:
-        #     return self.K_vert, self.K_horiz
-
-        K = torch.tensor([0.25 - kernel_a/2.0, 0.25, kernel_a, 0.25, 0.25 - kernel_a/2.0], device=im.device, dtype=im.dtype)
+        K = torch.tensor([0.25 - kernel_a/2.0, 0.25, kernel_a, 0.25, 0.25 - kernel_a/2.0], device=device, dtype=dtype)
         self.K_vert = torch.reshape(K, (1, 1, K.shape[0], 1))
         self.K_horiz = torch.reshape(K, (1, 1, 1, K.shape[0]))
         # self.K_ch_dim = ch_dim
-        return self.K_vert, self.K_horiz
-        
+        return self.K_vert, self.K_horiz        
 
     def gausspyr_reduce(self, x, kernel_a = 0.4):
 
-        K_vert, K_horiz = self.get_kernels( x, kernel_a )
+        K_vert, K_horiz = self.get_kernels( kernel_a, device=x.device, dtype=x.dtype )
+
+        # Simple, but much slower
+        # x_padded = Func.pad(x, (2, 2, 2, 2), mode='constant', value=self.padding_value)
+        # H, W = x_padded.shape[-2], x_padded.shape[-1]
+        # y_c = Func.conv2d(x_padded.view(-1,1,H,W), K_vert*K_horiz, stride=(2,2), )
+        # y = y_c.view( x.shape[0:-2] + y_c.shape[-2:] )
 
         H, W = x.shape[-2], x.shape[-1]
-        y_a = Func.conv2d(x.view(-1,1,H,W), K_vert, stride=(2,1), padding=(2,0)).view( x.shape[0:-2] + (-1,W) )
-        # view(B,C,-1,W)
+        x_ch = x.view(-1,1,H,W) # So that we can handle batches
 
-        # Symmetric padding 
-        y_a[...,0,:] += x[...,0,:]*K_vert[...,1,0] + x[...,1,:]*K_vert[...,0,0]
-        if (x.shape[-2] % 2)==1: # odd number of rows
-            y_a[...,-1,:] += x[...,-1,:]*K_vert[...,3,0] + x[...,-2,:]*K_vert[...,4,0]
-        else: # even number of rows
-            y_a[...,-1,:] += x[...,-1,:]*K_vert[...,4,0]
+        if self.padding_type=='zero' or self.padding_type=='valid':  
+            y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
+            y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=(0,2))
+        # elif self.padding_type=='valid':  
+        #     y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=0)
+        #     y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=0)
+        #     # y = Func.pad(y_np, (2, 2, 2, 2), mode='constant', value=0)
+        else: # 'symmetric (v0.4 padding)
+            # Symmetric padding 
+            y_a = Func.conv2d(x_ch, K_vert, stride=(2,1), padding=(2,0))
+            y_a[...,0,:] += x_ch[...,0,:]*K_vert[...,1,0] + x_ch[...,1,:]*K_vert[...,0,0]   # First row
+            if (x.shape[-2] % 2)==1: # odd number of rows
+                y_a[...,-1,:] += x_ch[...,-1,:]*K_vert[...,3,0] + x_ch[...,-2,:]*K_vert[...,4,0]  # Last row
+            else: # even number of rows
+                y_a[...,-1,:] += x_ch[...,-1,:]*K_vert[...,4,0]  # Last row
+            
+            y = Func.conv2d(y_a, K_horiz, stride=(1,2), padding=(0,2))
+            # Symmetric padding 
+            y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
+            if (x.shape[-2] % 2)==1: # odd number of columns
+                y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,3] + y_a[...,:,-2]*K_horiz[...,0,4]
+            else: # even number of columns
+                y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4] 
 
-        H = y_a.shape[-2]
-        y = Func.conv2d(y_a.view(-1,1,H,W), K_horiz, stride=(1,2), padding=(0,2)).view( x.shape[0:-2] + (H,-1) )
-
-        # Symmetric padding 
-        y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
-        if (x.shape[-2] % 2)==1: # odd number of columns
-            y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,3] + y_a[...,:,-2]*K_horiz[...,0,4]
-        else: # even number of columns
-            y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4] 
-
-        return y
-
-    def gausspyr_expand_pad(self, x, padding, axis):
-        if padding == 0:
-            return x
-        else:
-            beg = torch.narrow(x, axis, 0,        padding)
-            end = torch.narrow(x, axis, -padding, padding)
-
-            return torch.cat((beg, x, end), axis)
-
+        H = y.shape[-2]
+        return y.view( x.shape[0:-2] + (H,-1) ) # Restore the batch dimensions
+    
     # This function is (a bit) faster
     def gausspyr_expand(self, x, sz = None, kernel_a = 0.4):
         if sz is None:
             sz = [x.shape[-2]*2, x.shape[-1]*2]
 
-        K_vert, K_horiz = self.get_kernels( x, kernel_a )
+        H, W = x.shape[-2], x.shape[-1]        
+        x_ch = x.view(-1,1,H,W) # So that we can handle batches
 
-        y_a = self.interleave_zeros_and_pad(x, dim=-2, exp_size=sz)
+        K_vert, K_horiz = self.get_kernels( kernel_a, device=x.device, dtype=x.dtype )
 
-        H, W = y_a.shape[-2], y_a.shape[-1]
-        y_a = Func.conv2d(y_a.view(-1,1,H,W), K_vert*2).view( x.shape[0:-2] + (-1,W) )
+        if self.padding_type=='symmetric': # (v0.4)
+            y_a = self.interleave_zeros_and_pad(x_ch, dim=-2, exp_size=sz)
+            H, W = y_a.shape[-2], y_a.shape[-1]        
+            y_a = Func.conv2d(y_a, K_vert*2)        
+            y   = self.interleave_zeros_and_pad(y_a, dim=-1, exp_size=sz)
+            y = Func.conv2d(y, K_horiz*2)
+        else: # 'zero' or 'valid'
+            y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0))[:,:,0:sz[0],:]
+            y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1))[:,:,:,0:sz[1]]
+        # else:
+        #     y_a = Func.conv_transpose2d(x_ch, K_vert*2, stride=(2,1), padding=(1,0), output_padding=(2,0))[:,:,0:sz[0],:]
+        #     y = Func.conv_transpose2d(y_a, K_horiz*2, stride=(1,2), padding=(0,1), output_padding=(0,2))[:,:,:,0:sz[1]]
 
-        y   = self.interleave_zeros_and_pad(y_a, dim=-1, exp_size=sz)
-        H, W = y.shape[-2], y.shape[-1]
-
-        y   = Func.conv2d(y.view(-1,1,H,W), K_horiz*2).view( x.shape[0:-2] + (H,-1) )
-
-        return y
+        H = y.shape[-2]
+        return y.view( x.shape[0:-2] + (H,-1) ) # Restore the batch dimensions
 
     def interleave_zeros(self, x, dim):
         z = torch.zeros_like(x, device=self.device)
@@ -247,55 +252,16 @@ class lpyr_dec():
 
 
 
-# Decimated Laplacian pyramid with a bit better interface - stores all bands within the object
+# Decimated Laplacian pyramid with a bit better interface - stores all bands within the object. Currently used for the heatmap
 class lpyr_dec_2(lpyr_dec):
 
-    def __init__(self, W, H, ppd, device, keep_gaussian=False):
-        self.device = device
-        self.ppd = ppd
-        self.min_freq = 0.2
-        self.W = W
-        self.H = H
+    def __init__(self, W, H, ppd, device, keep_gaussian=False, padding_type='zero'):
+        super().__init__(W, H, ppd, device, padding_type=padding_type)
         self.keep_gaussian=keep_gaussian
 
-        max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
-
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
-
-        # print(max_levels)
-        # print(bands)
-        # sys.exit(0)
-
-        invalid_bands = np.array(np.nonzero(bands <= self.min_freq)) # we want to find first non0, length is index+1
-
-        if invalid_bands.shape[-2] == 0:
-            max_band = max_levels
-        else:
-            max_band = invalid_bands[0][0]
-
-        # max_band+1 below converts index into count
-        self.height = np.clip(max_band+1, 0, max_levels) # int(np.clip(max(np.ceil(np.log2(ppd)), 1.0)))
-        self.band_freqs = np.array([1.0] + [0.3228 * 2.0 **(-f) for f in range(self.height)]) * self.ppd/2.0
-
-        self.pyr_shape = self.height * [None] # shape (W,H) of each level of the pyramid
-        self.pyr_ind = self.height * [None]   # index to the elements at each level
-
-        cH = H
-        cW = W
-        for ll in range(self.height):
-            self.pyr_shape[ll] = (cH, cW)
-            cH = ceildiv(H,2)
-            cW = ceildiv(W,2)
-
-        self.lbands = [None] * (self.height+1) # Laplacian pyramid bands
+        self.lbands = [None] * (self.height) # Laplacian pyramid bands
         if self.keep_gaussian:
-            self.gbands = [None] * (self.height+1) # Gaussian pyramid bands
-
-    def get_freqs(self):
-        return self.band_freqs
-
-    def get_band_count(self):
-        return self.height+1
+            self.gbands = [None] * (self.height) # Gaussian pyramid bands
 
     def get_lband(self, band):
         if band == 0 or band == (len(self.lbands)-1):
@@ -316,14 +282,8 @@ class lpyr_dec_2(lpyr_dec):
     def get_gband(self, band):
         return self.gbands[band]
 
-    # def clear(self):
-    #     for pyramid in self.P:
-    #         for level in pyramid:
-    #             # print ("deleting " + str(level))
-    #             del level
-
     def decompose(self, image): 
-        return self.laplacian_pyramid_dec(image, self.height+1)
+        return self.laplacian_pyramid_dec(image, self.height)
 
     def reconstruct(self):
         img = self.lbands[-1]
@@ -357,12 +317,12 @@ class lpyr_dec_2(lpyr_dec):
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
 class weber_contrast_pyr(lpyr_dec):
 
-    def __init__(self, W, H, ppd, device, contrast):
-        super().__init__(W, H, ppd, device)
+    def __init__(self, W, H, ppd, device, contrast, padding_type='zero'):
+        super().__init__(W, H, ppd, device, padding_type=padding_type)
         self.contrast = contrast
 
     def decompose(self, image):
-        levels = self.height+1
+        levels = self.height
         kernel_a = 0.4
         gpyr = self.gaussian_pyramid_dec(image, levels, kernel_a)
 
@@ -383,8 +343,17 @@ class weber_contrast_pyr(lpyr_dec):
                     # The sustained channels use the mean over the image as the background. Otherwise, they would be divided by itself and the contrast would be 1.
                     L_bkg = torch.mean(torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01), dim=[-1, -2], keepdim=True)
             else:
+                # if self.padding_type == 'valid':
+                #     # Because 'valid' shrinks the subbands, we need  to shrink the image
+                #     gpyr[i] = gpyr[i][...,2:(gpyr[i].shape[-2]-2), 2:(gpyr[i].shape[-1]-2)]
+
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
                 layer = gpyr[i] - glayer_ex 
+                if self.padding_type == 'valid': # Remove all values affected by the edge
+                    layer[...,:,0:4] = 0
+                    layer[...,:,-4:] = 0
+                    layer[...,0:4,4:-4] = 0
+                    layer[...,-4:,4:-4] = 0
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # L_bkg is set to ref-sustained 
@@ -427,7 +396,7 @@ class log_contrast_pyr(lpyr_dec):
         self.b = math.log10(lms_d65[0]) - math.log10(lms_d65[1]) + math.log10(lms_d65[0]+lms_d65[1])
 
     def decompose(self, image):
-        levels = self.height+1
+        levels = self.height
         kernel_a = 0.4
         gpyr = self.gaussian_pyramid_dec(image, levels, kernel_a)
 
@@ -458,22 +427,7 @@ class log_contrast_pyr(lpyr_dec):
         return lpyr, L_bkg_pyr
 
 
-    # def gausspyr_expand(self, x, sz = None, kernel_a = 0.4):
-    #     if sz is None:
-    #         sz = [x.shape[-2]*2, x.shape[-1]*2]
-
-    #     K_vert, K_horiz = self.get_kernels( x, kernel_a )
-
-    #     y_a = self.interleave_zeros(x, dim=2)[...,0:sz[0],:]
-    #     y_a = self.gausspyr_expand_pad(y_a, padding=2, axis=-2)
-    #     y_a = Func.conv2d(y_a, K_vert*2)
-
-    #     y   = self.interleave_zeros(y_a, dim=3)[...,:,0:sz[1]]
-    #     y   = self.gausspyr_expand_pad(  y,   padding=2, axis=-1)
-    #     y   = Func.conv2d(y, K_horiz*2)
-
-    #     return y
-
+    
 
 
 # if __name__ == '__main__':
