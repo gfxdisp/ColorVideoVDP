@@ -82,7 +82,7 @@ model.to(device)
 
 # optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0, weight_decay=0, dampening=0)
 # optimizer = torch.optim.Adam(model.parameters(), lr=0.5, eps=1e-3, amsgrad=True )
-optimizer = torch.optim.Adam(model.parameters(), lr=0.1 )
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-2 )
 
 cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
 
@@ -112,8 +112,12 @@ grad_mag_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 for kk in range(max_iter):
     print( f"Iteration {kk}" )
     optimizer.zero_grad()
-    pred = model().clamp(0.,1.)
-    loss = loss_fn(pred, T_ref)
+
+    pred = model()
+    loss = loss_fn(pred.clamp(0, 1), T_ref)  # clamp only in loss call
+
+    # pred = model().clamp(0.,1.)
+    # loss = loss_fn(pred, T_ref)
 
     loss_tab[kk] = loss.item()
 
@@ -163,5 +167,8 @@ for kk in range(max_iter):
     grad_mag_tab[kk] = model.rec_image.grad.norm(p=2)*255
 
     optimizer.step()
+
+    with torch.no_grad():
+        model.rec_image.clamp_(0., 1.)  # clamp param after step
 
 plt.waitforbuttonpress()
