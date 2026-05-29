@@ -462,7 +462,7 @@ class cvvdp(vq_metric):
         is_image = (N_frames==1)  # Can run faster on images
 
         if is_image:
-            R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
+            R = torch.zeros((batch_sz, 6, 1, height, width), device=self.device)
             R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
             R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
 
