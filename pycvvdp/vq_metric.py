@@ -41,9 +41,9 @@ class vq_metric:
     def predict_video_source(self, vid_source, frame_padding="replicate"):
         pass
 
-    @abc.abstractmethod
-    def short_name(self):
-        pass
+    # @abc.abstractmethod
+    # def short_name(self):
+    #     pass
 
     @abc.abstractmethod
     def quality_unit(self):

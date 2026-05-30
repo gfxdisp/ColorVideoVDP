@@ -9,7 +9,7 @@ import time
 
 import pycvvdp
 
-def aliasing_example( metric_class = pycvvdp.cvvdp ):
+def aliasing_example( metric_class = pycvvdp.cvvdp, device=None ):
     display_name = 'sdr_fhd_24'
     media_folder = os.path.join(os.path.dirname(__file__), '..',
                                 'example_media', 'aliasing')
@@ -17,7 +17,7 @@ def aliasing_example( metric_class = pycvvdp.cvvdp ):
     ref_file = os.path.join(media_folder, 'ferris-ref.mp4')
     TST_FILEs = glob.glob(os.path.join(media_folder, 'ferris-*-*.mp4'))
 
-    metric = metric_class(display_name=display_name, heatmap=None)
+    metric = metric_class(display_name=display_name, device=device, heatmap=None)
 
     res = []
     for tst_fname in TST_FILEs:
