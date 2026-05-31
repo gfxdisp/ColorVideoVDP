@@ -1,5 +1,3 @@
-import imp
-import numpy as np
 import os
 import pycvvdp
 from tests.html_report import html_report
