@@ -1,3 +1,4 @@
+import imp
 import numpy as np
 import os
 import pycvvdp
@@ -18,7 +19,11 @@ import matplotlib.pyplot as plt
 
 from examples.ex_aliasing import aliasing_example
 from examples.ex_simple_image import simple_image_example
+from examples.ex_simple_video import simple_video_example
 from examples.ex_display_brightness import display_brightness_example
+from examples.ex_batch_of_images import batch_of_images_example
+from examples.ex_batch_of_video import batch_of_video_example
+from examples.ex_display_geometry import display_geometry_example
 
 import pycvvdp.utils as utils
 
@@ -95,7 +100,7 @@ def print_system_info( hr : html_report ):
 
     # Print OS version
     os_version = platform.platform()
-    print(f"<li>Operating system version: {os_version}</li>")
+    hr.println(f"<li>Operating system version: {os_version}</li>")
 
     hr.println( "</ul>" )
 
@@ -114,12 +119,19 @@ def test_all(device_name):
     metric_instances = [mc(device=device) for mc in metric_classes]
     metric_names = [met.short_name() for met in metric_instances]
 
-    #TESTs = [ ( 'Simple image example', simple_image_example) ]
+    # TESTs = [ ('Display geometry', display_geometry_example) ]
 
-    TESTs = [ ('Simple image example', simple_image_example), ('Aliasing', aliasing_example), ('Display brightness', display_brightness_example) ]
-
-
-    with html_report( f"tests/test_report_{current_date_yyyymmdd()}-{version}/index.html", header_file=header_file ) as hr:
+    TESTs = [
+        ('Simple image example', simple_image_example),
+        ('Simple video example', simple_video_example),
+        ('Aliasing', aliasing_example),
+        ('Display brightness', display_brightness_example),
+        ('Display geometry', display_geometry_example),
+        ('Batch of images', batch_of_images_example),
+        ('Batch of video', batch_of_video_example)
+    ]
+ 
+    with html_report( f"tests/test_report_{current_date_yyyymmdd()}-{version}-{str(device)}/index.html", header_file=header_file ) as hr:
 
         hr.copy_file( os.path.join(os.path.dirname(__file__), 'style.css'), './' )
         hr.println( "<h1>ColorVideoVDP test report</h1>" )
@@ -138,6 +150,7 @@ def test_all(device_name):
 
         for tst_idx, tst in enumerate(TESTs):
 
+            print( f"Running {tst[0]}" )
             test_id = slugify_variable_name(tst[0])
             hr.println( f'<h2 id={test_id}><a class="top_align_button" href="#{test_id}">&#8632;</a>{tst[0]}</h2>' )
 

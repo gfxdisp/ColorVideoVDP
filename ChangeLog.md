@@ -14,6 +14,7 @@
 * Added: new display models in the `display_models.json`
 * Fixed: pu_psnr_y was compared linear instead of PU21 values (thanks to jgerster0)
 * Added: MPS selected instead of CPU as default (on Apple Silicon)
+* Added: A new testing in `tests` framework to ensure new changes do not break anything
 
 # v0.5.5 (31/10/2025)
 * Bug fix: Distogram export works again (it was broken after introducing the batch mode)

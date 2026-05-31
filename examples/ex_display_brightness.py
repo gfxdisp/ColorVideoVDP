@@ -17,7 +17,7 @@ import pycvvdp
 def display_brightness_example(metric_class = pycvvdp.cvvdp, device=None):
 
     I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
-    std = np.sqrt(0.001)
+    std = np.sqrt(0.1)
     I_test_noise = utils.imnoise(I_ref, std)
 
     # Measure quality on displays of different brightness
