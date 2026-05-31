@@ -312,6 +312,8 @@ class cvvdp(vq_metric):
 
         if batch_sz>1 and (self.heatmap is not None and self.heatmap!='none'):
             raise vq_exception( 'Heatmaps not supported when batches are used' )
+        
+        assert batch_sz==1 or self.device.type != 'mps', "Batch mode curretly does not work correctly with MPS (most likely due to a PyTorch bug). Run on a CPU."
 
         # 'medium' is a bit slower than 'high' on 3090
         # torch.set_float32_matmul_precision('medium')
@@ -817,7 +819,7 @@ class cvvdp(vq_metric):
             return torch.sign(x)
 
     def apply_masking_model(self, T, R, S):
-        # T - test contrast tensor T[channel,frame,width,height]
+        # T - test contrast tensor T[batch,channel,frame,width,height]
         # R - reference contrast tensor
         # S - sensitivity
 
@@ -905,40 +907,8 @@ class cvvdp(vq_metric):
 
                 D = D_max - D_max*(2*torch.abs(T_p)*torch.abs(R_p)+epsilon)/(T_p_m*T_p_m + R_p_m*R_p_m + epsilon)
 
-            if not str(self.device) == "mps": # The reduction below does not work on MPS
-                assert not (D.isnan().any() or D.isinf().any()), "Must not be nan"
-
-        elif self.masking_model in ["smooth_clamp_cont", "min_mutual_masking_perc_norm2", "fvvdp_ch_gain"]:
-
-            if self.masking_model == "fvvdp_ch_gain":
-                num_ch = T.shape[0]
-                ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
-                #print( f"max T[0] = {T[0,...].max()}; \tT[1] = {T[1,...].max()/0.610649}" )
-                #print( f"mean S[0] = {S[0,...].mean()}; \tS[1] = {S[1,...].mean()}; \tS[2] = {S[2,...].mean()}" )
-                T = T*S*ch_gain
-                R = R*S*ch_gain
-            else:
-                T = T*S
-                R = R*S
-
-            M_pu = self.phase_uncertainty( torch.min( torch.abs(T), torch.abs(R) ) )        
-
-            # Cross-channel masking
-            if self.do_xchannel_masking:
-                num_ch = M_pu.shape[0]
-                M = torch.empty_like(M_pu)
-                xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
-                for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                    M[:,cc:(cc+1),...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
-            else:
-                M = M_pu
-
-            D_u = self.mask_func_perc_norm( torch.abs(T-R), M )
-
-            if self.masking_model == "soft_clamp_cont":
-                D = D_u
-            else:
-                D = self.clamp_diffs( D_u )
+            # if not str(self.device) == "mps": # The reduction below does not work on MPS
+            assert not (D.view(-1).isnan().any() or D.view(-1).isinf().any()), "Must not be NaN nor Inf"
         else:
             raise RuntimeError( f"Unknown masking model {self.masking_model}" )
 

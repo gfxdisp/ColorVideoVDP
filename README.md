@@ -32,7 +32,7 @@ The repository also contains code for other metrics, such as PU-PSNR, or ColorVi
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:
 ```bash
-conda create -n cvvdp python=3.13
+conda create -n cvvdp python=3.12
 conda activate cvvdp
 ```
 
