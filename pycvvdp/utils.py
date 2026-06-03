@@ -9,6 +9,8 @@ import logging
 import sys
 import re
 
+import pycvvdp
+
 from pycvvdp.interp import interp1, interp1q
 #from PIL import Image
 
@@ -174,7 +176,7 @@ class config_files:
         if os.path.isfile(path):
             return path
 
-        raise RuntimeError( f"The configuration file {fname} not found" )
+        raise pycvvdp.vq_exception( f"The configuration file {fname} not found" )
 
 
 class PU():

@@ -249,7 +249,7 @@ def run_on_args(args):
 
     for mm in args.metric:
         if not mm in vq_metric_dict:
-            raise RuntimeError( f"Unknown metric {mm}")
+            raise pycvvdp.vq_exception( f"Unknown metric {mm}")
         metric_class = vq_metric_dict[mm]
 
         # The code below will figure out and pass only the parameters that a metric needs
