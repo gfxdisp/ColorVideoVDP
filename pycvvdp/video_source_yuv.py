@@ -21,6 +21,7 @@ def decode_video_props( fname ):
 
     for field in fp:
 
+        lfield = field.lower()
         if res_match.match( field ):
             nums = re.findall(r"\d+", field) 
             if len(nums)<2 or len(nums)>3:
@@ -31,7 +32,7 @@ def decode_video_props( fname ):
                 vprops["fps"]=int(nums[2])
             continue
 
-        if field.endswith("fps"):
+        if lfield.endswith("fps"):
             vprops["fps"] = float(field[:-3])
             continue
 
@@ -39,11 +40,15 @@ def decode_video_props( fname ):
             vprops["chroma_ss"]=field
             continue
 
-        if field=="10" or field=="10b" or field=="10bit":
+        if lfield=="444p" or lfield=="420p" or lfield=="422p" or lfield=="444i" or lfield=="420i" or lfield=="422i":
+            vprops["chroma_ss"]=field[:-1]
+            continue
+
+        if field=="10" or lfield=="10b" or lfield=="10bit":
             vprops["bit_depth"]=10
             continue
 
-        if field=="8" or field=="8b" or field=="8bit":
+        if field=="8" or lfield=="8b" or lfield=="8bit":
             vprops["bit_depth"]=8
             continue
 
@@ -51,11 +56,11 @@ def decode_video_props( fname ):
             vprops["color_space"]=field
             continue
 
-        if field=="bt709" or field=="sdr":
+        if lfield=="bt709" or lfield=="sdr":
             vprops["color_space"]="709"
             continue
 
-        if field=="ct2020" or field=="pq2020" or field=="hdr":
+        if lfield=="ct2020" or lfield=="pq2020" or lfield=="hdr" or lfield=="pq" or lfield=="hlg":
             vprops["color_space"]="2020"
             continue
 
