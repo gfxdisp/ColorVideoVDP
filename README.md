@@ -331,13 +331,15 @@ When reporting a problem, run `cvvdp` with `--verbose` argument and paste the en
 
 # Release notes
 
-* v0.5.6 (?)
+* v0.5.6 (4/June/2026)
   - added `--debug` and `--count-frames`
   - various bug fixes
   - progress bar shown when video is processed
   - added support for `--temp-padding=symmetric`
   - added support for 422 chroma subsampling
   - fixed support for YUV files
+  - various fixed to --device=mps (on Apple Silicon), now selected by default
+  - a new testing in `tests` framework to ensure new changes do not break anything
 
 * v0.5.5 (31/October/2025)
   - Fixed distograms

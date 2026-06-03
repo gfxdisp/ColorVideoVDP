@@ -1,4 +1,4 @@
-# v0.5.6 ?
+# v0.5.6 (4/06/2026)
 * Bug fix: incorrect assert in dm_preview_metric.py
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
 * Fix: YCbCr to RGB transform changed from BT.601 to BT.709 (issue #36)
