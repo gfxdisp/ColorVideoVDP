@@ -181,7 +181,7 @@ The file name should contain the following fields, separated by an underscore '_
 * resolution as `<width>x<height>`
 * frame rate as `<frames per second>fps` or specified after the resolution `<width>x<height>p<frames per second>`
 * chroma subsampling as `<chroma mode>p`, `<chroma mode>i`, or `<chroma mode>`, where `<chroma mode>` is `420`, `422` or `444`. 
-* bit depth as `<bitdepth>bit` or `<bitdepth>b`, where <bitdepth> is either 8 or 10.
+* bit depth as `<bitdepth>bit` or `<bitdepth>b`, where `<bitdepth>` is either 8 or 10.
 
 Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `sdr`, `pq`, `hlg`. 
 
