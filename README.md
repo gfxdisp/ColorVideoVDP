@@ -189,7 +189,7 @@ The colour space specification (709, 2020 etc.) is currently ignored. Instead, t
 
 Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
 
-Add `-verbose` to check whether the metadata was correctly decoded. It is also worth running with `-m dm-preview` to check that the files are correctly decoded. 
+Add `--verbose` to check whether the metadata was correctly decoded. It is also worth running with `--metric dm-preview` to check that the files are correctly decoded. 
 
 ## Reporting metric results
 
