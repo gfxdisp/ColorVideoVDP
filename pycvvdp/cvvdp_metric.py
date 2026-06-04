@@ -551,8 +551,8 @@ class cvvdp(vq_metric):
                             fb.sw_buf[0][:,:,ind:ind+1,:,:] = vid_source.get_test_frame(ff+fi, device=self.device, colorspace=met_colorspace)
                             fb.sw_buf[1][:,:,ind:ind+1,:,:] = vid_source.get_reference_frame(ff+fi, device=self.device, colorspace=met_colorspace)
 
-                    # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
-                    # Images do not have the two last channels
+                # Channel order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
+                # Images do not have the two last channels
                 R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
 
                 for cc in range(no_channels): # Iterate over chromatic and temporal channels
@@ -657,12 +657,29 @@ class cvvdp(vq_metric):
         jod_a_p = self.jod_a * (Q_t**(self.jod_exp-1.))
 
         Q_JOD = torch.empty_like(Q)
-        Q_JOD[Q<=Q_t] = 10. - jod_a_p * Q[Q<=Q_t];
-        Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
+        Q_JOD[Q<=Q_t] = 10. - jod_a_p * Q[Q<=Q_t]
+        Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp)
         return Q_JOD
+
+    def compute_CSF( self, bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames ):
+        rho = rho_band[bb] # Spatial frequency in cpd
+        ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
+        S_test = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+        S_ref = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+        for cc in range(all_ch):
+            tch = 0 if cc<3 else 1  # Sustained or transient
+            cch = cc if cc<3 else 0 # Y, rg, yv
+            # The sensitivity is always extracted for the sustained channel of test and reference images
+            S_both = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+            S_test[:,cc:(cc+1),:,:,:] = S_both[:,0:1,:,:,:]
+            S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
+        return (S_test, S_ref)
+
 
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
         # R[batch,channels,frames,width,height]
+        # Channel order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
+        # Images do not have the two last channels
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
         batch_sz = R.shape[0]
@@ -703,20 +720,13 @@ class cvvdp(vq_metric):
             logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
 
             # Compute CSF
-            rho = rho_band[bb] # Spatial frequency in cpd
-            ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
-            S = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-            for cc in range(all_ch):
-                tch = 0 if cc<3 else 1  # Sustained or transient
-                cch = cc if cc<3 else 0 # Y, rg, yv
-                # The sensitivity is always extracted for the reference frame
-                S[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+            (S_test, S_ref) = self.compute_CSF( bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames )
 
             if is_baseband:
-                D = (torch.abs(T_f-R_f) * S)
+                D = torch.abs(T_f*S_test-R_f*S_ref)
             else:
                 # dimensions: [channel,frame,height,width]
-                D = self.apply_masking_model(T_f, R_f, S)
+                D = self.apply_masking_model(T_f, R_f, S_test, S_ref)
 
             if Q_per_ch_block is None:
                 Q_per_ch_block = torch.empty((batch_sz,all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
@@ -818,7 +828,7 @@ class cvvdp(vq_metric):
         else:
             return torch.sign(x)
 
-    def apply_masking_model(self, T, R, S):
+    def apply_masking_model(self, T, R, S_test, S_ref):
         # T - test contrast tensor T[batch,channel,frame,width,height]
         # R - reference contrast tensor
         # S - sensitivity
@@ -828,17 +838,18 @@ class cvvdp(vq_metric):
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
                 ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
-                C_t = 1/S
+                C_t = 1/S_test
+                C_r = 1/S_ref
                 T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
-                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*ch_gain + 1, zero_tens )
+                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_r)*ch_gain + 1, zero_tens )
             else:
                 if self.masking_model.endswith( "mutual-old" ):
-                    T_p = T * S
-                    R_p = R * S
+                    T_p = T * S_test
+                    R_p = R * S_ref
                 else:
                     ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
-                    T_p = T * S * ch_gain
-                    R_p = R * S * ch_gain
+                    T_p = T * S_test * ch_gain
+                    R_p = R * S_ref * ch_gain
 
             if self.masking_model.endswith( "none" ):
                 D = self.clamp_diffs(torch.abs(T_p-R_p))

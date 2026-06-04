@@ -1,3 +1,6 @@
+# v0.6.0 (?)
+* Added: The contrast sensitivity is computed separately for test and reference images. This much improves the predictions of display quality and for tone mapping. See Sec. 3.3 in [this paper](http://dx.doi.org/10.1145/3799902.3811107).
+
 # v0.5.6 (4/06/2026)
 * Bug fix: incorrect assert in dm_preview_metric.py
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
