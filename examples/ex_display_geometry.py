@@ -6,34 +6,46 @@
 
 import os
 import numpy as np
-import ex_utils as utils
+import examples.ex_utils as utils
 import matplotlib.pyplot as plt
+import time
 
 import pycvvdp
 
-I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
-std = np.sqrt(0.005)
-I_test_noise = utils.imnoise(I_ref, std)
+def display_geometry_example( metric_class = pycvvdp.cvvdp, device=None ):
 
-# Measure quality at several viewing distances
-distances = np.linspace(0.5, 2, 5)
+    I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
+    std = np.sqrt(0.1)
+    I_test_noise = utils.imnoise(I_ref, std)
 
-metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='threshold')
+    # Measure quality at several viewing distances
+    distances = np.linspace(0.5, 2, 5)
 
-Q_JOD = []
-for dd, dist in enumerate(distances):
-    # 4K, 30 inch display, seen at different viewing distances
-    disp_geo = pycvvdp.vvdp_display_geometry((3840, 2160), diagonal_size_inches=30, distance_m=dist)
-    metric.set_display_model(display_geometry=disp_geo)
+    metric = metric_class(display_name='standard_4k', heatmap='none', device=device)
 
-    q, stats = metric.predict(I_test_noise, I_ref, dim_order="HWC")
-    Q_JOD.append(q.cpu())
+    res = []
+    Q_JOD = []
+    for dd, dist in enumerate(distances):
+        # 4K, 30 inch display, seen at different viewing distances
+        disp_geo = pycvvdp.vvdp_display_geometry((3840, 2160), diagonal_size_inches=30, distance_m=dist)
+        metric.set_display_model(display_geometry=disp_geo)
 
-plt.plot(distances, Q_JOD, '-o')
-plt.grid(which='major', linestyle='-')
-plt.grid(which='minor', linestyle='--')
-plt.xlabel('Viewing distance [m]')
-plt.ylabel('Quality [JOD]')
+        start = time.time()
+        q, stats = metric.predict(I_test_noise, I_ref, dim_order="HWC")
+        end = time.time()
+        tst_time = end-start
 
-# plt.savefig('results.png')
-plt.show()
+        Q_JOD.append(q.cpu())
+        res.append( (f'Viewing distance {dist:.2f} m', q.cpu(), tst_time))        
+
+    plt.plot(distances, Q_JOD, '-o')
+    plt.grid(which='major', linestyle='-')
+    plt.grid(which='minor', linestyle='--')
+    plt.xlabel('Viewing distance [m]')
+    plt.ylabel('Quality [JOD]')
+
+    return res
+
+if __name__ == '__main__':
+    display_geometry_example( )
+    plt.show()

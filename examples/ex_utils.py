@@ -12,12 +12,15 @@ def imnoise(clean, std, static=False, peak=None):
     if peak is None:
         peak = 1 if dtype.kind == 'f' else np.iinfo(dtype).max
 
+    # Fix the seed so that we have reproducible results
+    rng = np.random.default_rng(42)  
+
     if static:
         # Constant noise for all frames
         h, w, c, N = clean.shape    # axis=-1 is frame axis
-        noise = np.repeat((np.random.randn(h, w, c, 1)*std), N, axis=-1)
+        noise = np.repeat((rng.uniform(size=(h, w, c, 1))*std), N, axis=-1)
     else:
-        noise = np.random.randn(*clean.shape)*std
+        noise = rng.uniform(size=clean.shape)*std
     noisy = clean.astype(np.float32)/peak + noise
     noisy = (noisy.clip(0, 1)*peak).astype(dtype)
     return noisy

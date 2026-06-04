@@ -19,7 +19,7 @@ ColorVideoVDP is implemented in PyTorch and can be run efficiently on a CUDA-ena
 The metric is explained in detail in:
 
 > ColorVideoVDP: A visual difference predictor for image, video and display distortions.\
-> Rafal K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.\
+> Rafał K. Mantiuk, Param Hanji, Maliha Ashraf, Yuta Asano, Alexandre Chapiro.\
 > In SIGGRAPH 2024 Technical Papers, Article 129\
 > https://doi.org/10.1145/3658144
 
@@ -32,7 +32,7 @@ The repository also contains code for other metrics, such as PU-PSNR, or ColorVi
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:
 ```bash
-conda create -n cvvdp python=3.13
+conda create -n cvvdp python=3.12
 conda activate cvvdp
 ```
 
@@ -128,7 +128,6 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
     - [Command line interface](#command-line-interface)
     - [Visualization](#visualization)
     - [Configuration files](#configuration-files)
-    - [Other metrics](#other-metrics)
     - [Display model preview](#display-model-preview)
     - [Interactive mode](#Interactive-mode)
     - [Python interface](#python-interface)
@@ -178,13 +177,19 @@ ferris-bicubic-bicubic_1280x720p25_420_8bit_sdr.yuv
 
 will be read assuming 1280 px width and 720 px height, 25 frames per second, 420 chroma subsampling, 8 bits per colour channel, and BT709 (SDR) colour space. 
 
-Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `444`, `422`. 
+The file name should contain the following fields, separated by an underscore '_': 
+* resolution as `<width>x<height>`
+* frame rate as `<frames per second>fps` or specified after the resolution `<width>x<height>p<frames per second>`
+* chroma subsampling as `<chroma mode>p`, `<chroma mode>i`, or `<chroma mode>`, where `<chroma mode>` is `420`, `422` or `444`. 
+* bit depth as `<bitdepth>bit` or `<bitdepth>b`, where `<bitdepth>` is either 8 or 10.
+
+Other recognized keywords are: `2020`, `709`, `pq2020`, `hdr`, `sdr`, `pq`, `hlg`. 
 
 The colour space specification (709, 2020 etc.) is currently ignored. Instead, the colour space must be explicitly specified in the [display specification](#display-specification) by selecting a display model from the [configuration files](pycvvdp/vvdp_data/README.md).
 
 Both test and reference files must be YUV; RAW files cannot be mixed with regular video files in MP4 or other containers. 
 
-Add `-verbose` to check whether the metadata was correctly decoded. It is also worth running with `-m dm-preview` to check that the files are correctly decoded. 
+Add `--verbose` to check whether the metadata was correctly decoded. It is also worth running with `--metric dm-preview` to check that the files are correctly decoded. 
 
 ## Reporting metric results
 
@@ -262,10 +267,6 @@ To check which `display_models.json` file is used, run `cvvdp` with `--display ?
 
 To check which `cvvdp_parameters.json` file is used, run `cvvdp` with `--verbose`.
 
-## Other metrics
-
-A command-line argument `--metric` can be used to specify one more more metrics to run. Run with `--help` to see the list of available metrics. Those are explained in [metrics.md](./metrics.md).
-
 ## Display model preview
 
 To preview the images/video that are sent to the metric (after applying a display model), pass `--metric dm-preview`. It will write OpenEXR images or HDR videos (`<base-name>-test.[exr|mp4]`, `<base-name>-reference.[exr|mp4]`) with the output of the display model. Those will be stored in the current directory or one specified with `--output-dir`. The files will contain absolute colour values, for example, `RGB=[100 100 100]` means D65 white at 100 nit luminance. 
@@ -331,13 +332,15 @@ When reporting a problem, run `cvvdp` with `--verbose` argument and paste the en
 
 # Release notes
 
-* v0.5.6 (?)
+* v0.5.6 (4/June/2026)
   - added `--debug` and `--count-frames`
   - various bug fixes
   - progress bar shown when video is processed
   - added support for `--temp-padding=symmetric`
   - added support for 422 chroma subsampling
   - fixed support for YUV files
+  - various fixes to --device=mps (on Apple Silicon), now MPS is selected by default
+  - a new testing in `tests` framework to ensure new changes do not break anything
 
 * v0.5.5 (31/October/2025)
   - Fixed distograms

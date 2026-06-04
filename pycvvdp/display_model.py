@@ -7,6 +7,7 @@ import logging
 import os
 
 import pycvvdp.utils as utils
+from pycvvdp.vq_metric import vq_exception
 
 # I am unsure where it is comming from
 # XYZ_to_LMS2006 = (
@@ -157,8 +158,7 @@ class vvdp_display_photometry:
         models = utils.json2dict(models_file)
 
         if not display_name in models:
-            logging.error(f"Display model: '{display_name}' not found in '{models_file}'")
-            raise RuntimeError( 'Display model not found' )
+            raise vq_exception(f"Display model: '{display_name}' not found in '{models_file}'")
 
         model = models[display_name]
 

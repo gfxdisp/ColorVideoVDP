@@ -98,7 +98,8 @@ class cvvdp_feature_pooling(torch.nn.Module):
 
         F = torch.stack( (mean_T, var_T, mean_R, var_R, mean_D, var_D), dim=5 )
 
-        assert(not F.isnan().any())
+        # Assert cannot be run on the MPS
+        assert(F.device.type == 'mps' or not F.isnan().any())
 
         return F
 
@@ -164,10 +165,10 @@ class cvvdp_ml_base(cvvdp):
 
             for net in self.get_nets_to_load():
                 prefix = net + '.'
-                if torch.cuda.is_available():
-                    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
-                else:
-                    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
+                #if torch.cuda.is_available():
+                state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=self.device)['state_dict'].items() if key.startswith(prefix)}
+                #else:
+                #    state_dict = {key[len(prefix):]: val for key, val in torch.load(ckpt_file, map_location=torch.device('cpu'))['state_dict'].items() if key.startswith(prefix)}
                 getattr(self, net).load_state_dict(state_dict)
                 #.to(device=self.device)
 
