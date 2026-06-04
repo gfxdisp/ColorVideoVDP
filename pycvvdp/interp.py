@@ -88,8 +88,8 @@ def interp1(x, v, x_q):
 
     return filtered.reshape(shp)
 
-# A quick interpolation for uniformly spaces samples
-def interp1q(x, v, x_q):
+# A quick interpolation for uniformly spaces samples (but slower than interp1d_equally_spaced)
+def interp1q(x, v, x_q):    
     shp = x_q.shape
     x_q = x_q.flatten()
 
@@ -99,7 +99,36 @@ def interp1q(x, v, x_q):
 
     return filtered.reshape(shp)
 
+def interp1d_equally_spaced(v, x_q, start=0.0, end=1.0):
+    """
+    Fast 1D linear interpolation on equally-spaced grid.
+    
+    Args:
+        v: Input values of shape (N,) 
+        x_q: Query points of any shape in range [start, end]
+        start, end: Grid boundaries (default: 0 to 1)
+    
+    Returns:
+        Interpolated values at x_q
+    """
 
+    shp = x_q.shape
+    x_q = x_q.flatten()
+    N = v.shape[-1]
+    
+    # Convert query points to [0, N-1] grid coordinates
+    x_grid = (x_q - start) / (end - start) * (N - 1)
+    
+    # Get integer indices and fractional weight
+    idx0 = x_grid.floor().long().clamp(0, N - 2)
+    idx1 = idx0 + 1
+    weight = x_grid - idx0.float()
+    
+    y0 = v[idx0]
+    y1 = v[idx1]
+    
+    # Linear interpolation using torch.lerp (GPU-optimized)
+    return torch.lerp(y0, y1, weight).reshape(shp)
 
 # Performs 1-d interpolation on the 2nd dimension of tensor 'v' (hard coded as I do not know how to do it otherwise)
 # This is equivalent to performing such interpolation multiple times, for each slice of other dimensions.
