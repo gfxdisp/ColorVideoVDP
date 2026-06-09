@@ -120,7 +120,7 @@ class cvvdp_ml_base(cvvdp):
 
         super().__init__(**kwargs)
 
-        if self.heatmap is not None and self.heatmap!='none':
+        if self.heatmap is not None and self.heatmap!='none' and not getattr(self, 'supports_heatmap', False):
             raise vq_exception( "Currently cvvdp-ml metrics do not produce heatmaps" )
 
         self.train(False)
@@ -137,6 +137,11 @@ class cvvdp_ml_base(cvvdp):
                 self.device = torch.device('cpu')
         else:
             self.device = device
+
+    def _rewind_video_source_if_supported(self, vid_source):
+        rewind_fn = getattr(vid_source, 'rewind', None)
+        if callable(rewind_fn):
+            rewind_fn()
 
 
     # Switch to training mode (e.g., to optimize memory allocation)
@@ -407,6 +412,13 @@ class cvvdp_ml(cvvdp_ml_base):
 
         self.set_device( device )
 
+        # self.feature_net = nn.Sequential(
+        #     nn.Linear(8, 256),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.2),
+        #     nn.Linear(256, 1),
+        # ).to(self.device)
+
         dropout = 0.2
         hidden_dims = 24
         num_layers = 3
@@ -420,47 +432,509 @@ class cvvdp_ml(cvvdp_ml_base):
     def get_nets_to_load(self):
         return [ 'feature_net' ]
 
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        return delta.mean(dim=-1).mean()
+
     # Perform pooling with per-band weights and map to JODs
     def do_pooling_and_jods(self, features):
         # features[band][frames,width,height,channels,stat]
         # disables_features is an array of indices of the stat to be disabled
 
-        # no_channels = features[0].shape[3]
-        # no_frames = features[0].shape[0]
         no_bands = len(features)
 
-        Q_JOD = torch.as_tensor(10., device=self.device)
+        q_jod = torch.as_tensor(10., device=self.device)
 
-        is_image = (features[0].shape[3]==3) # if 3 channels, it is an image
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        band_scores = []
 
         for bb in range(no_bands):
-
-            #F[frames,width,height,channels,stat]
             f = features[bb]
 
             if is_image:
-                f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
+                if f.dim() == 6:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+                else:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+
             if self.disabled_features is not None:
-                f[:, :, :, :, self.disabled_features] = 0  
+                if f.dim() == 6:
+                    f[..., self.disabled_features] = 0
+                else:
+                    f[:, :, :, :, self.disabled_features] = 0
 
-            # We want to only keep mean D and std D in this version
-            f = f[:, :, :, :, 4:]
-            f[:, :, :, :, 1] = torch.sqrt(torch.abs(f[:, :, :, :, 1]))
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
 
-            f = f.flatten( start_dim=3 )
-            D_all = self.feature_net(f)
+            if f_d.dim() == 5:
+                batch, frames, height, width, _ = f_d.shape
+                f_d_flat = f_d.reshape(-1, 8)
+                token_scores = self.feature_net(f_d_flat).reshape(batch, frames, height * width)
+                scores = token_scores.mean(dim=2)
 
-            is_base_band = (bb==no_bands-1)
-            if is_base_band:
-                D_all *= self.baseband_weight
+            elif f_d.dim() == 4:
+                batch, height, width, _ = f_d.shape
+                frames = 1
+                f_d_flat = f_d.reshape(-1, 8)
+                token_scores = self.feature_net(f_d_flat).reshape(batch, height * width)
+                scores = token_scores.mean(dim=1, keepdim=True)
+            else:
+                raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
+
+            if bb == no_bands - 1:
+                scores = scores * self.baseband_weight
+
+            band_scores.append(scores)
+
+        band_scores = torch.stack(band_scores, dim=2)
+        delta = band_scores.mean(dim=2)
+        batch, frames = delta.shape[0], delta.shape[1]
+        delta = self._pool_temporal_delta(delta, batch, frames)
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod = q_jod - delta
+
+        assert(not q_jod.isnan())
+        return q_jod
+
+register_metric(cvvdp_ml)
+
+
+class cvvdp_ml_temporal_hierarchical_topk(cvvdp_ml):
+    """
+    cvvdp_ml variant with hierarchical temporal pooling.
+
+    Pooling strategy:
+    - Split the sequence into coarse windows
+    - Inside each coarse window, split into fine windows
+    - Use a percentile inside each fine window to pick the worse frames in that segment
+    - Select the worst fine windows per coarse window (top-k)
+    - Fuse coarse mean with the fine worst summary using alpha
+    - Average across coarse windows and the batch
+    """
+
+    def __init__(self,
+                 device=None,
+                 coarse_window_s=1.0,
+                 coarse_overlap=0.5,
+                 fine_window_s=0.1,
+                 fine_overlap=0.5,
+                 fine_percentile=0.8,
+                 topk_worst=1,
+                 topk_mode='mean',
+                 topk_softmax_temperature=10.0,
+                 coarse_fine_fusion_alpha=0.5,
+                 temporal_fps_hint=None,
+                 **kwargs):
+        self.coarse_window_s = float(coarse_window_s)
+        self.coarse_overlap = float(coarse_overlap)
+        self.fine_window_s = float(fine_window_s)
+        self.fine_overlap = float(fine_overlap)
+        self.fine_percentile = float(fine_percentile)
+        self.topk_worst = int(topk_worst)
+        self.topk_mode = str(topk_mode)
+        self.topk_softmax_temperature = float(topk_softmax_temperature)
+        self.coarse_fine_fusion_alpha = float(coarse_fine_fusion_alpha)
+        self.temporal_fps_hint = temporal_fps_hint
+        self._temporal_pool_fps = None
+        super().__init__(device=device, **kwargs)
+
+    def predict_video_source(self, vid_source):
+        try:
+            fps = float(vid_source.get_frames_per_second())
+            if not math.isfinite(fps) or fps <= 0:
+                fps = None
+        except Exception:
+            fps = None
+
+        self._temporal_pool_fps = fps
+        try:
+            return super().predict_video_source(vid_source)
+        finally:
+            self._temporal_pool_fps = None
+
+    def _resolve_temporal_pool_fps(self):
+        candidates = [
+            self._temporal_pool_fps,
+            self.temporal_fps_hint,
+            getattr(self, 'fps', None),
+            getattr(self, 'frames_per_second', None),
+            getattr(self, 'source_fps', None),
+            getattr(self, 'nominal_fps', None),
+        ]
+
+        for cand in candidates:
+            try:
+                fps = float(cand)
+                if math.isfinite(fps) and fps > 0:
+                    return fps
+            except Exception:
+                continue
+
+        return 30.0
+
+    def _reduce_worst_fine_values(self, fine_values):
+        if fine_values.shape[-1] <= 1:
+            return fine_values.squeeze(-1)
+
+        if self.topk_mode == 'max':
+            return fine_values.max(dim=-1).values
+
+        if self.topk_mode == 'mean':
+            return fine_values.mean(dim=-1)
+
+        if self.topk_mode == 'softmax':
+            tau = torch.as_tensor(self.topk_softmax_temperature, device=fine_values.device, dtype=fine_values.dtype)
+            if not torch.isfinite(tau) or tau <= 0:
+                return fine_values.mean(dim=-1)
+
+            ref_vals = fine_values.max(dim=-1, keepdim=True).values
+            logits = (fine_values - ref_vals) * tau
+            weights = torch.softmax(logits, dim=-1)
+            return (weights * fine_values).sum(dim=-1)
+
+        raise ValueError(f"Unsupported topk_mode: {self.topk_mode}. Expected one of ['max', 'mean', 'softmax']")
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        if frames <= 1:
+            return delta.mean(dim=-1).mean()
+
+        fps = self._resolve_temporal_pool_fps()
+        coarse_window_frames = max(1, int(round(self.coarse_window_s * fps)))
+        fine_window_frames = max(1, int(round(self.fine_window_s * fps)))
+
+        coarse_overlap = max(0.0, min(0.95, self.coarse_overlap))
+        fine_overlap = max(0.0, min(0.95, self.fine_overlap))
+        coarse_hop = max(1, int(round(coarse_window_frames * (1.0 - coarse_overlap))))
+        fine_hop = max(1, int(round(fine_window_frames * (1.0 - fine_overlap))))
+
+        k_worst = max(1, self.topk_worst)
+        fusion_alpha = max(0.0, min(1.0, self.coarse_fine_fusion_alpha))
+        fusion_alpha = torch.as_tensor(fusion_alpha, dtype=delta.dtype, device=delta.device)
+        fine_percentile = max(0.0, min(1.0, self.fine_percentile))
+
+        coarse_scores = []
+
+        for coarse_start in range(0, frames, coarse_hop):
+            coarse_end = min(coarse_start + coarse_window_frames, frames)
+            coarse_seg = delta[:, coarse_start:coarse_end]
+            if coarse_seg.shape[1] == 0:
+                continue
+
+            coarse_mean = coarse_seg.mean(dim=-1)
+
+            fine_seg_values = []
+            for fine_start in range(coarse_start, coarse_end, fine_hop):
+                fine_end = min(fine_start + fine_window_frames, coarse_end)
+                fine_seg = delta[:, fine_start:fine_end]
+                if fine_seg.shape[1] == 0:
+                    continue
+                fine_seg_values.append(torch.quantile(fine_seg, q=fine_percentile, dim=-1))
+
+            if len(fine_seg_values) == 0:
+                adjusted_coarse = coarse_mean
+            else:
+                fine_seg_values = torch.stack(fine_seg_values, dim=-1)
+                k = min(k_worst, fine_seg_values.shape[-1])
+                worst_k = torch.topk(fine_seg_values, k=k, dim=-1, largest=True).values
+                worst_summary = self._reduce_worst_fine_values(worst_k)
+                adjusted_coarse = (1.0 - fusion_alpha) * coarse_mean + fusion_alpha * worst_summary
+
+            coarse_scores.append(adjusted_coarse)
+
+        if len(coarse_scores) == 0:
+            return delta.mean(dim=-1).mean()
+
+        return torch.stack(coarse_scores, dim=-1).mean(dim=-1).mean()
+
+
+register_metric(cvvdp_ml_temporal_hierarchical_topk)
+
+
+class cvvdp_ml_temporal_multiscale_pooling(cvvdp_ml):
+    """
+    cvvdp_ml variant with multiscale temporal pooling.
+
+    Pooling strategy:
+    - Build overlapping temporal windows at multiple scales
+    - For each scale, compute per-segment statistics (mean and percentile)
+    - Select a soft-worst segment score for each statistic
+    - Average across the categories and then across the batch
+    """
+
+    def __init__(self,
+                 device=None,
+                 temporal_windows_s=(0.05, 1.0),
+                 temporal_percentile=0.2,
+                 temporal_overlap=0.5,
+                 soft_worst_temperature=10.0,
+                 temporal_use_mean=True,
+                 temporal_use_percentile=False,
+                 temporal_fps_hint=None,
+                 **kwargs):
+        self.temporal_windows_s = tuple(float(w) for w in temporal_windows_s)
+        self.temporal_percentile = float(temporal_percentile)
+        self.temporal_overlap = float(temporal_overlap)
+        self.soft_worst_temperature = float(soft_worst_temperature)
+        self.temporal_use_mean = bool(temporal_use_mean)
+        self.temporal_use_percentile = bool(temporal_use_percentile)
+        self.temporal_fps_hint = temporal_fps_hint
+        self._temporal_pool_fps = None
+        super().__init__(device=device, **kwargs)
+
+    def predict_video_source(self, vid_source):
+        try:
+            fps = float(vid_source.get_frames_per_second())
+            if not math.isfinite(fps) or fps <= 0:
+                fps = None
+        except Exception:
+            fps = None
+
+        self._temporal_pool_fps = fps
+        try:
+            return super().predict_video_source(vid_source)
+        finally:
+            self._temporal_pool_fps = None
+
+    def _soft_worst(self, values, dim=-1, mode='max'):
+        if values.shape[dim] <= 1:
+            return values.squeeze(dim)
+
+        tau = torch.as_tensor(self.soft_worst_temperature, device=values.device, dtype=values.dtype)
+        if not torch.isfinite(tau) or tau <= 0:
+            return values.max(dim=dim).values if mode == 'max' else values.min(dim=dim).values
+
+        if mode == 'max':
+            ref_vals = values.max(dim=dim, keepdim=True).values
+            logits = (values - ref_vals) * tau
+        elif mode == 'min':
+            ref_vals = values.min(dim=dim, keepdim=True).values
+            logits = -(values - ref_vals) * tau
+        else:
+            raise ValueError(f"Unsupported soft-worst mode: {mode}")
+
+        weights = torch.softmax(logits, dim=dim)
+        return (weights * values).sum(dim=dim)
+
+    def _resolve_temporal_pool_fps(self):
+        candidates = [
+            self._temporal_pool_fps,
+            self.temporal_fps_hint,
+            getattr(self, 'fps', None),
+            getattr(self, 'frames_per_second', None),
+            getattr(self, 'source_fps', None),
+            getattr(self, 'nominal_fps', None),
+        ]
+
+        for cand in candidates:
+            try:
+                fps = float(cand)
+                if math.isfinite(fps) and fps > 0:
+                    return fps
+            except Exception:
+                continue
+
+        return 30.0
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        if frames <= 1:
+            return delta.mean(dim=-1).mean()
+
+        use_mean = self.temporal_use_mean
+        use_percentile = self.temporal_use_percentile
+        if not use_mean and not use_percentile:
+            use_mean = True
+
+        p = max(0.0, min(1.0, self.temporal_percentile))
+        overlap = max(0.0, min(0.95, self.temporal_overlap))
+        fps = self._resolve_temporal_pool_fps()
+
+        category_values = []
+
+        for window_s in self.temporal_windows_s:
+            window_frames = max(1, int(round(window_s * fps)))
+            hop_frames = max(1, int(round(window_frames * (1.0 - overlap))))
+
+            seg_mean_vals = []
+            seg_perc_vals = []
+
+            for start in range(0, frames, hop_frames):
+                end = min(start + window_frames, frames)
+                seg = delta[:, start:end]
+                if seg.shape[1] == 0:
+                    continue
+
+                if use_mean:
+                    seg_mean_vals.append(seg.mean(dim=-1))
+
+                if use_percentile:
+                    seg_perc_vals.append(torch.quantile(seg, q=p, dim=-1))
+
+            if use_mean and len(seg_mean_vals) > 0:
+                seg_mean = torch.stack(seg_mean_vals, dim=-1)
+                seg_mean_quality = 10.0 - seg_mean
+                worst_mean_quality = self._soft_worst(seg_mean_quality, dim=-1, mode='min')
+                worst_mean_delta = 10.0 - worst_mean_quality
+                category_values.append(worst_mean_delta)
+
+            if use_percentile and len(seg_perc_vals) > 0:
+                seg_perc = torch.stack(seg_perc_vals, dim=-1)
+                seg_perc_quality = 10.0 - seg_perc
+                worst_perc_quality = self._soft_worst(seg_perc_quality, dim=-1, mode='min')
+                worst_perc_delta = 10.0 - worst_perc_quality
+                category_values.append(worst_perc_delta)
+
+        if len(category_values) == 0:
+            return delta.mean(dim=-1).mean()
+
+        pooled = torch.stack(category_values, dim=-1).mean(dim=-1)
+        return pooled.mean()
+
+
+register_metric(cvvdp_ml_temporal_multiscale_pooling)
+
+class cvvdp_ml_freq_bands(cvvdp_ml_base):
+    """
+    ColorVideoVDP-ML variant that appends per-band spatial frequency to patch features.
+
+    This follows the key idea of the band-frequency DINO-fusion variant, but it uses
+    a single feature net that predicts quality directly and does not use baseband weight.
+    """
+
+    def __init__(self, device=None, band_freqs=None, **kwargs):
+
+        self.set_device(device)
+
+        self.feature_input_dim = 9  # 8 D features + 1 band-frequency scalar
+        self.feature_net = nn.Sequential(
+            nn.Linear(self.feature_input_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 1),
+        ).to(self.device)
+
+        self.band_freqs = band_freqs
+
+        super().__init__(device=device, **kwargs)
+
+    def get_nets_to_load(self):
+        return ['feature_net']
+
+    def _append_band_frequency(self, f_d, band_freq):
+        band_freq = torch.as_tensor(band_freq, device=self.device, dtype=f_d.dtype)
+        freq_map = torch.ones(f_d.shape[:-1] + (1,), device=self.device, dtype=f_d.dtype) * band_freq
+        return torch.cat((f_d, freq_map), dim=-1)
+
+    def _resolve_band_freqs(self, no_bands):
+        if self.band_freqs is not None:
+            band_freqs = torch.as_tensor(self.band_freqs, device=self.device, dtype=torch.float32).flatten()
+            if band_freqs.numel() == 1:
+                band_freqs = band_freqs.expand(no_bands)
+            elif band_freqs.numel() < no_bands:
+                tail = band_freqs[-1:].expand(no_bands - band_freqs.numel())
+                band_freqs = torch.cat((band_freqs, tail), dim=0)
+            else:
+                band_freqs = band_freqs[:no_bands]
+            return band_freqs
+
+        ppd = getattr(self, 'pix_per_deg', None)
+        if ppd is not None:
+            ppd = float(ppd)
+        if ppd is not None and np.isfinite(ppd) and ppd > 0:
+            height = max(int(no_bands) - 1, 0)
+            band_freqs = np.array([1.0] + [0.3228 * 2.0 ** (-f) for f in range(height)], dtype=np.float32) * (ppd / 2.0)
+            if band_freqs.shape[0] < no_bands:
+                tail = np.repeat(band_freqs[-1:], no_bands - band_freqs.shape[0])
+                band_freqs = np.concatenate([band_freqs, tail], axis=0)
+            return torch.as_tensor(band_freqs[:no_bands], device=self.device)
+
+        if getattr(self, 'lpyr', None) is not None:
+            band_freqs = torch.as_tensor(self.lpyr.get_freqs(), device=self.device, dtype=torch.float32).flatten()
+            if band_freqs.numel() > 0:
+                if band_freqs.numel() >= no_bands:
+                    return band_freqs[:no_bands]
+                tail = band_freqs[-1:].expand(no_bands - band_freqs.numel())
+                return torch.cat((band_freqs, tail), dim=0)
+
+        ppd = 1.0
+        height = max(int(no_bands) - 1, 0)
+        band_freqs = np.array([1.0] + [0.3228 * 2.0 ** (-f) for f in range(height)], dtype=np.float32) * (ppd / 2.0)
+        if band_freqs.shape[0] < no_bands:
+            tail = np.repeat(band_freqs[-1:], no_bands - band_freqs.shape[0])
+            band_freqs = np.concatenate([band_freqs, tail], axis=0)
+        return torch.as_tensor(band_freqs[:no_bands], device=self.device)
+
+    def do_pooling_and_jods(self, features):
+        no_bands = len(features)
+        q_jod = torch.as_tensor(10., device=self.device)
+
+        f0 = features[0]
+        ch_dim = 4 if f0.dim() == 6 else 3
+        is_image = (f0.shape[ch_dim] == 3)
+
+        rho_band = self._resolve_band_freqs(no_bands)
+
+        band_scores = []
+
+        for bb in range(no_bands):
+            f = features[bb]
 
             if is_image:
-                D_all *= self.image_int
+                if f.dim() == 6:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+                else:
+                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
 
-            Q_JOD -= D_all.view(-1).mean()/no_bands
+            if self.disabled_features is not None:
+                if f.dim() == 6:
+                    f[..., self.disabled_features] = 0
+                else:
+                    f[:, :, :, :, self.disabled_features] = 0
 
-        assert(not Q_JOD.isnan())
-        return Q_JOD
+            f_d = f[..., 4:]
+            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+            f_d = self._append_band_frequency(f_d, rho_band[bb])
+
+            if f_d.dim() == 5:
+                batch, frames, height, width, feat_dim = f_d.shape
+                f_d_flat = f_d.reshape(-1, feat_dim)
+                token_scores = self.feature_net(f_d_flat).reshape(batch, frames, height * width)
+                scores = token_scores.mean(dim=2)
+
+            elif f_d.dim() == 4:
+                batch, height, width, feat_dim = f_d.shape
+                frames = 1
+                f_d_flat = f_d.reshape(-1, feat_dim)
+                token_scores = self.feature_net(f_d_flat).reshape(batch, height * width)
+                scores = token_scores.mean(dim=1, keepdim=True)
+            else:
+                raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
+
+            band_scores.append(scores)
+
+        band_scores = torch.stack(band_scores, dim=2)
+        delta = band_scores.mean(dim=2)
+        delta = delta.mean(dim=-1).mean()
+
+        if is_image:
+            delta *= self.image_int
+
+        q_jod = q_jod - delta
+
+        assert(not q_jod.isnan())
+        return q_jod
+
+
+register_metric(cvvdp_ml_freq_bands)
 
 
 class cvvdp_ml_dino_base(cvvdp_ml_base):
@@ -578,6 +1052,8 @@ class cvvdp_ml_dino_base(cvvdp_ml_base):
     def extract_features_dino(self, vid_source):
         _, _, N_frames = vid_source.get_video_size()
 
+        self._rewind_video_source_if_supported(vid_source)
+
         ref_features = []
 
         for ff in range(N_frames):
@@ -654,7 +1130,10 @@ class cvvdp_ml_saliency_base(cvvdp_ml_base):
     def _get_stsanet_weights_path(self):
         if self.stsanet_weights is not None and self.stsanet_weights != '':
             return Path(self.stsanet_weights)
-        return self._get_project_root() / 'external' / 'STSANet' / 'STSANet_fine-tuned_on_UCF.pth'
+        # return self._get_project_root() / 'external' / 'STSANet' / 'STSANet_fine-tuned_on_UCF.pth'
+        # return self._get_project_root() / 'external' / 'STSANet' / 'STSANet_DHF1K.pth'
+        # return self._get_project_root() / 'external' / 'STSANet' / 'STSANet_fine-tuned_on_DIEM.pth'
+        return self._get_project_root() / 'external' / 'STSANet' / 'STSANet_fine-tuned_on_Hollywood.pth'
 
     def _import_stsanet_class(self):
         stsa_model_path = self._get_project_root() / 'external' / 'STSANet' / 'STSA_model.py'
@@ -741,6 +1220,8 @@ class cvvdp_ml_saliency_base(cvvdp_ml_base):
         _, _, N_frames = vid_source.get_video_size()
         target_h, target_w = self.stsanet_resolution
 
+        self._rewind_video_source_if_supported(vid_source)
+
         if N_frames <= 0:
             return [torch.empty((1, 0, target_h, target_w), dtype=torch.float32, device=self.device)]
 
@@ -763,88 +1244,177 @@ class cvvdp_ml_saliency_base(cvvdp_ml_base):
         return [saliency_maps]
 
 
-class cvvdp_ml_dino(cvvdp_ml_dino_base):
+# class cvvdp_ml_dino(cvvdp_ml_dino_base):
 
-    def __init__(self, device=None, **kwargs):
-        self.set_device(device)
-        ch_no = 4
-        stats_no = 2
-        dino_dim = 768
-        mlp_in_channels = stats_no * ch_no + dino_dim
-        self.feature_net = MLP(
-            in_channels=mlp_in_channels,
-            hidden_channels=[256, 128, 1],
-            activation_layer=torch.nn.ReLU,
-            dropout=0.2,
-        ).to(self.device)
+#     def __init__(self, device=None, fusion_mode='concat_fused', hidden_dim=128, **kwargs):
+#         self.set_device(device)
+#         ch_no = 4
+#         stats_no = 2
+#         dino_dim = 768
 
-        super().__init__(device=device, **kwargs)
+#         self.fusion_mode = fusion_mode
+#         self.hidden_dim = int(hidden_dim)
 
-        self.train(False)
+#         if self.fusion_mode not in ['concat', 'concat_fused', 'add', 'film']:
+#             raise ValueError(f"Unsupported fusion_mode: {self.fusion_mode}. Expected one of ['concat', 'concat_fused', 'add', 'film']")
 
-    def get_nets_to_load(self):
-        return ['feature_net'] if hasattr(self, 'feature_net') else []
+#         if self.fusion_mode == 'concat':
+#             mlp_in_channels = stats_no * ch_no + dino_dim
+#             self.feature_net = MLP(
+#                 in_channels=mlp_in_channels,
+#                 hidden_channels=[256, 128, 1],
+#                 activation_layer=torch.nn.ReLU,
+#                 dropout=0.2,
+#             ).to(self.device)
+#         elif self.fusion_mode == 'concat_fused':
+#             if 'random_init' not in kwargs:
+#                 kwargs['random_init'] = True
 
-    def do_pooling_and_jods(self, features, dino_features):
-        no_bands = len(features)
-        q_jod = torch.as_tensor(10., device=self.device)
+#             feat_dim = stats_no * ch_no
+#             self.patch_proj = nn.Linear(feat_dim, 256, bias=True).to(self.device)
+#             self.dino_proj = nn.Linear(dino_dim, 256, bias=False).to(self.device)
+#             self.feature_net = nn.Sequential(
+#                 nn.ReLU(),
+#                 nn.Dropout(0.2),
+#                 nn.Linear(256, 128),
+#                 nn.ReLU(),
+#                 nn.Dropout(0.2),
+#                 nn.Linear(128, 1),
+#             ).to(self.device)
+#         else:
+#             if 'random_init' not in kwargs:
+#                 kwargs['random_init'] = True
 
-        f0 = features[0]
-        ch_dim = 4 if f0.dim() == 6 else 3
-        is_image = (f0.shape[ch_dim] == 3)
+#             feat_dim = stats_no * ch_no
+#             self.patch_proj = nn.Sequential(
+#                 nn.LayerNorm(feat_dim),
+#                 nn.Linear(feat_dim, self.hidden_dim),
+#                 nn.ReLU(),
+#             ).to(self.device)
+#             self.dino_proj = nn.Sequential(
+#                 nn.LayerNorm(dino_dim),
+#                 nn.Linear(dino_dim, self.hidden_dim),
+#             ).to(self.device)
 
-        dino_ref = dino_features[0]
-        if dino_ref.dim() == 2:
-            dino_ref = dino_ref.unsqueeze(0)
-        dino_ref = dino_ref.to(self.device)
+#             if self.fusion_mode == 'film':
+#                 self.film_scale = nn.Linear(self.hidden_dim, self.hidden_dim).to(self.device)
+#                 self.film_bias = nn.Linear(self.hidden_dim, self.hidden_dim).to(self.device)
 
-        for bb in range(no_bands):
-            f = features[bb]
+#             self.feature_net = nn.Sequential(
+#                 nn.LayerNorm(self.hidden_dim),
+#                 nn.Linear(self.hidden_dim, max(32, self.hidden_dim // 2)),
+#                 nn.GELU(),
+#                 nn.Dropout(0.1),
+#                 nn.Linear(max(32, self.hidden_dim // 2), 1),
+#             ).to(self.device)
 
-            if is_image:
-                if f.dim() == 6:
-                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
-                else:
-                    f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+#         super().__init__(device=device, **kwargs)
 
-            if self.disabled_features is not None:
-                if f.dim() == 6:
-                    f[..., self.disabled_features] = 0
-                else:
-                    f[:, :, :, :, self.disabled_features] = 0
+#         self.train(False)
 
-            f_d = f[..., 4:]
-            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+#     def get_nets_to_load(self):
+#         if self.fusion_mode == 'concat':
+#             return ['feature_net'] if hasattr(self, 'feature_net') else []
 
-            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+#         nets = ['patch_proj', 'dino_proj', 'feature_net']
+#         if self.fusion_mode == 'film':
+#             nets.extend(['film_scale', 'film_bias'])
+#         return nets
 
-            if f_d.dim() == 5:
-                if dino_ref.shape[0] == 1 and f_d.shape[0] > 1:
-                    dino_ref_cur = dino_ref.expand(f_d.shape[0], -1, -1)
-                else:
-                    dino_ref_cur = dino_ref
-                dino_map = dino_ref_cur[:, :, None, None, :].expand(-1, -1, f_d.shape[2], f_d.shape[3], -1)
-            else:
-                dino_ref_cur = dino_ref.squeeze(0)
-                dino_map = dino_ref_cur[:, None, None, :].expand(-1, f_d.shape[1], f_d.shape[2], -1)
+#     def _align_dino(self, dino_ref, batch, frames):
+#         if dino_ref.dim() == 2:
+#             dino_ref = dino_ref.unsqueeze(0)
 
-            f_cat = torch.cat((f_d, dino_map), dim=-1)
-            d_all = self.feature_net(f_cat)
+#         if dino_ref.shape[0] == 1 and batch > 1:
+#             dino_ref = dino_ref.expand(batch, -1, -1)
 
-            is_base_band = (bb == no_bands - 1)
-            if is_base_band:
-                d_all *= self.baseband_weight
+#         if dino_ref.shape[1] != frames:
+#             if dino_ref.shape[1] == 1:
+#                 dino_ref = dino_ref.expand(-1, frames, -1)
+#             else:
+#                 min_frames = min(dino_ref.shape[1], frames)
+#                 dino_ref = dino_ref[:, :min_frames, :]
+#                 if min_frames < frames:
+#                     tail = dino_ref[:, -1:, :].expand(-1, frames - min_frames, -1)
+#                     dino_ref = torch.cat((dino_ref, tail), dim=1)
 
-            if is_image:
-                d_all *= self.image_int
+#         return dino_ref
 
-            q_jod -= d_all.view(-1).mean() / no_bands
+#     def do_pooling_and_jods(self, features, dino_features):
+#         no_bands = len(features)
+#         q_jod = torch.as_tensor(10., device=self.device)
 
-        assert not q_jod.isnan()
-        return q_jod
+#         f0 = features[0]
+#         ch_dim = 4 if f0.dim() == 6 else 3
+#         is_image = (f0.shape[ch_dim] == 3)
+
+#         dino_ref = dino_features[0]
+#         if dino_ref.dim() == 2:
+#             dino_ref = dino_ref.unsqueeze(0)
+#         dino_ref = dino_ref.to(self.device)
+
+#         for bb in range(no_bands):
+#             f = features[bb]
+
+#             if is_image:
+#                 if f.dim() == 6:
+#                     f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+#                 else:
+#                     f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+
+#             if self.disabled_features is not None:
+#                 if f.dim() == 6:
+#                     f[..., self.disabled_features] = 0
+#                 else:
+#                     f[:, :, :, :, self.disabled_features] = 0
+
+#             f_d = f[..., 4:]
+#             f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+
+#             f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+#             if f_d.dim() != 5:
+#                 raise RuntimeError(f"Expected 5D f_d tensor [B,F,H,W,C], got shape {tuple(f_d.shape)}")
+
+#             batch, frames, height, width, feat_dim = f_d.shape
+#             dino_ref_cur = self._align_dino(dino_ref, batch, frames)
+
+#             if self.fusion_mode == 'concat':
+#                 dino_map = dino_ref_cur[:, :, None, None, :].expand(-1, -1, height, width, -1)
+#                 f_cat = torch.cat((f_d, dino_map), dim=-1)
+#                 d_all = self.feature_net(f_cat)
+#             elif self.fusion_mode == 'concat_fused':
+#                 patch_latent = self.patch_proj(f_d)
+#                 dino_latent = self.dino_proj(dino_ref_cur)
+#                 fused = patch_latent + dino_latent[:, :, None, None, :]
+#                 d_all = self.feature_net(fused)
+#             else:
+#                 patch_latent = self.patch_proj(f_d.reshape(-1, feat_dim)).reshape(batch, frames, height, width, self.hidden_dim)
+#                 dino_latent = self.dino_proj(dino_ref_cur)
+
+#                 if self.fusion_mode == 'add':
+#                     fused = patch_latent + dino_latent[:, :, None, None, :]
+#                 else:
+#                     scale = self.film_scale(dino_latent)
+#                     bias = self.film_bias(dino_latent)
+#                     fused = patch_latent * (1.0 + scale[:, :, None, None, :]) + bias[:, :, None, None, :]
+
+#                 d_all = self.feature_net(fused)
+
+#             is_base_band = (bb == no_bands - 1)
+#             if is_base_band:
+#                 d_all *= self.baseband_weight
+
+#             if is_image:
+#                 d_all *= self.image_int
+
+#             q_jod -= d_all.view(-1).mean() / no_bands
+
+#         assert not q_jod.isnan()
+#         return q_jod
 
 
-register_metric(cvvdp_ml_dino)
+# register_metric(cvvdp_ml_dino)
 
 
 class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
@@ -880,15 +1450,18 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
         # embedding_dim=128, dino_dim=768, so input is 896
         dino_dim = 768
         mlp_in_channels = embedding_dim + dino_dim
-        self.quality_net = MLP(
+        self.quality_net = nn.Sequential(
+            nn.LayerNorm(mlp_in_channels),
+            MLP(
             in_channels=mlp_in_channels,
             hidden_channels=[512, 256, 1],
             activation_layer=torch.nn.ReLU,
             dropout=0.2,
-        ).to(self.device)
+        )).to(self.device)
         
         self.pool_type = pool_type
         self.embedding_dim = embedding_dim
+        self.supports_heatmap = True
         
         super().__init__(device=device, **kwargs)
         
@@ -897,14 +1470,122 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
     def get_nets_to_load(self):
         return ['feature_net', 'quality_net'] if hasattr(self, 'feature_net') else []
 
-    def do_pooling_and_jods(self, features, dino_features):
+    def _clone_video_source(self, vid_source):
+        if not hasattr(vid_source, 'test_fname') or not hasattr(vid_source, 'reference_fname'):
+            return None
+
+        ctor_kwargs = {
+            'test_fname': vid_source.test_fname,
+            'reference_fname': vid_source.reference_fname,
+            'display_photometry': self.display_photometry,
+            'config_paths': getattr(self, 'config_paths', []),
+            'fps': getattr(vid_source, 'fps', None),
+            'frames': getattr(vid_source, 'in_frames', -1),
+            'full_screen_resize': getattr(vid_source, 'full_screen_resize', None),
+            'resize_resolution': getattr(vid_source, 'resize_resolution', None),
+            'ffmpeg_cc': getattr(vid_source, 'ffmpeg_cc', False),
+            'verbose': getattr(vid_source, 'verbose', False),
+        }
+
+        try:
+            return vid_source.__class__(**ctor_kwargs)
+        except TypeError:
+            try:
+                return vid_source.__class__(
+                    vid_source.test_fname,
+                    vid_source.reference_fname,
+                    display_photometry=self.display_photometry,
+                    config_paths=getattr(self, 'config_paths', []),
+                    fps=getattr(vid_source, 'fps', None),
+                    frames=getattr(vid_source, 'in_frames', -1),
+                    full_screen_resize=getattr(vid_source, 'full_screen_resize', None),
+                    resize_resolution=getattr(vid_source, 'resize_resolution', None),
+                    ffmpeg_cc=getattr(vid_source, 'ffmpeg_cc', False),
+                    verbose=getattr(vid_source, 'verbose', False),
+                )
+            except Exception:
+                return None
+
+    def _extract_reference_context(self, vid_source, met_colorspace):
+        _, _, no_frames = vid_source.get_video_size()
+
+        ref_frames = []
+        for ff in range(no_frames):
+            ref_frame = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace).squeeze(2)
+            ref_frames.append(ref_frame[:, 0, :, :])
+
+        return torch.stack(ref_frames, dim=1)
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        return delta.mean(dim=-1).mean()
+
+    def predict_video_source(self, vid_source):
+        assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+
+        use_ml_heatmap = self.do_heatmap
+
+        dino_vid_source = self._clone_video_source(vid_source)
+        context_vid_source = self._clone_video_source(vid_source) if (use_ml_heatmap and self.heatmap != 'raw') else None
+
+        prev_do_heatmap = self.do_heatmap
+        if use_ml_heatmap:
+            self.do_heatmap = False
+
+        try:
+            features, _ = self.extract_features(vid_source)
+        finally:
+            self.do_heatmap = prev_do_heatmap
+
+        dino_source = dino_vid_source if dino_vid_source is not None else vid_source
+        dino_features = self.extract_features_dino(dino_source)
+
+        if use_ml_heatmap:
+            q_jod, heatmap_raw = self.do_pooling_and_jods(features, dino_features, return_heatmap=True)
+            if self.heatmap == 'raw':
+                heatmap = heatmap_raw.detach().type(torch.float16).cpu().unsqueeze(1)
+            else:
+                met_colorspace = 'logLMS_DKLd65' if self.contrast == 'log' else 'DKLd65'
+                context_source = context_vid_source if context_vid_source is not None else vid_source
+                ref_context = self._extract_reference_context(context_source, met_colorspace).detach().cpu()
+                heatmap = visualize_diff_map(
+                    heatmap_raw.detach().cpu(),
+                    context_image=ref_context,
+                    colormap_type=self.heatmap,
+                    use_cpu=False
+                ).detach().type(torch.float16).cpu().unsqueeze(0)
+        else:
+            q_jod = self.do_pooling_and_jods(features, dino_features)
+            heatmap = None
+
+        vid_sz = vid_source.get_video_size()
+        height, width, n_frames = vid_sz
+
+        stats = {}
+        stats['rho_band'] = self.lpyr.get_freqs()
+        stats['frames_per_second'] = vid_source.get_frames_per_second()
+        stats['width'] = width
+        stats['height'] = height
+        stats['N_frames'] = n_frames
+
+        if self.dump_channels:
+            self.dump_channels.close()
+
+        if use_ml_heatmap:
+            stats['heatmap'] = heatmap
+
+        return (q_jod.squeeze(), stats)
+
+    def do_pooling_and_jods(self, features, dino_features, return_heatmap=False):
         """
         Args:
             features: list of tensors, one per band [batch, frames, width, height, channels, stats]
             dino_features: list of tensors [batch, frames, dino_dim] or [batch*frames, dino_dim]
+            return_heatmap: if True, return heatmap in addition to quality score
         
         Returns:
             Q_jod: quality score (scalar)
+            heatmap_raw (optional): raw heatmap tensor if return_heatmap=True
         """
         no_bands = len(features)
         q_jod = torch.as_tensor(10., device=self.device)
@@ -921,6 +1602,7 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
         # Collect pooled embeddings per band to avoid shape mismatch
         # across pyramid bands with different spatial resolutions.
         band_embeddings = []
+        heatmap_band_maps = [None] * no_bands if return_heatmap else None
         
         for bb in range(no_bands):
             f = features[bb]
@@ -948,7 +1630,34 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
             if f_d.dim() == 5:
                 batch, frames, height, width, _ = f_d.shape
                 f_d_flat = f_d.reshape(-1, 8)
-                embeddings = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+                embeddings_tokens = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+
+                if return_heatmap:
+                    dino_cur = dino_ref
+                    if dino_cur.dim() == 2:
+                        dino_cur = dino_cur.unsqueeze(0)
+                    if dino_cur.shape[0] == 1 and batch > 1:
+                        dino_cur = dino_cur.expand(batch, -1, -1)
+                    if dino_cur.shape[1] == 1 and frames > 1:
+                        dino_cur = dino_cur.expand(-1, frames, -1)
+                    elif dino_cur.shape[1] > frames:
+                        dino_cur = dino_cur[:, :frames, :]
+                    elif dino_cur.shape[1] < frames:
+                        dino_cur = torch.cat((dino_cur, dino_cur[:, -1:, :].expand(-1, frames - dino_cur.shape[1], -1)), dim=1)
+
+                    dino_map = dino_cur[:, :, None, :].expand(-1, -1, height * width, -1)
+                    combined_tokens = torch.cat((embeddings_tokens, dino_map), dim=-1)
+                    token_delta = self.quality_net(combined_tokens.reshape(-1, self.embedding_dim + 768)).reshape(batch, frames, height, width)
+
+                    is_base_band = (bb == no_bands - 1)
+                    if is_base_band:
+                        token_delta *= self.baseband_weight
+                    if is_image:
+                        token_delta *= self.image_int
+
+                    heatmap_band_maps[bb] = token_delta.clamp_min(0.)
+
+                embeddings = embeddings_tokens
 
                 if self.pool_type == 'avg':
                     embeddings = embeddings.mean(dim=2)
@@ -969,6 +1678,28 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
                     embeddings, _ = embeddings.max(dim=1, keepdim=True)
                 else:
                     raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+                if return_heatmap:
+                    dino_cur = dino_ref
+                    if dino_cur.dim() == 2:
+                        dino_cur = dino_cur.unsqueeze(0)
+                    if dino_cur.shape[0] == 1 and batch > 1:
+                        dino_cur = dino_cur.expand(batch, -1, -1)
+                    if dino_cur.shape[1] == 1:
+                        dino_cur = dino_cur.expand(-1, frames, -1)
+
+                    dino_map = dino_cur[:, :, None, :].expand(-1, -1, height * width, -1)
+                    tokens = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+                    combined_tokens = torch.cat((tokens, dino_map), dim=-1)
+                    token_delta = self.quality_net(combined_tokens.reshape(-1, self.embedding_dim + 768)).reshape(batch, frames, height, width)
+
+                    is_base_band = (bb == no_bands - 1)
+                    if is_base_band:
+                        token_delta *= self.baseband_weight
+                    if is_image:
+                        token_delta *= self.image_int
+
+                    heatmap_band_maps[bb] = token_delta.clamp_min(0.)
             else:
                 raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
 
@@ -1027,8 +1758,7 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
         delta = self.quality_net(combined_flat)  # [batch*frames, 1]
 
         # Reshape back and average across frames
-        delta = delta.reshape(batch, frames)
-        delta = delta.mean(dim=-1).mean()  # Average across frames and batch
+        delta = self._pool_temporal_delta(delta, batch, frames)
 
         if is_image:
             delta *= self.image_int
@@ -1036,42 +1766,471 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
         q_jod = q_jod - delta
 
         assert not q_jod.isnan()
-        return q_jod
+        if not return_heatmap:
+            return q_jod
+
+        heatmap_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+        heatmap_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
+
+        for bb in range(no_bands):
+            band_map = heatmap_band_maps[bb]
+            target_h = heatmap_pyr.get_lband(bb).shape[-2]
+            target_w = heatmap_pyr.get_lband(bb).shape[-1]
+
+            if band_map.shape[-2] != target_h or band_map.shape[-1] != target_w:
+                bsz, nframes, src_h, src_w = band_map.shape
+                band_map = Func.adaptive_avg_pool2d(
+                    band_map.reshape(bsz * nframes, 1, src_h, src_w),
+                    output_size=(target_h, target_w)
+                ).reshape(bsz, nframes, target_h, target_w)
+
+            heatmap_band_maps[bb] = band_map
+
+        n_frames = heatmap_band_maps[0].shape[1]
+        heatmap_raw = torch.empty((batch, n_frames, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device)
+
+        with torch.no_grad():
+            for bidx in range(batch):
+                for ff in range(n_frames):
+                    frame_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+                    frame_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
+                    for bb in range(no_bands):
+                        frame_pyr.set_lband(bb, heatmap_band_maps[bb][bidx:bidx+1, ff:ff+1, :, :])
+                    frame_map = 1. - (self.met2jod(frame_pyr.reconstruct()) / 10.)
+                    heatmap_raw[bidx:bidx+1, ff:ff+1, :, :] = frame_map
+
+        return q_jod, heatmap_raw
 
 
 register_metric(cvvdp_ml_dino_fusion)
 
 
-class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
+class cvvdp_ml_dino_fusion_temporal_weighted(cvvdp_ml_dino_fusion):
     """
-    Simplified DINO-fusion model with lightweight linear heads.
+    Plain DINO-fusion model with weighted temporal pooling.
+
+    The temporal weights follow the same idea as ColorVideoVDP weighted pooling:
+        w = x / (x + x0), with x0 = 10**wp_base,
+    and normalized averaging with epsilon = 10**wp_epsilon.
     """
 
-    def __init__(self, device=None, pool_type='avg', **kwargs):
+    def __init__(self, device=None, pool_type='avg', wp_base=-1.0, wp_epsilon=-5.0, **kwargs):
+        self.wp_base = torch.as_tensor(wp_base, dtype=torch.float32)
+        self.wp_epsilon = torch.as_tensor(wp_epsilon, dtype=torch.float32)
+        super().__init__(device=device, pool_type=pool_type, **kwargs)
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        if frames <= 1:
+            return delta.mean(dim=-1).mean()
+
+        wp_base = self.wp_base.to(device=delta.device, dtype=delta.dtype)
+        wp_epsilon = self.wp_epsilon.to(device=delta.device, dtype=delta.dtype)
+
+        x = delta.abs()
+        x_0 = torch.pow(torch.as_tensor(10.0, device=delta.device, dtype=delta.dtype), wp_base)
+        w = x / (x + x_0)
+
+        eps = torch.pow(torch.as_tensor(10.0, device=delta.device, dtype=delta.dtype), wp_epsilon)
+        weighted_delta = (delta * w).sum(dim=-1) / (w.sum(dim=-1) + eps)
+        return weighted_delta.mean()
+
+
+register_metric(cvvdp_ml_dino_fusion_temporal_weighted)
+
+
+class cvvdp_ml_dino_fusion_temporal_multiscale_pooling(cvvdp_ml_dino_fusion):
+    """
+    Plain DINO-fusion model with multiscale temporal pooling.
+
+        Temporal pooling strategy:
+        - Build overlapping segments for windows [0.1s, 0.5s, 1.0s]
+            (50% overlap by default)
+    - For each window scale, compute per-segment statistics (mean and p20)
+        - Select a soft-worst segment score for each statistic (minimum quality emphasized)
+    - Average across all categories and across the batch
+    """
+
+    def __init__(self,
+                 device=None,
+                 pool_type='avg',
+                 temporal_windows_s=(0.05, 1.0),
+                 temporal_percentile=0.2,
+                 temporal_overlap=0.5,
+                 soft_worst_temperature=10.0,
+                 temporal_use_mean=True,
+                 temporal_use_percentile=False,
+                 temporal_fps_hint=None,
+                 **kwargs):
+        self.temporal_windows_s = tuple(float(w) for w in temporal_windows_s)
+        self.temporal_percentile = float(temporal_percentile)
+        self.temporal_overlap = float(temporal_overlap)
+        self.soft_worst_temperature = float(soft_worst_temperature)
+        self.temporal_use_mean = bool(temporal_use_mean)
+        self.temporal_use_percentile = bool(temporal_use_percentile)
+        self.temporal_fps_hint = temporal_fps_hint
+        self._temporal_pool_fps = None
+        super().__init__(device=device, pool_type=pool_type, **kwargs)
+
+    def predict_video_source(self, vid_source):
+        try:
+            fps = float(vid_source.get_frames_per_second())
+            if not math.isfinite(fps) or fps <= 0:
+                fps = None
+        except Exception:
+            fps = None
+
+        self._temporal_pool_fps = fps
+        try:
+            return super().predict_video_source(vid_source)
+        finally:
+            self._temporal_pool_fps = None
+
+    def _soft_worst(self, values, dim=-1, mode='max'):
+        if values.shape[dim] <= 1:
+            return values.squeeze(dim)
+
+        tau = torch.as_tensor(self.soft_worst_temperature, device=values.device, dtype=values.dtype)
+        if not torch.isfinite(tau) or tau <= 0:
+            return values.max(dim=dim).values if mode == 'max' else values.min(dim=dim).values
+
+        if mode == 'max':
+            ref_vals = values.max(dim=dim, keepdim=True).values
+            logits = (values - ref_vals) * tau
+        elif mode == 'min':
+            ref_vals = values.min(dim=dim, keepdim=True).values
+            logits = -(values - ref_vals) * tau
+        else:
+            raise ValueError(f"Unsupported soft-worst mode: {mode}")
+
+        weights = torch.softmax(logits, dim=dim)
+        return (weights * values).sum(dim=dim)
+
+    def _resolve_temporal_pool_fps(self):
+        candidates = [
+            self._temporal_pool_fps,
+            self.temporal_fps_hint,
+            getattr(self, 'fps', None),
+            getattr(self, 'frames_per_second', None),
+            getattr(self, 'source_fps', None),
+            getattr(self, 'nominal_fps', None),
+        ]
+
+        for cand in candidates:
+            try:
+                fps = float(cand)
+                if math.isfinite(fps) and fps > 0:
+                    return fps
+            except Exception:
+                continue
+
+        return 30.0
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        if frames <= 1:
+            return delta.mean(dim=-1).mean()
+
+        use_mean = self.temporal_use_mean
+        use_percentile = self.temporal_use_percentile
+        if not use_mean and not use_percentile:
+            use_mean = True
+
+        p = max(0.0, min(1.0, self.temporal_percentile))
+        overlap = max(0.0, min(0.95, self.temporal_overlap))
+        fps = self._resolve_temporal_pool_fps()
+
+        category_values = []
+
+        for window_s in self.temporal_windows_s:
+            window_frames = max(1, int(round(window_s * fps)))
+            hop_frames = max(1, int(round(window_frames * (1.0 - overlap))))
+
+            seg_mean_vals = []
+            seg_perc_vals = []
+
+            for start in range(0, frames, hop_frames):
+                end = min(start + window_frames, frames)
+                seg = delta[:, start:end]
+                if seg.shape[1] == 0:
+                    continue
+
+                if use_mean:
+                    seg_mean_vals.append(seg.mean(dim=-1))
+
+                if use_percentile:
+                    seg_perc_vals.append(torch.quantile(seg, q=p, dim=-1))
+
+            if use_mean and len(seg_mean_vals) > 0:
+                seg_mean = torch.stack(seg_mean_vals, dim=-1)
+                seg_mean_quality = 10.0 - seg_mean
+                worst_mean_quality = self._soft_worst(seg_mean_quality, dim=-1, mode='min')
+                worst_mean_delta = 10.0 - worst_mean_quality
+                category_values.append(worst_mean_delta)
+
+            if use_percentile and len(seg_perc_vals) > 0:
+                seg_perc = torch.stack(seg_perc_vals, dim=-1)
+                seg_perc_quality = 10.0 - seg_perc
+                worst_perc_quality = self._soft_worst(seg_perc_quality, dim=-1, mode='min')
+                worst_perc_delta = 10.0 - worst_perc_quality
+                category_values.append(worst_perc_delta)
+
+        if len(category_values) == 0:
+            return delta.mean(dim=-1).mean()
+
+        pooled = torch.stack(category_values, dim=-1).mean(dim=-1)
+        return pooled.mean()
+
+
+register_metric(cvvdp_ml_dino_fusion_temporal_multiscale_pooling)
+
+
+class cvvdp_ml_dino_fusion_temporal_hierarchical_topk(cvvdp_ml_dino_fusion):
+    """
+    DINO-fusion model with hierarchical temporal pooling.
+
+    Pooling strategy:
+    - Split the sequence into coarse windows (e.g., 1.0s)
+    - For each coarse window, compute its mean delta
+    - Inside each coarse window, compute fine-window means (e.g., 0.1s)
+    - Take top-k worst fine-window means (largest deltas / lowest quality)
+    - Fuse coarse mean with worst fine-window statistic
+    - Average across coarse windows and across batch
+    """
+
+    def __init__(self,
+                 device=None,
+                 pool_type='avg',
+                 coarse_window_s=1.0,
+                 coarse_overlap=0.5,
+                 fine_window_s=0.1,
+                 fine_overlap=0.5,
+                 topk_worst=1,
+                 topk_mode='mean',
+                 topk_softmax_temperature=10.0,
+                 coarse_fine_fusion_alpha=0.5,
+                 temporal_fps_hint=None,
+                 **kwargs):
+        self.coarse_window_s = float(coarse_window_s)
+        self.coarse_overlap = float(coarse_overlap)
+        self.fine_window_s = float(fine_window_s)
+        self.fine_overlap = float(fine_overlap)
+        self.topk_worst = int(topk_worst)
+        self.topk_mode = str(topk_mode)
+        self.topk_softmax_temperature = float(topk_softmax_temperature)
+        self.coarse_fine_fusion_alpha = float(coarse_fine_fusion_alpha)
+        self.temporal_fps_hint = temporal_fps_hint
+        self._temporal_pool_fps = None
+        super().__init__(device=device, pool_type=pool_type, **kwargs)
+
+    def predict_video_source(self, vid_source):
+        try:
+            fps = float(vid_source.get_frames_per_second())
+            if not math.isfinite(fps) or fps <= 0:
+                fps = None
+        except Exception:
+            fps = None
+
+        self._temporal_pool_fps = fps
+        try:
+            return super().predict_video_source(vid_source)
+        finally:
+            self._temporal_pool_fps = None
+
+    def _resolve_temporal_pool_fps(self):
+        candidates = [
+            self._temporal_pool_fps,
+            self.temporal_fps_hint,
+            getattr(self, 'fps', None),
+            getattr(self, 'frames_per_second', None),
+            getattr(self, 'source_fps', None),
+            getattr(self, 'nominal_fps', None),
+        ]
+
+        for cand in candidates:
+            try:
+                fps = float(cand)
+                if math.isfinite(fps) and fps > 0:
+                    return fps
+            except Exception:
+                continue
+
+        return 30.0
+
+    def _reduce_worst_fine_values(self, fine_values):
+        # fine_values: [batch, k], higher values are worse (larger deltas)
+        if fine_values.shape[-1] <= 1:
+            return fine_values.squeeze(-1)
+
+        if self.topk_mode == 'max':
+            return fine_values.max(dim=-1).values
+
+        if self.topk_mode == 'mean':
+            return fine_values.mean(dim=-1)
+
+        if self.topk_mode == 'softmax':
+            tau = torch.as_tensor(self.topk_softmax_temperature, device=fine_values.device, dtype=fine_values.dtype)
+            if not torch.isfinite(tau) or tau <= 0:
+                return fine_values.mean(dim=-1)
+
+            ref_vals = fine_values.max(dim=-1, keepdim=True).values
+            logits = (fine_values - ref_vals) * tau
+            weights = torch.softmax(logits, dim=-1)
+            return (weights * fine_values).sum(dim=-1)
+
+        raise ValueError(f"Unsupported topk_mode: {self.topk_mode}. Expected one of ['max', 'mean', 'softmax']")
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        if frames <= 1:
+            return delta.mean(dim=-1).mean()
+
+        fps = self._resolve_temporal_pool_fps()
+        coarse_window_frames = max(1, int(round(self.coarse_window_s * fps)))
+        fine_window_frames = max(1, int(round(self.fine_window_s * fps)))
+
+        coarse_overlap = max(0.0, min(0.95, self.coarse_overlap))
+        fine_overlap = max(0.0, min(0.95, self.fine_overlap))
+        coarse_hop = max(1, int(round(coarse_window_frames * (1.0 - coarse_overlap))))
+        fine_hop = max(1, int(round(fine_window_frames * (1.0 - fine_overlap))))
+
+        k_worst = max(1, self.topk_worst)
+        fusion_alpha = max(0.0, min(1.0, self.coarse_fine_fusion_alpha))
+        fusion_alpha = torch.as_tensor(fusion_alpha, dtype=delta.dtype, device=delta.device)
+
+        coarse_scores = []
+
+        for coarse_start in range(0, frames, coarse_hop):
+            coarse_end = min(coarse_start + coarse_window_frames, frames)
+            coarse_seg = delta[:, coarse_start:coarse_end]
+            if coarse_seg.shape[1] == 0:
+                continue
+
+            coarse_mean = coarse_seg.mean(dim=-1)
+
+            fine_seg_means = []
+            for fine_start in range(coarse_start, coarse_end, fine_hop):
+                fine_end = min(fine_start + fine_window_frames, coarse_end)
+                fine_seg = delta[:, fine_start:fine_end]
+                if fine_seg.shape[1] == 0:
+                    continue
+                fine_seg_means.append(fine_seg.mean(dim=-1))
+
+            if len(fine_seg_means) == 0:
+                adjusted_coarse = coarse_mean
+            else:
+                fine_seg_means = torch.stack(fine_seg_means, dim=-1)
+                k = min(k_worst, fine_seg_means.shape[-1])
+                worst_k = torch.topk(fine_seg_means, k=k, dim=-1, largest=True).values
+                worst_summary = self._reduce_worst_fine_values(worst_k)
+                adjusted_coarse = (1.0 - fusion_alpha) * coarse_mean + fusion_alpha * worst_summary
+
+            coarse_scores.append(adjusted_coarse)
+
+        if len(coarse_scores) == 0:
+            return delta.mean(dim=-1).mean()
+
+        return torch.stack(coarse_scores, dim=-1).mean(dim=-1).mean()
+
+
+register_metric(cvvdp_ml_dino_fusion_temporal_hierarchical_topk)
+
+
+class cvvdp_ml_dino_fusion_bandfreq(cvvdp_ml_dino_fusion):
+    """
+    DINO-fusion model that injects the spatial band frequency into the patch features.
+
+    Compared with `cvvdp_ml_dino_fusion`, this variant does not use a baseband weight.
+    Instead, each band's scalar spatial frequency is appended to the D features before
+    the feature embedding MLP.
+    """
+
+    def __init__(self, device=None, pool_type='avg', band_freqs=None, **kwargs):
         self.set_device(device)
 
         embedding_dim = 128
-        self.feature_net = nn.Linear(8, embedding_dim).to(self.device)
+        self.feature_input_dim = 9  # 8 D features + 1 band-frequency scalar
+        self.feature_net = nn.Sequential(
+            nn.Linear(self.feature_input_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, embedding_dim),
+        ).to(self.device)
 
         dino_dim = 768
         mlp_in_channels = embedding_dim + dino_dim
         self.quality_net = nn.Sequential(
             nn.LayerNorm(mlp_in_channels),
-            nn.Linear(mlp_in_channels, 1),
-            nn.ReLU(),
+            MLP(
+                in_channels=mlp_in_channels,
+                hidden_channels=[512, 256, 1],
+                activation_layer=torch.nn.ReLU,
+                dropout=0.2,
+            ),
         ).to(self.device)
 
         self.pool_type = pool_type
         self.embedding_dim = embedding_dim
+        self.supports_heatmap = True
+        self.band_freqs = band_freqs
 
-        super().__init__(device=device, **kwargs)
+        cvvdp_ml_dino_base.__init__(self, device=device, **kwargs)
 
         self.train(False)
 
-    def get_nets_to_load(self):
-        return ['feature_net', 'quality_net'] if hasattr(self, 'feature_net') else []
+    def _append_band_frequency(self, f_d, band_freq):
+        band_freq = torch.as_tensor(band_freq, device=self.device, dtype=f_d.dtype)
+        freq_map = torch.ones(f_d.shape[:-1] + (1,), device=self.device, dtype=f_d.dtype) * band_freq
+        return torch.cat((f_d, freq_map), dim=-1)
 
-    def do_pooling_and_jods(self, features, dino_features):
+    def _resolve_band_freqs(self, no_bands):
+        if self.band_freqs is not None:
+            band_freqs = torch.as_tensor(self.band_freqs, device=self.device, dtype=torch.float32).flatten()
+            if band_freqs.numel() == 1:
+                band_freqs = band_freqs.expand(no_bands)
+            elif band_freqs.numel() < no_bands:
+                tail = band_freqs[-1:].expand(no_bands - band_freqs.numel())
+                band_freqs = torch.cat((band_freqs, tail), dim=0)
+            else:
+                band_freqs = band_freqs[:no_bands]
+            return band_freqs
+
+        # Match ColorVideoVDP's pyramid frequency definition.
+        # lpyr_dec uses [1.0] + [0.3228 * 2**(-f) for f in range(height)] times ppd/2.
+        # We prioritize current-sample pix_per_deg so feature-mode pooling is not affected
+        # by a stale pyramid object from earlier feature extraction.
+        ppd = getattr(self, 'pix_per_deg', None)
+        if ppd is not None:
+            ppd = float(ppd)
+        if ppd is not None and np.isfinite(ppd) and ppd > 0:
+            height = max(int(no_bands) - 1, 0)
+            band_freqs = np.array([1.0] + [0.3228 * 2.0 ** (-f) for f in range(height)], dtype=np.float32) * (ppd / 2.0)
+            if band_freqs.shape[0] < no_bands:
+                tail = np.repeat(band_freqs[-1:], no_bands - band_freqs.shape[0])
+                band_freqs = np.concatenate([band_freqs, tail], axis=0)
+            return torch.as_tensor(band_freqs[:no_bands], device=self.device)
+
+        if getattr(self, 'lpyr', None) is not None:
+            band_freqs = torch.as_tensor(self.lpyr.get_freqs(), device=self.device, dtype=torch.float32).flatten()
+            if band_freqs.numel() > 0:
+                if band_freqs.numel() >= no_bands:
+                    return band_freqs[:no_bands]
+                tail = band_freqs[-1:].expand(no_bands - band_freqs.numel())
+                return torch.cat((band_freqs, tail), dim=0)
+
+        ppd = 1.0
+        height = max(int(no_bands) - 1, 0)
+        band_freqs = np.array([1.0] + [0.3228 * 2.0 ** (-f) for f in range(height)], dtype=np.float32) * (ppd / 2.0)
+        if band_freqs.shape[0] < no_bands:
+            tail = np.repeat(band_freqs[-1:], no_bands - band_freqs.shape[0])
+            band_freqs = np.concatenate([band_freqs, tail], axis=0)
+        return torch.as_tensor(band_freqs[:no_bands], device=self.device)
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        return delta.mean(dim=-1).mean()
+
+    def do_pooling_and_jods(self, features, dino_features, return_heatmap=False):
         no_bands = len(features)
         q_jod = torch.as_tensor(10., device=self.device)
 
@@ -1084,7 +2243,10 @@ class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
             dino_ref = dino_ref.unsqueeze(1)
         dino_ref = dino_ref.to(self.device)
 
+        rho_band = self._resolve_band_freqs(no_bands)
+
         band_embeddings = []
+        heatmap_band_maps = [None] * no_bands if return_heatmap else None
 
         for bb in range(no_bands):
             f = features[bb]
@@ -1101,14 +2263,40 @@ class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
                 else:
                     f[:, :, :, :, self.disabled_features] = 0
 
+            # Extract the D-related statistics and append the band frequency as an extra feature.
             f_d = f[..., 4:]
             f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
             f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+            f_d = self._append_band_frequency(f_d, rho_band[bb])
 
             if f_d.dim() == 5:
-                batch, frames, height, width, _ = f_d.shape
-                f_d_flat = f_d.reshape(-1, 8)
-                embeddings = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+                batch, frames, height, width, feat_dim = f_d.shape
+                f_d_flat = f_d.reshape(-1, feat_dim)
+                embeddings_tokens = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+
+                if return_heatmap:
+                    dino_cur = dino_ref
+                    if dino_cur.dim() == 2:
+                        dino_cur = dino_cur.unsqueeze(0)
+                    if dino_cur.shape[0] == 1 and batch > 1:
+                        dino_cur = dino_cur.expand(batch, -1, -1)
+                    if dino_cur.shape[1] == 1 and frames > 1:
+                        dino_cur = dino_cur.expand(-1, frames, -1)
+                    elif dino_cur.shape[1] > frames:
+                        dino_cur = dino_cur[:, :frames, :]
+                    elif dino_cur.shape[1] < frames:
+                        dino_cur = torch.cat((dino_cur, dino_cur[:, -1:, :].expand(-1, frames - dino_cur.shape[1], -1)), dim=1)
+
+                    dino_map = dino_cur[:, :, None, :].expand(-1, -1, height * width, -1)
+                    combined_tokens = torch.cat((embeddings_tokens, dino_map), dim=-1)
+                    token_delta = self.quality_net(combined_tokens.reshape(-1, self.embedding_dim + 768)).reshape(batch, frames, height, width)
+
+                    if is_image:
+                        token_delta *= self.image_int
+
+                    heatmap_band_maps[bb] = token_delta.clamp_min(0.)
+
+                embeddings = embeddings_tokens
 
                 if self.pool_type == 'avg':
                     embeddings = embeddings.mean(dim=2)
@@ -1118,17 +2306,36 @@ class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
                     raise ValueError(f"Unsupported pooling type: {self.pool_type}")
 
             elif f_d.dim() == 4:
-                batch, height, width, _ = f_d.shape
+                batch, height, width, feat_dim = f_d.shape
                 frames = 1
-                f_d_flat = f_d.reshape(-1, 8)
-                embeddings = self.feature_net(f_d_flat).reshape(batch, height * width, self.embedding_dim)
+                f_d_flat = f_d.reshape(-1, feat_dim)
+                embeddings_tokens = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
 
                 if self.pool_type == 'avg':
-                    embeddings = embeddings.mean(dim=1, keepdim=True)
+                    embeddings = embeddings_tokens.mean(dim=2).squeeze(1)
+                    embeddings = embeddings.unsqueeze(1)
                 elif self.pool_type == 'max':
-                    embeddings, _ = embeddings.max(dim=1, keepdim=True)
+                    embeddings, _ = embeddings_tokens.max(dim=2)
                 else:
                     raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+                if return_heatmap:
+                    dino_cur = dino_ref
+                    if dino_cur.dim() == 2:
+                        dino_cur = dino_cur.unsqueeze(0)
+                    if dino_cur.shape[0] == 1 and batch > 1:
+                        dino_cur = dino_cur.expand(batch, -1, -1)
+                    if dino_cur.shape[1] == 1:
+                        dino_cur = dino_cur.expand(-1, frames, -1)
+
+                    dino_map = dino_cur[:, :, None, :].expand(-1, -1, height * width, -1)
+                    combined_tokens = torch.cat((embeddings_tokens, dino_map), dim=-1)
+                    token_delta = self.quality_net(combined_tokens.reshape(-1, self.embedding_dim + 768)).reshape(batch, frames, height, width)
+
+                    if is_image:
+                        token_delta *= self.image_int
+
+                    heatmap_band_maps[bb] = token_delta.clamp_min(0.)
             else:
                 raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
 
@@ -1136,20 +2343,10 @@ class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
 
         band_embeddings = torch.stack(band_embeddings, dim=2)
 
-        baseband_weight = self.baseband_weight
-        if isinstance(baseband_weight, torch.Tensor):
-            if baseband_weight.numel() > 1:
-                baseband_weight = baseband_weight.mean()
-            baseband_weight = baseband_weight.to(self.device)
-
-        band_weights = torch.ones((1, 1, no_bands, 1), device=self.device, dtype=band_embeddings.dtype)
-        band_weights[:, :, no_bands - 1, :] = baseband_weight
-        weighted_band_embeddings = band_embeddings * band_weights
-
         if self.pool_type == 'avg':
-            pooled_embeddings = weighted_band_embeddings.sum(dim=2) / band_weights.sum(dim=2).clamp_min(1e-8)
+            pooled_embeddings = band_embeddings.mean(dim=2)
         elif self.pool_type == 'max':
-            pooled_embeddings, _ = weighted_band_embeddings.max(dim=2)
+            pooled_embeddings, _ = band_embeddings.max(dim=2)
         else:
             raise ValueError(f"Unsupported pooling type: {self.pool_type}")
 
@@ -1176,9 +2373,7 @@ class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
         combined_features = torch.cat((pooled_embeddings, dino_ref), dim=-1)
         combined_flat = combined_features.reshape(-1, self.embedding_dim + 768)
         delta = self.quality_net(combined_flat)
-
-        delta = delta.reshape(batch, frames)
-        delta = delta.mean(dim=-1).mean()
+        delta = self._pool_temporal_delta(delta, batch, frames)
 
         if is_image:
             delta *= self.image_int
@@ -1186,478 +2381,915 @@ class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
         q_jod = q_jod - delta
 
         assert not q_jod.isnan()
-        return q_jod
+        if not return_heatmap:
+            return q_jod
 
+        heatmap_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+        heatmap_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
 
-register_metric(cvvdp_ml_dino_fusion_simplified)
-
-
-class cvvdp_ml_dino_attention(cvvdp_ml_dino_base):
-
-    def __init__(self, device=None, **kwargs):
-        self.set_device(device)
-
-        self.embedding_dim = 128
-        dino_dim = 768
-
-        self.feature_net = nn.Sequential(
-            nn.Linear(8, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, self.embedding_dim),
-        ).to(self.device)
-
-        self.query_proj = nn.Sequential(
-            nn.Linear(dino_dim, self.embedding_dim),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-        ).to(self.device)
-
-        self.cross_attn = nn.MultiheadAttention(
-            embed_dim=self.embedding_dim,
-            num_heads=8,
-            dropout=0.1,
-            batch_first=True,
-        ).to(self.device)
-
-        self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
-
-        self.quality_net = MLP(
-            in_channels=self.embedding_dim,
-            hidden_channels=[384, 128, 1],
-            activation_layer=torch.nn.ReLU,
-            dropout=0.2,
-        ).to(self.device)
-
-        super().__init__(device=device, **kwargs)
-
-        self.train(False)
-
-    def get_nets_to_load(self):
-        return ['feature_net', 'query_proj', 'cross_attn', 'attn_norm', 'quality_net']
-
-    def do_pooling_and_jods(self, features, dino_features):
-        no_bands = len(features)
-        q_jod = torch.as_tensor(10., device=self.device)
-
-        baseband_weight = self.baseband_weight
-        if isinstance(baseband_weight, torch.Tensor):
-            if baseband_weight.numel() > 1:
-                baseband_weight = baseband_weight.mean()
-            baseband_weight = baseband_weight.to(self.device)
-
-        f0 = features[0]
-        ch_dim = 4 if f0.dim() == 6 else 3
-        is_image = (f0.shape[ch_dim] == 3)
-
-        band_tokens = []
         for bb in range(no_bands):
-            f = features[bb]
+            band_map = heatmap_band_maps[bb]
+            target_h = heatmap_pyr.get_lband(bb).shape[-2]
+            target_w = heatmap_pyr.get_lband(bb).shape[-1]
 
-            if f.dim() == 4:
-                f = f.unsqueeze(0)
+            if band_map.shape[-2] != target_h or band_map.shape[-1] != target_w:
+                bsz, nframes, src_h, src_w = band_map.shape
+                band_map = Func.adaptive_avg_pool2d(
+                    band_map.reshape(bsz * nframes, 1, src_h, src_w),
+                    output_size=(target_h, target_w)
+                ).reshape(bsz, nframes, target_h, target_w)
 
-            if is_image:
-                f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+            heatmap_band_maps[bb] = band_map
 
-            if self.disabled_features is not None:
-                f[..., self.disabled_features] = 0
+        n_frames = heatmap_band_maps[0].shape[1]
+        heatmap_raw = torch.empty((batch, n_frames, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device)
 
-            f_d = f[..., 4:]
-            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
-            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
-
-            bsz, nframes, hsz, wsz, _ = f_d.shape
-            f_d_flat = f_d.reshape(-1, 8)
-            emb = self.feature_net(f_d_flat).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
-
-            band_tokens.append(emb)
-
-        token_bank = torch.cat(band_tokens, dim=2)
-
-        dino_ref = dino_features[0].to(self.device)
-        if dino_ref.dim() == 2:
-            dino_ref = dino_ref.unsqueeze(0)
-
-        if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
-            dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
-
-        if dino_ref.shape[1] != token_bank.shape[1]:
-            if dino_ref.shape[1] == 1:
-                dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
-            else:
-                min_frames = min(dino_ref.shape[1], token_bank.shape[1])
-                dino_ref = dino_ref[:, :min_frames, :]
-                token_bank = token_bank[:, :min_frames, :, :]
-
-        bsz, nframes, ntokens, _ = token_bank.shape
-        query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
-        key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
-
-        attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
-        attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
-
-        delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
-
-        if is_image:
-            delta *= self.image_int
-
-        q_jod -= delta.mean(dim=1).mean()
-
-        assert not q_jod.isnan()
-        return q_jod
-
-
-register_metric(cvvdp_ml_dino_attention)
-
-
-class cvvdp_ml_dino_attention_v2(cvvdp_ml_dino_base):
-
-    def __init__(self, device=None, dim=128, max_bands=16, **kwargs):
-        self.set_device(device)
-
-        self.embedding_dim = dim
-        self.max_bands = max_bands
-        dino_dim = 768
-
-        self.feature_net = nn.Sequential(
-            nn.Linear(8, 256),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, self.embedding_dim),
-        ).to(self.device)
-
-        self.spatial_pos_mlp = nn.Sequential(
-            nn.Linear(2, self.embedding_dim // 2),
-            nn.GELU(),
-            nn.Linear(self.embedding_dim // 2, self.embedding_dim)
-        ).to(self.device)
-
-        self.band_pos_embed = nn.Embedding(self.max_bands, self.embedding_dim).to(self.device)
-        self.baseband_flag_embed = nn.Embedding(2, self.embedding_dim).to(self.device)
-
-        self.query_proj = nn.Sequential(
-            nn.Linear(dino_dim, self.embedding_dim),
-            nn.GELU(),
-            nn.Dropout(0.2),
-        ).to(self.device)
-
-        self.cross_attn = nn.MultiheadAttention(
-            embed_dim=self.embedding_dim,
-            num_heads=8,
-            dropout=0.1,
-            batch_first=True,
-        ).to(self.device)
-
-        self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
-
-        self.quality_net = MLP(
-            in_channels=self.embedding_dim,
-            hidden_channels=[256, 64, 1],
-            activation_layer=torch.nn.ReLU,
-            dropout=0.2,
-        ).to(self.device)
-
-        super().__init__(device=device, **kwargs)
-
-        self.train(False)
-
-    def get_nets_to_load(self):
-        return [
-            'feature_net',
-            'spatial_pos_mlp',
-            'band_pos_embed',
-            'baseband_flag_embed',
-            'query_proj',
-            'cross_attn',
-            'attn_norm',
-            'quality_net'
-        ]
-
-    def _get_spatial_position_embedding(self, h, w, device):
-        y_coords = (torch.arange(h, device=device).float() + 0.5) / h
-        x_coords = (torch.arange(w, device=device).float() + 0.5) / w
-        grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
-        pos_embed = self.spatial_pos_mlp(grid)
-        return pos_embed.view(1, 1, h * w, self.embedding_dim)
-
-    def do_pooling_and_jods(self, features, dino_features):
-        no_bands = len(features)
-        if no_bands > self.max_bands:
-            raise RuntimeError(f"Number of bands ({no_bands}) exceeds max_bands ({self.max_bands})")
-
-        q_jod = torch.as_tensor(10., device=self.device)
-
-        f0 = features[0]
-        ch_dim = 4 if f0.dim() == 6 else 3
-        is_image = (f0.shape[ch_dim] == 3)
-
-        band_tokens = []
-        for bb in range(no_bands):
-            f = features[bb]
-
-            if f.dim() == 4:
-                f = f.unsqueeze(0)
-
-            if is_image:
-                f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
-
-            if self.disabled_features is not None:
-                f[..., self.disabled_features] = 0
-
-            f_d = f[..., 4:]
-            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
-            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
-
-            bsz, nframes, hsz, wsz, _ = f_d.shape
-            emb = self.feature_net(f_d.reshape(-1, 8)).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
-
-            spatial_pos = self._get_spatial_position_embedding(hsz, wsz, f.device)
-            emb = emb + spatial_pos
-
-            band_index = torch.as_tensor([bb], dtype=torch.long, device=f.device)
-            band_pos = self.band_pos_embed(band_index).view(1, 1, 1, self.embedding_dim)
-            emb = emb + band_pos
-
-            is_baseband = 1 if bb == (no_bands - 1) else 0
-            baseband_index = torch.as_tensor([is_baseband], dtype=torch.long, device=f.device)
-            baseband_pos = self.baseband_flag_embed(baseband_index).view(1, 1, 1, self.embedding_dim)
-            emb = emb + baseband_pos
-
-            band_tokens.append(emb)
-
-        token_bank = torch.cat(band_tokens, dim=2)
-
-        dino_ref = dino_features[0].to(self.device)
-        if dino_ref.dim() == 2:
-            dino_ref = dino_ref.unsqueeze(0)
-
-        if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
-            dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
-
-        if dino_ref.shape[1] != token_bank.shape[1]:
-            if dino_ref.shape[1] == 1:
-                dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
-            else:
-                min_frames = min(dino_ref.shape[1], token_bank.shape[1])
-                dino_ref = dino_ref[:, :min_frames, :]
-                token_bank = token_bank[:, :min_frames, :, :]
-
-        bsz, nframes, ntokens, _ = token_bank.shape
-        query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
-        key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
-
-        attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
-        attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
-
-        delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
-
-        if is_image:
-            delta *= self.image_int
-
-        q_jod -= delta.mean(dim=1).mean()
-
-        assert not q_jod.isnan()
-        return q_jod
-
-
-register_metric(cvvdp_ml_dino_attention_v2)
-
-
-class cvvdp_ml_dino_attention_hybrid(cvvdp_ml_dino_base):
-
-    def __init__(self, device=None, dim=128, max_bands=16, tokens_per_band=16, use_positional=True, **kwargs):
-        self.set_device(device)
-
-        self.embedding_dim = dim
-        self.max_bands = max_bands
-        self.tokens_per_band = tokens_per_band
-        self.use_positional = use_positional
-        dino_dim = 768
-
-        self.feature_net = nn.Sequential(
-            nn.Linear(8, 256),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, self.embedding_dim),
-        ).to(self.device)
-
-        if self.use_positional:
-            self.spatial_pos_mlp = nn.Sequential(
-                nn.Linear(2, self.embedding_dim // 2),
-                nn.GELU(),
-                nn.Linear(self.embedding_dim // 2, self.embedding_dim)
-            ).to(self.device)
-
-            self.band_pos_embed = nn.Embedding(self.max_bands, self.embedding_dim).to(self.device)
-            self.baseband_flag_embed = nn.Embedding(2, self.embedding_dim).to(self.device)
-
-            self.spatial_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
-            self.band_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
-            self.baseband_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
-
-        self.query_proj = nn.Sequential(
-            nn.Linear(dino_dim, self.embedding_dim),
-            nn.GELU(),
-            nn.Dropout(0.2),
-        ).to(self.device)
-
-        self.cross_attn = nn.MultiheadAttention(
-            embed_dim=self.embedding_dim,
-            num_heads=8,
-            dropout=0.1,
-            batch_first=True,
-        ).to(self.device)
-
-        self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
-
-        self.quality_net = MLP(
-            in_channels=self.embedding_dim,
-            hidden_channels=[384, 128, 1],
-            activation_layer=torch.nn.ReLU,
-            dropout=0.2,
-        ).to(self.device)
-
-        super().__init__(device=device, **kwargs)
-
-        self.train(False)
-
-    def get_nets_to_load(self):
-        nets = [
-            'feature_net',
-            'query_proj',
-            'cross_attn',
-            'attn_norm',
-            'quality_net'
-        ]
-        if self.use_positional:
-            nets.extend([
-                'spatial_pos_mlp',
-                'band_pos_embed',
-                'baseband_flag_embed'
-            ])
-        return nets
-
-    def _get_spatial_position_embedding(self, h, w, device):
-        y_coords = (torch.arange(h, device=device).float() + 0.5) / h
-        x_coords = (torch.arange(w, device=device).float() + 0.5) / w
-        grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
-        pos_embed = self.spatial_pos_mlp(grid)
-        return pos_embed.view(1, 1, h * w, self.embedding_dim)
-
-    def _reduce_spatial_tokens(self, emb, hsz, wsz):
-        if self.tokens_per_band is None or self.tokens_per_band <= 0:
-            return emb
-
-        max_tokens = hsz * wsz
-        if self.tokens_per_band >= max_tokens:
-            return emb
-
-        pool_h = max(1, int(math.sqrt(self.tokens_per_band)))
-        pool_w = max(1, int(math.ceil(self.tokens_per_band / pool_h)))
-
-        bsz, nframes, _, emb_dim = emb.shape
-        emb_map = emb.reshape(bsz * nframes, hsz, wsz, emb_dim).permute(0, 3, 1, 2)
-        pooled = Func.adaptive_avg_pool2d(emb_map, output_size=(pool_h, pool_w))
-        pooled = pooled.permute(0, 2, 3, 1).reshape(bsz, nframes, pool_h * pool_w, emb_dim)
-
-        if pooled.shape[2] > self.tokens_per_band:
-            pooled = pooled[:, :, :self.tokens_per_band, :]
-
-        return pooled
-
-    def do_pooling_and_jods(self, features, dino_features):
-        no_bands = len(features)
-        if no_bands > self.max_bands:
-            raise RuntimeError(f"Number of bands ({no_bands}) exceeds max_bands ({self.max_bands})")
-
-        q_jod = torch.as_tensor(10., device=self.device)
-
-        baseband_weight = self.baseband_weight
-        if isinstance(baseband_weight, torch.Tensor):
-            if baseband_weight.numel() > 1:
-                baseband_weight = baseband_weight.mean()
-            baseband_weight = baseband_weight.to(self.device)
-
-        f0 = features[0]
-        ch_dim = 4 if f0.dim() == 6 else 3
-        is_image = (f0.shape[ch_dim] == 3)
-
-        band_tokens = []
-        for bb in range(no_bands):
-            f = features[bb]
-
-            if f.dim() == 4:
-                f = f.unsqueeze(0)
-
-            if is_image:
-                f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
-
-            if self.disabled_features is not None:
-                f[..., self.disabled_features] = 0
-
-            f_d = f[..., 4:]
-            f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
-            f_d = f_d.flatten(start_dim=f_d.dim() - 2)
-
-            bsz, nframes, hsz, wsz, _ = f_d.shape
-            emb = self.feature_net(f_d.reshape(-1, 8)).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
-
-            if self.use_positional:
-                spatial_pos = self._get_spatial_position_embedding(hsz, wsz, f.device)
-                emb = emb + self.spatial_pos_scale * spatial_pos
-
-                band_index = torch.as_tensor([bb], dtype=torch.long, device=f.device)
-                band_pos = self.band_pos_embed(band_index).view(1, 1, 1, self.embedding_dim)
-                emb = emb + self.band_pos_scale * band_pos
-
-                is_baseband = 1 if bb == (no_bands - 1) else 0
-                baseband_index = torch.as_tensor([is_baseband], dtype=torch.long, device=f.device)
-                baseband_pos = self.baseband_flag_embed(baseband_index).view(1, 1, 1, self.embedding_dim)
-                emb = emb + self.baseband_pos_scale * baseband_pos
-
-            if bb == (no_bands - 1):
-                emb = emb * baseband_weight
-
-            emb = self._reduce_spatial_tokens(emb, hsz, wsz)
-            band_tokens.append(emb)
-
-        token_bank = torch.cat(band_tokens, dim=2)
-
-        dino_ref = dino_features[0].to(self.device)
-        if dino_ref.dim() == 2:
-            dino_ref = dino_ref.unsqueeze(0)
-
-        if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
-            dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
-
-        if dino_ref.shape[1] != token_bank.shape[1]:
-            if dino_ref.shape[1] == 1:
-                dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
-            else:
-                min_frames = min(dino_ref.shape[1], token_bank.shape[1])
-                dino_ref = dino_ref[:, :min_frames, :]
-                token_bank = token_bank[:, :min_frames, :, :]
-
-        bsz, nframes, ntokens, _ = token_bank.shape
-        query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
-        key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
-
-        attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
-        attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
-
-        delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
-
-        if is_image:
-            delta *= self.image_int
-
-        q_jod -= delta.mean(dim=1).mean()
-
-        assert not q_jod.isnan()
-        return q_jod
-
-
-register_metric(cvvdp_ml_dino_attention_hybrid)
+        with torch.no_grad():
+            for bidx in range(batch):
+                for ff in range(n_frames):
+                    frame_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+                    frame_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
+                    for bb in range(no_bands):
+                        frame_pyr.set_lband(bb, heatmap_band_maps[bb][bidx:bidx+1, ff:ff+1, :, :])
+                    frame_map = 1. - (self.met2jod(frame_pyr.reconstruct()) / 10.)
+                    heatmap_raw[bidx:bidx+1, ff:ff+1, :, :] = frame_map
+
+        return q_jod, heatmap_raw
+
+
+register_metric(cvvdp_ml_dino_fusion_bandfreq)
+
+
+class cvvdp_ml_dino_fusion_bandfreq_temporal_weighted(cvvdp_ml_dino_fusion_bandfreq):
+    """
+    Band-frequency DINO fusion with weighted temporal pooling.
+
+    Uses the same weighting idea as weighted-pooling cvvdp:
+        w = x / (x + x0), where x0 = 10**wp_base,
+    and normalized weighted averaging with epsilon = 10**wp_epsilon.
+    """
+
+    def __init__(self, device=None, pool_type='avg', band_freqs=None, wp_base=-1.0, wp_epsilon=-5.0, **kwargs):
+        self.wp_base = torch.as_tensor(wp_base, dtype=torch.float32)
+        self.wp_epsilon = torch.as_tensor(wp_epsilon, dtype=torch.float32)
+        super().__init__(device=device, pool_type=pool_type, band_freqs=band_freqs, **kwargs)
+
+    def _pool_temporal_delta(self, delta, batch, frames):
+        delta = delta.reshape(batch, frames)
+        if frames <= 1:
+            return delta.mean(dim=-1).mean()
+
+        wp_base = self.wp_base.to(device=delta.device, dtype=delta.dtype)
+        wp_epsilon = self.wp_epsilon.to(device=delta.device, dtype=delta.dtype)
+
+        x = delta.abs()
+        x_0 = torch.pow(torch.as_tensor(10.0, device=delta.device, dtype=delta.dtype), wp_base)
+        w = x / (x + x_0)
+
+        eps = torch.pow(torch.as_tensor(10.0, device=delta.device, dtype=delta.dtype), wp_epsilon)
+        weighted_delta = (delta * w).sum(dim=-1) / (w.sum(dim=-1) + eps)
+        return weighted_delta.mean()
+
+
+register_metric(cvvdp_ml_dino_fusion_bandfreq_temporal_weighted)
+
+
+# class cvvdp_ml_dino_fusion_simplified(cvvdp_ml_dino_base):
+#     """
+#     Simplified DINO-fusion model with lightweight linear heads.
+#     """
+
+#     def __init__(self, device=None, pool_type='avg', **kwargs):
+#         self.set_device(device)
+
+#         embedding_dim = 128
+#         self.feature_net = nn.Linear(8, embedding_dim).to(self.device)
+
+#         dino_dim = 768
+#         mlp_in_channels = embedding_dim + dino_dim
+#         self.quality_net = nn.Sequential(
+#             nn.LayerNorm(mlp_in_channels),
+#             nn.Linear(mlp_in_channels, 1),
+#             nn.ReLU(),
+#         ).to(self.device)
+
+#         self.pool_type = pool_type
+#         self.embedding_dim = embedding_dim
+#         self.supports_heatmap = True
+
+#         super().__init__(device=device, **kwargs)
+
+#         self.train(False)
+
+#     def get_nets_to_load(self):
+#         return ['feature_net', 'quality_net'] if hasattr(self, 'feature_net') else []
+
+#     def _clone_video_source(self, vid_source):
+#         if not hasattr(vid_source, 'test_fname') or not hasattr(vid_source, 'reference_fname'):
+#             return None
+
+#         ctor_kwargs = {
+#             'test_fname': vid_source.test_fname,
+#             'reference_fname': vid_source.reference_fname,
+#             'display_photometry': self.display_photometry,
+#             'config_paths': getattr(self, 'config_paths', []),
+#             'fps': getattr(vid_source, 'fps', None),
+#             'frames': getattr(vid_source, 'in_frames', -1),
+#             'full_screen_resize': getattr(vid_source, 'full_screen_resize', None),
+#             'resize_resolution': getattr(vid_source, 'resize_resolution', None),
+#             'ffmpeg_cc': getattr(vid_source, 'ffmpeg_cc', False),
+#             'verbose': getattr(vid_source, 'verbose', False),
+#         }
+
+#         try:
+#             return vid_source.__class__(**ctor_kwargs)
+#         except TypeError:
+#             try:
+#                 return vid_source.__class__(
+#                     vid_source.test_fname,
+#                     vid_source.reference_fname,
+#                     display_photometry=self.display_photometry,
+#                     config_paths=getattr(self, 'config_paths', []),
+#                     fps=getattr(vid_source, 'fps', None),
+#                     frames=getattr(vid_source, 'in_frames', -1),
+#                     full_screen_resize=getattr(vid_source, 'full_screen_resize', None),
+#                     resize_resolution=getattr(vid_source, 'resize_resolution', None),
+#                     ffmpeg_cc=getattr(vid_source, 'ffmpeg_cc', False),
+#                     verbose=getattr(vid_source, 'verbose', False),
+#                 )
+#             except Exception:
+#                 return None
+
+#     def _extract_reference_context(self, vid_source, met_colorspace):
+#         _, _, no_frames = vid_source.get_video_size()
+
+#         ref_frames = []
+#         for ff in range(no_frames):
+#             ref_frame = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace).squeeze(2)
+#             ref_frames.append(ref_frame[:, 0, :, :])
+
+#         return torch.stack(ref_frames, dim=1)
+
+#     def predict_video_source(self, vid_source):
+#         assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+
+#         use_ml_heatmap = self.do_heatmap
+
+#         dino_vid_source = self._clone_video_source(vid_source)
+#         context_vid_source = self._clone_video_source(vid_source) if (use_ml_heatmap and self.heatmap != 'raw') else None
+
+#         prev_do_heatmap = self.do_heatmap
+#         if use_ml_heatmap:
+#             self.do_heatmap = False
+
+#         try:
+#             features, _ = self.extract_features(vid_source)
+#         finally:
+#             self.do_heatmap = prev_do_heatmap
+
+#         dino_source = dino_vid_source if dino_vid_source is not None else vid_source
+#         dino_features = self.extract_features_dino(dino_source)
+
+#         if use_ml_heatmap:
+#             q_jod, heatmap_raw = self.do_pooling_and_jods(features, dino_features, return_heatmap=True)
+#             if self.heatmap == 'raw':
+#                 heatmap = heatmap_raw.detach().type(torch.float16).cpu().unsqueeze(1)
+#             else:
+#                 met_colorspace = 'logLMS_DKLd65' if self.contrast == 'log' else 'DKLd65'
+#                 context_source = context_vid_source if context_vid_source is not None else vid_source
+#                 ref_context = self._extract_reference_context(context_source, met_colorspace).detach().cpu()
+#                 heatmap = visualize_diff_map(
+#                     heatmap_raw.detach().cpu(),
+#                     context_image=ref_context,
+#                     colormap_type=self.heatmap,
+#                     use_cpu=False
+#                 ).detach().type(torch.float16).cpu().unsqueeze(0)
+#         else:
+#             q_jod = self.do_pooling_and_jods(features, dino_features)
+#             heatmap = None
+
+#         vid_sz = vid_source.get_video_size()
+#         height, width, n_frames = vid_sz
+
+#         stats = {}
+#         stats['rho_band'] = self.lpyr.get_freqs()
+#         stats['frames_per_second'] = vid_source.get_frames_per_second()
+#         stats['width'] = width
+#         stats['height'] = height
+#         stats['N_frames'] = n_frames
+
+#         if self.dump_channels:
+#             self.dump_channels.close()
+
+#         if use_ml_heatmap:
+#             stats['heatmap'] = heatmap
+
+#         return (q_jod.squeeze(), stats)
+
+#     def do_pooling_and_jods(self, features, dino_features, return_heatmap=False):
+#         no_bands = len(features)
+#         q_jod = torch.as_tensor(10., device=self.device)
+
+#         f0 = features[0]
+#         ch_dim = 4 if f0.dim() == 6 else 3
+#         is_image = (f0.shape[ch_dim] == 3)
+
+#         dino_ref = dino_features[0]
+#         if dino_ref.dim() == 2:
+#             dino_ref = dino_ref.unsqueeze(1)
+#         dino_ref = dino_ref.to(self.device)
+
+#         band_embeddings = []
+#         heatmap_band_maps = [None] * no_bands if return_heatmap else None
+
+#         for bb in range(no_bands):
+#             f = features[bb]
+
+#             if is_image:
+#                 if f.dim() == 6:
+#                     f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+#                 else:
+#                     f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3)
+
+#             if self.disabled_features is not None:
+#                 if f.dim() == 6:
+#                     f[..., self.disabled_features] = 0
+#                 else:
+#                     f[:, :, :, :, self.disabled_features] = 0
+
+#             f_d = f[..., 4:]
+#             f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+#             f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+#             if f_d.dim() == 5:
+#                 batch, frames, height, width, _ = f_d.shape
+#                 f_d_flat = f_d.reshape(-1, 8)
+#                 embeddings_tokens = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+
+#                 if return_heatmap:
+#                     dino_cur = dino_ref
+#                     if dino_cur.dim() == 2:
+#                         dino_cur = dino_cur.unsqueeze(0)
+#                     if dino_cur.shape[0] == 1 and batch > 1:
+#                         dino_cur = dino_cur.expand(batch, -1, -1)
+#                     if dino_cur.shape[1] == 1 and frames > 1:
+#                         dino_cur = dino_cur.expand(-1, frames, -1)
+#                     elif dino_cur.shape[1] > frames:
+#                         dino_cur = dino_cur[:, :frames, :]
+#                     elif dino_cur.shape[1] < frames:
+#                         dino_cur = torch.cat((dino_cur, dino_cur[:, -1:, :].expand(-1, frames - dino_cur.shape[1], -1)), dim=1)
+
+#                     dino_map = dino_cur[:, :, None, :].expand(-1, -1, height * width, -1)
+#                     combined_tokens = torch.cat((embeddings_tokens, dino_map), dim=-1)
+#                     token_delta = self.quality_net(combined_tokens.reshape(-1, self.embedding_dim + 768)).reshape(batch, frames, height, width)
+
+#                     is_base_band = (bb == no_bands - 1)
+#                     if is_base_band:
+#                         token_delta *= self.baseband_weight
+#                     if is_image:
+#                         token_delta *= self.image_int
+
+#                     heatmap_band_maps[bb] = token_delta.clamp_min(0.)
+
+#                 embeddings = embeddings_tokens
+
+#                 if self.pool_type == 'avg':
+#                     embeddings = embeddings.mean(dim=2)
+#                 elif self.pool_type == 'max':
+#                     embeddings, _ = embeddings.max(dim=2)
+#                 else:
+#                     raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+#             elif f_d.dim() == 4:
+#                 batch, height, width, _ = f_d.shape
+#                 frames = 1
+#                 f_d_flat = f_d.reshape(-1, 8)
+#                 embeddings = self.feature_net(f_d_flat).reshape(batch, height * width, self.embedding_dim)
+
+#                 if self.pool_type == 'avg':
+#                     embeddings = embeddings.mean(dim=1, keepdim=True)
+#                 elif self.pool_type == 'max':
+#                     embeddings, _ = embeddings.max(dim=1, keepdim=True)
+#                 else:
+#                     raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+#                 if return_heatmap:
+#                     dino_cur = dino_ref
+#                     if dino_cur.dim() == 2:
+#                         dino_cur = dino_cur.unsqueeze(0)
+#                     if dino_cur.shape[0] == 1 and batch > 1:
+#                         dino_cur = dino_cur.expand(batch, -1, -1)
+#                     if dino_cur.shape[1] == 1:
+#                         dino_cur = dino_cur.expand(-1, frames, -1)
+
+#                     dino_map = dino_cur[:, :, None, :].expand(-1, -1, height * width, -1)
+#                     tokens = self.feature_net(f_d_flat).reshape(batch, frames, height * width, self.embedding_dim)
+#                     combined_tokens = torch.cat((tokens, dino_map), dim=-1)
+#                     token_delta = self.quality_net(combined_tokens.reshape(-1, self.embedding_dim + 768)).reshape(batch, frames, height, width)
+
+#                     is_base_band = (bb == no_bands - 1)
+#                     if is_base_band:
+#                         token_delta *= self.baseband_weight
+#                     if is_image:
+#                         token_delta *= self.image_int
+
+#                     heatmap_band_maps[bb] = token_delta.clamp_min(0.)
+#             else:
+#                 raise RuntimeError(f"Unsupported feature tensor dimensionality: {f_d.dim()}")
+
+#             band_embeddings.append(embeddings)
+
+#         band_embeddings = torch.stack(band_embeddings, dim=2)
+
+#         baseband_weight = self.baseband_weight
+#         if isinstance(baseband_weight, torch.Tensor):
+#             if baseband_weight.numel() > 1:
+#                 baseband_weight = baseband_weight.mean()
+#             baseband_weight = baseband_weight.to(self.device)
+
+#         band_weights = torch.ones((1, 1, no_bands, 1), device=self.device, dtype=band_embeddings.dtype)
+#         band_weights[:, :, no_bands - 1, :] = baseband_weight
+#         weighted_band_embeddings = band_embeddings * band_weights
+
+#         if self.pool_type == 'avg':
+#             pooled_embeddings = weighted_band_embeddings.sum(dim=2) / band_weights.sum(dim=2).clamp_min(1e-8)
+#         elif self.pool_type == 'max':
+#             pooled_embeddings, _ = weighted_band_embeddings.max(dim=2)
+#         else:
+#             raise ValueError(f"Unsupported pooling type: {self.pool_type}")
+
+#         batch, frames, _ = pooled_embeddings.shape
+
+#         if dino_ref.dim() == 2:
+#             if dino_ref.shape[0] == frames:
+#                 dino_ref = dino_ref.unsqueeze(0)
+#             else:
+#                 dino_ref = dino_ref.unsqueeze(1)
+
+#         if dino_ref.dim() == 3 and dino_ref.shape[0] == 1 and batch > 1:
+#             dino_ref = dino_ref.expand(batch, -1, -1)
+
+#         if dino_ref.shape[1] != frames:
+#             if dino_ref.shape[1] == 1:
+#                 dino_ref = dino_ref.expand(-1, frames, -1)
+#             else:
+#                 min_frames = min(dino_ref.shape[1], frames)
+#                 dino_ref = dino_ref[:, :min_frames, :]
+#                 pooled_embeddings = pooled_embeddings[:, :min_frames, :]
+#                 frames = min_frames
+
+#         combined_features = torch.cat((pooled_embeddings, dino_ref), dim=-1)
+#         combined_flat = combined_features.reshape(-1, self.embedding_dim + 768)
+#         delta = self.quality_net(combined_flat)
+
+#         delta = delta.reshape(batch, frames)
+#         delta = delta.mean(dim=-1).mean()
+
+#         if is_image:
+#             delta *= self.image_int
+
+#         q_jod = q_jod - delta
+
+#         assert not q_jod.isnan()
+#         if not return_heatmap:
+#             return q_jod
+
+#         heatmap_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+#         heatmap_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
+
+#         for bb in range(no_bands):
+#             band_map = heatmap_band_maps[bb]
+#             target_h = heatmap_pyr.get_lband(bb).shape[-2]
+#             target_w = heatmap_pyr.get_lband(bb).shape[-1]
+
+#             if band_map.shape[-2] != target_h or band_map.shape[-1] != target_w:
+#                 bsz, nframes, src_h, src_w = band_map.shape
+#                 band_map = Func.adaptive_avg_pool2d(
+#                     band_map.reshape(bsz * nframes, 1, src_h, src_w),
+#                     output_size=(target_h, target_w)
+#                 ).reshape(bsz, nframes, target_h, target_w)
+
+#             heatmap_band_maps[bb] = band_map
+
+#         n_frames = heatmap_band_maps[0].shape[1]
+#         heatmap_raw = torch.empty((batch, n_frames, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device)
+
+#         with torch.no_grad():
+#             for bidx in range(batch):
+#                 for ff in range(n_frames):
+#                     frame_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+#                     frame_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
+#                     for bb in range(no_bands):
+#                         frame_pyr.set_lband(bb, heatmap_band_maps[bb][bidx:bidx+1, ff:ff+1, :, :])
+#                     frame_map = 1. - (self.met2jod(frame_pyr.reconstruct()) / 10.)
+#                     heatmap_raw[bidx:bidx+1, ff:ff+1, :, :] = frame_map
+
+#         return q_jod, heatmap_raw
+
+
+# register_metric(cvvdp_ml_dino_fusion_simplified)
+
+
+# class cvvdp_ml_dino_fusion_simplified_v2(cvvdp_ml_dino_fusion_simplified):
+#     """
+#     Simplified DINO-fusion v2 with a small hidden-layer quality head.
+#     """
+
+#     def __init__(self, device=None, pool_type='avg', quality_hidden_dim=256, **kwargs):
+#         self.set_device(device)
+
+#         embedding_dim = 128
+#         self.feature_net = nn.Linear(8, embedding_dim).to(self.device)
+
+#         mlp_in_channels = embedding_dim + 768
+#         self.quality_net = nn.Sequential(
+#             nn.LayerNorm(mlp_in_channels),
+#             MLP(
+#                 in_channels=mlp_in_channels,
+#                 hidden_channels=[256, 128, 1],
+#                 activation_layer=torch.nn.ReLU,
+#                 dropout=0.1,
+#             ),
+#         ).to(self.device)
+
+#         self.pool_type = pool_type
+#         self.embedding_dim = embedding_dim
+#         self.supports_heatmap = True
+
+#         cvvdp_ml_dino_base.__init__(self, device=device, **kwargs)
+
+#         self.train(False)
+
+
+# register_metric(cvvdp_ml_dino_fusion_simplified_v2)
+
+
+# class cvvdp_ml_dino_attention(cvvdp_ml_dino_base):
+
+#     def __init__(self, device=None, **kwargs):
+#         self.set_device(device)
+
+#         self.embedding_dim = 128
+#         dino_dim = 768
+
+#         self.feature_net = nn.Sequential(
+#             nn.Linear(8, 256),
+#             nn.ReLU(),
+#             nn.Dropout(0.2),
+#             nn.Linear(256, self.embedding_dim),
+#         ).to(self.device)
+
+#         self.query_proj = nn.Sequential(
+#             nn.Linear(dino_dim, self.embedding_dim),
+#             nn.ReLU(),
+#             nn.Dropout(0.2),
+#         ).to(self.device)
+
+#         self.cross_attn = nn.MultiheadAttention(
+#             embed_dim=self.embedding_dim,
+#             num_heads=8,
+#             dropout=0.1,
+#             batch_first=True,
+#         ).to(self.device)
+
+#         self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
+
+#         self.quality_net = MLP(
+#             in_channels=self.embedding_dim,
+#             hidden_channels=[384, 128, 1],
+#             activation_layer=torch.nn.ReLU,
+#             dropout=0.2,
+#         ).to(self.device)
+
+#         super().__init__(device=device, **kwargs)
+
+#         self.train(False)
+
+#     def get_nets_to_load(self):
+#         return ['feature_net', 'query_proj', 'cross_attn', 'attn_norm', 'quality_net']
+
+#     def do_pooling_and_jods(self, features, dino_features):
+#         no_bands = len(features)
+#         q_jod = torch.as_tensor(10., device=self.device)
+
+#         baseband_weight = self.baseband_weight
+#         if isinstance(baseband_weight, torch.Tensor):
+#             if baseband_weight.numel() > 1:
+#                 baseband_weight = baseband_weight.mean()
+#             baseband_weight = baseband_weight.to(self.device)
+
+#         f0 = features[0]
+#         ch_dim = 4 if f0.dim() == 6 else 3
+#         is_image = (f0.shape[ch_dim] == 3)
+
+#         band_tokens = []
+#         for bb in range(no_bands):
+#             f = features[bb]
+
+#             if f.dim() == 4:
+#                 f = f.unsqueeze(0)
+
+#             if is_image:
+#                 f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+
+#             if self.disabled_features is not None:
+#                 f[..., self.disabled_features] = 0
+
+#             f_d = f[..., 4:]
+#             f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+#             f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+#             bsz, nframes, hsz, wsz, _ = f_d.shape
+#             f_d_flat = f_d.reshape(-1, 8)
+#             emb = self.feature_net(f_d_flat).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
+
+#             band_tokens.append(emb)
+
+#         token_bank = torch.cat(band_tokens, dim=2)
+
+#         dino_ref = dino_features[0].to(self.device)
+#         if dino_ref.dim() == 2:
+#             dino_ref = dino_ref.unsqueeze(0)
+
+#         if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
+#             dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
+
+#         if dino_ref.shape[1] != token_bank.shape[1]:
+#             if dino_ref.shape[1] == 1:
+#                 dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
+#             else:
+#                 min_frames = min(dino_ref.shape[1], token_bank.shape[1])
+#                 dino_ref = dino_ref[:, :min_frames, :]
+#                 token_bank = token_bank[:, :min_frames, :, :]
+
+#         bsz, nframes, ntokens, _ = token_bank.shape
+#         query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
+#         key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
+
+#         attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
+#         attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
+
+#         delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
+
+#         if is_image:
+#             delta *= self.image_int
+
+#         q_jod -= delta.mean(dim=1).mean()
+
+#         assert not q_jod.isnan()
+#         return q_jod
+
+
+# register_metric(cvvdp_ml_dino_attention)
+
+
+# class cvvdp_ml_dino_attention_v2(cvvdp_ml_dino_base):
+
+#     def __init__(self, device=None, dim=128, max_bands=16, **kwargs):
+#         self.set_device(device)
+
+#         self.embedding_dim = dim
+#         self.max_bands = max_bands
+#         dino_dim = 768
+
+#         self.feature_net = nn.Sequential(
+#             nn.Linear(8, 256),
+#             nn.GELU(),
+#             nn.Dropout(0.2),
+#             nn.Linear(256, self.embedding_dim),
+#         ).to(self.device)
+
+#         self.spatial_pos_mlp = nn.Sequential(
+#             nn.Linear(2, self.embedding_dim // 2),
+#             nn.GELU(),
+#             nn.Linear(self.embedding_dim // 2, self.embedding_dim)
+#         ).to(self.device)
+
+#         self.band_pos_embed = nn.Embedding(self.max_bands, self.embedding_dim).to(self.device)
+#         self.baseband_flag_embed = nn.Embedding(2, self.embedding_dim).to(self.device)
+
+#         self.query_proj = nn.Sequential(
+#             nn.Linear(dino_dim, self.embedding_dim),
+#             nn.GELU(),
+#             nn.Dropout(0.2),
+#         ).to(self.device)
+
+#         self.cross_attn = nn.MultiheadAttention(
+#             embed_dim=self.embedding_dim,
+#             num_heads=8,
+#             dropout=0.1,
+#             batch_first=True,
+#         ).to(self.device)
+
+#         self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
+
+#         self.quality_net = MLP(
+#             in_channels=self.embedding_dim,
+#             hidden_channels=[256, 64, 1],
+#             activation_layer=torch.nn.ReLU,
+#             dropout=0.2,
+#         ).to(self.device)
+
+#         super().__init__(device=device, **kwargs)
+
+#         self.train(False)
+
+#     def get_nets_to_load(self):
+#         return [
+#             'feature_net',
+#             'spatial_pos_mlp',
+#             'band_pos_embed',
+#             'baseband_flag_embed',
+#             'query_proj',
+#             'cross_attn',
+#             'attn_norm',
+#             'quality_net'
+#         ]
+
+#     def _get_spatial_position_embedding(self, h, w, device):
+#         y_coords = (torch.arange(h, device=device).float() + 0.5) / h
+#         x_coords = (torch.arange(w, device=device).float() + 0.5) / w
+#         grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
+#         pos_embed = self.spatial_pos_mlp(grid)
+#         return pos_embed.view(1, 1, h * w, self.embedding_dim)
+
+#     def do_pooling_and_jods(self, features, dino_features):
+#         no_bands = len(features)
+#         if no_bands > self.max_bands:
+#             raise RuntimeError(f"Number of bands ({no_bands}) exceeds max_bands ({self.max_bands})")
+
+#         q_jod = torch.as_tensor(10., device=self.device)
+
+#         f0 = features[0]
+#         ch_dim = 4 if f0.dim() == 6 else 3
+#         is_image = (f0.shape[ch_dim] == 3)
+
+#         band_tokens = []
+#         for bb in range(no_bands):
+#             f = features[bb]
+
+#             if f.dim() == 4:
+#                 f = f.unsqueeze(0)
+
+#             if is_image:
+#                 f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+
+#             if self.disabled_features is not None:
+#                 f[..., self.disabled_features] = 0
+
+#             f_d = f[..., 4:]
+#             f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+#             f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+#             bsz, nframes, hsz, wsz, _ = f_d.shape
+#             emb = self.feature_net(f_d.reshape(-1, 8)).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
+
+#             spatial_pos = self._get_spatial_position_embedding(hsz, wsz, f.device)
+#             emb = emb + spatial_pos
+
+#             band_index = torch.as_tensor([bb], dtype=torch.long, device=f.device)
+#             band_pos = self.band_pos_embed(band_index).view(1, 1, 1, self.embedding_dim)
+#             emb = emb + band_pos
+
+#             is_baseband = 1 if bb == (no_bands - 1) else 0
+#             baseband_index = torch.as_tensor([is_baseband], dtype=torch.long, device=f.device)
+#             baseband_pos = self.baseband_flag_embed(baseband_index).view(1, 1, 1, self.embedding_dim)
+#             emb = emb + baseband_pos
+
+#             band_tokens.append(emb)
+
+#         token_bank = torch.cat(band_tokens, dim=2)
+
+#         dino_ref = dino_features[0].to(self.device)
+#         if dino_ref.dim() == 2:
+#             dino_ref = dino_ref.unsqueeze(0)
+
+#         if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
+#             dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
+
+#         if dino_ref.shape[1] != token_bank.shape[1]:
+#             if dino_ref.shape[1] == 1:
+#                 dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
+#             else:
+#                 min_frames = min(dino_ref.shape[1], token_bank.shape[1])
+#                 dino_ref = dino_ref[:, :min_frames, :]
+#                 token_bank = token_bank[:, :min_frames, :, :]
+
+#         bsz, nframes, ntokens, _ = token_bank.shape
+#         query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
+#         key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
+
+#         attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
+#         attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
+
+#         delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
+
+#         if is_image:
+#             delta *= self.image_int
+
+#         q_jod -= delta.mean(dim=1).mean()
+
+#         assert not q_jod.isnan()
+#         return q_jod
+
+
+# register_metric(cvvdp_ml_dino_attention_v2)
+
+
+# class cvvdp_ml_dino_attention_hybrid(cvvdp_ml_dino_base):
+
+#     def __init__(self, device=None, dim=128, max_bands=16, tokens_per_band=16, use_positional=True, **kwargs):
+#         self.set_device(device)
+
+#         self.embedding_dim = dim
+#         self.max_bands = max_bands
+#         self.tokens_per_band = tokens_per_band
+#         self.use_positional = use_positional
+#         dino_dim = 768
+
+#         self.feature_net = nn.Sequential(
+#             nn.Linear(8, 256),
+#             nn.GELU(),
+#             nn.Dropout(0.2),
+#             nn.Linear(256, self.embedding_dim),
+#         ).to(self.device)
+
+#         if self.use_positional:
+#             self.spatial_pos_mlp = nn.Sequential(
+#                 nn.Linear(2, self.embedding_dim // 2),
+#                 nn.GELU(),
+#                 nn.Linear(self.embedding_dim // 2, self.embedding_dim)
+#             ).to(self.device)
+
+#             self.band_pos_embed = nn.Embedding(self.max_bands, self.embedding_dim).to(self.device)
+#             self.baseband_flag_embed = nn.Embedding(2, self.embedding_dim).to(self.device)
+
+#             self.spatial_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
+#             self.band_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
+#             self.baseband_pos_scale = nn.Parameter(torch.tensor(1.0, device=self.device))
+
+#         self.query_proj = nn.Sequential(
+#             nn.Linear(dino_dim, self.embedding_dim),
+#             nn.GELU(),
+#             nn.Dropout(0.2),
+#         ).to(self.device)
+
+#         self.cross_attn = nn.MultiheadAttention(
+#             embed_dim=self.embedding_dim,
+#             num_heads=8,
+#             dropout=0.1,
+#             batch_first=True,
+#         ).to(self.device)
+
+#         self.attn_norm = nn.LayerNorm(self.embedding_dim).to(self.device)
+
+#         self.quality_net = MLP(
+#             in_channels=self.embedding_dim,
+#             hidden_channels=[384, 128, 1],
+#             activation_layer=torch.nn.ReLU,
+#             dropout=0.2,
+#         ).to(self.device)
+
+#         super().__init__(device=device, **kwargs)
+
+#         self.train(False)
+
+#     def get_nets_to_load(self):
+#         nets = [
+#             'feature_net',
+#             'query_proj',
+#             'cross_attn',
+#             'attn_norm',
+#             'quality_net'
+#         ]
+#         if self.use_positional:
+#             nets.extend([
+#                 'spatial_pos_mlp',
+#                 'band_pos_embed',
+#                 'baseband_flag_embed'
+#             ])
+#         return nets
+
+#     def _get_spatial_position_embedding(self, h, w, device):
+#         y_coords = (torch.arange(h, device=device).float() + 0.5) / h
+#         x_coords = (torch.arange(w, device=device).float() + 0.5) / w
+#         grid = torch.stack(torch.meshgrid(y_coords, x_coords, indexing='ij'), dim=-1)
+#         pos_embed = self.spatial_pos_mlp(grid)
+#         return pos_embed.view(1, 1, h * w, self.embedding_dim)
+
+#     def _reduce_spatial_tokens(self, emb, hsz, wsz):
+#         if self.tokens_per_band is None or self.tokens_per_band <= 0:
+#             return emb
+
+#         max_tokens = hsz * wsz
+#         if self.tokens_per_band >= max_tokens:
+#             return emb
+
+#         pool_h = max(1, int(math.sqrt(self.tokens_per_band)))
+#         pool_w = max(1, int(math.ceil(self.tokens_per_band / pool_h)))
+
+#         bsz, nframes, _, emb_dim = emb.shape
+#         emb_map = emb.reshape(bsz * nframes, hsz, wsz, emb_dim).permute(0, 3, 1, 2)
+#         pooled = Func.adaptive_avg_pool2d(emb_map, output_size=(pool_h, pool_w))
+#         pooled = pooled.permute(0, 2, 3, 1).reshape(bsz, nframes, pool_h * pool_w, emb_dim)
+
+#         if pooled.shape[2] > self.tokens_per_band:
+#             pooled = pooled[:, :, :self.tokens_per_band, :]
+
+#         return pooled
+
+#     def do_pooling_and_jods(self, features, dino_features):
+#         no_bands = len(features)
+#         if no_bands > self.max_bands:
+#             raise RuntimeError(f"Number of bands ({no_bands}) exceeds max_bands ({self.max_bands})")
+
+#         q_jod = torch.as_tensor(10., device=self.device)
+
+#         baseband_weight = self.baseband_weight
+#         if isinstance(baseband_weight, torch.Tensor):
+#             if baseband_weight.numel() > 1:
+#                 baseband_weight = baseband_weight.mean()
+#             baseband_weight = baseband_weight.to(self.device)
+
+#         f0 = features[0]
+#         ch_dim = 4 if f0.dim() == 6 else 3
+#         is_image = (f0.shape[ch_dim] == 3)
+
+#         band_tokens = []
+#         for bb in range(no_bands):
+#             f = features[bb]
+
+#             if f.dim() == 4:
+#                 f = f.unsqueeze(0)
+
+#             if is_image:
+#                 f = torch.cat((f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], f.shape[3], 1, f.shape[5]), device=self.device)), dim=4)
+
+#             if self.disabled_features is not None:
+#                 f[..., self.disabled_features] = 0
+
+#             f_d = f[..., 4:]
+#             f_d[..., 1] = torch.sqrt(torch.abs(f_d[..., 1]))
+#             f_d = f_d.flatten(start_dim=f_d.dim() - 2)
+
+#             bsz, nframes, hsz, wsz, _ = f_d.shape
+#             emb = self.feature_net(f_d.reshape(-1, 8)).reshape(bsz, nframes, hsz * wsz, self.embedding_dim)
+
+#             if self.use_positional:
+#                 spatial_pos = self._get_spatial_position_embedding(hsz, wsz, f.device)
+#                 emb = emb + self.spatial_pos_scale * spatial_pos
+
+#                 band_index = torch.as_tensor([bb], dtype=torch.long, device=f.device)
+#                 band_pos = self.band_pos_embed(band_index).view(1, 1, 1, self.embedding_dim)
+#                 emb = emb + self.band_pos_scale * band_pos
+
+#                 is_baseband = 1 if bb == (no_bands - 1) else 0
+#                 baseband_index = torch.as_tensor([is_baseband], dtype=torch.long, device=f.device)
+#                 baseband_pos = self.baseband_flag_embed(baseband_index).view(1, 1, 1, self.embedding_dim)
+#                 emb = emb + self.baseband_pos_scale * baseband_pos
+
+#             if bb == (no_bands - 1):
+#                 emb = emb * baseband_weight
+
+#             emb = self._reduce_spatial_tokens(emb, hsz, wsz)
+#             band_tokens.append(emb)
+
+#         token_bank = torch.cat(band_tokens, dim=2)
+
+#         dino_ref = dino_features[0].to(self.device)
+#         if dino_ref.dim() == 2:
+#             dino_ref = dino_ref.unsqueeze(0)
+
+#         if dino_ref.shape[0] == 1 and token_bank.shape[0] > 1:
+#             dino_ref = dino_ref.expand(token_bank.shape[0], -1, -1)
+
+#         if dino_ref.shape[1] != token_bank.shape[1]:
+#             if dino_ref.shape[1] == 1:
+#                 dino_ref = dino_ref.expand(-1, token_bank.shape[1], -1)
+#             else:
+#                 min_frames = min(dino_ref.shape[1], token_bank.shape[1])
+#                 dino_ref = dino_ref[:, :min_frames, :]
+#                 token_bank = token_bank[:, :min_frames, :, :]
+
+#         bsz, nframes, ntokens, _ = token_bank.shape
+#         query = self.query_proj(dino_ref).reshape(bsz * nframes, 1, self.embedding_dim)
+#         key_value = token_bank.reshape(bsz * nframes, ntokens, self.embedding_dim)
+
+#         attn_out, _ = self.cross_attn(query, key_value, key_value, need_weights=False)
+#         attn_out = self.attn_norm(attn_out + query).reshape(bsz, nframes, self.embedding_dim)
+
+#         delta = self.quality_net(attn_out.reshape(-1, self.embedding_dim)).reshape(bsz, nframes)
+
+#         if is_image:
+#             delta *= self.image_int
+
+#         q_jod -= delta.mean(dim=1).mean()
+
+#         assert not q_jod.isnan()
+#         return q_jod
+
+
+# register_metric(cvvdp_ml_dino_attention_hybrid)
 
 # Adds a saliency module to the cvvdp_ml
 class cvvdp_ml_saliency(cvvdp_ml):
@@ -1858,6 +3490,7 @@ class cvvdp_ml_saliency_plus(cvvdp_ml_saliency_base):
 
         self.saliency_min = saliency_min
         self.saliency_band_smoothing = saliency_band_smoothing
+        self.supports_heatmap = True
 
         super().__init__(config_paths=config_paths, device=device, **kwargs)
 
@@ -1882,7 +3515,112 @@ class cvvdp_ml_saliency_plus(cvvdp_ml_saliency_base):
         sal_map = sal_map.clamp_min(self.saliency_min)
         return sal_map
 
-    def do_pooling_and_jods(self, features, saliency_features):
+    def _extract_reference_context(self, vid_source, met_colorspace):
+        _, _, no_frames = vid_source.get_video_size()
+
+        ref_frames = []
+        for ff in range(no_frames):
+            ref_frame = vid_source.get_reference_frame(ff, device=self.device, colorspace=met_colorspace).squeeze(2)
+            ref_frames.append(ref_frame[:, 0, :, :])
+
+        return torch.stack(ref_frames, dim=1)
+
+    def _clone_video_source(self, vid_source):
+        if not hasattr(vid_source, 'test_fname') or not hasattr(vid_source, 'reference_fname'):
+            return None
+
+        ctor_kwargs = {
+            'test_fname': vid_source.test_fname,
+            'reference_fname': vid_source.reference_fname,
+            'display_photometry': self.display_photometry,
+            'config_paths': getattr(self, 'config_paths', []),
+            'fps': getattr(vid_source, 'fps', None),
+            'frames': getattr(vid_source, 'in_frames', -1),
+            'full_screen_resize': getattr(vid_source, 'full_screen_resize', None),
+            'resize_resolution': getattr(vid_source, 'resize_resolution', None),
+            'ffmpeg_cc': getattr(vid_source, 'ffmpeg_cc', False),
+            'verbose': getattr(vid_source, 'verbose', False),
+        }
+
+        try:
+            return vid_source.__class__(**ctor_kwargs)
+        except TypeError:
+            try:
+                return vid_source.__class__(
+                    vid_source.test_fname,
+                    vid_source.reference_fname,
+                    display_photometry=self.display_photometry,
+                    config_paths=getattr(self, 'config_paths', []),
+                    fps=getattr(vid_source, 'fps', None),
+                    frames=getattr(vid_source, 'in_frames', -1),
+                    full_screen_resize=getattr(vid_source, 'full_screen_resize', None),
+                    resize_resolution=getattr(vid_source, 'resize_resolution', None),
+                    ffmpeg_cc=getattr(vid_source, 'ffmpeg_cc', False),
+                    verbose=getattr(vid_source, 'verbose', False),
+                )
+            except Exception:
+                return None
+
+    def predict_video_source(self, vid_source):
+        assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
+
+        saliency_vid_source = self._clone_video_source(vid_source)
+        context_vid_source = self._clone_video_source(vid_source) if (self.do_heatmap and self.heatmap != 'raw') else None
+
+        if saliency_vid_source is None:
+            saliency_features = self.extract_features_saliency(vid_source)
+        else:
+            saliency_features = self.extract_features_saliency(saliency_vid_source)
+
+        use_ml_heatmap = self.do_heatmap
+        prev_do_heatmap = self.do_heatmap
+
+        if use_ml_heatmap:
+            self.do_heatmap = False
+
+        try:
+            features, _ = self.extract_features(vid_source)
+        finally:
+            self.do_heatmap = prev_do_heatmap
+
+        if use_ml_heatmap:
+            q_jod, heatmap_raw = self.do_pooling_and_jods(features, saliency_features, return_heatmap=True)
+            if self.heatmap == 'raw':
+                heatmap = heatmap_raw.detach().type(torch.float16).cpu().unsqueeze(1)
+            else:
+                met_colorspace = 'logLMS_DKLd65' if self.contrast == 'log' else 'DKLd65'
+                context_source = context_vid_source if context_vid_source is not None else vid_source
+                ref_context = self._extract_reference_context(context_source, met_colorspace).detach().cpu()
+                heatmap_raw_cpu = heatmap_raw.detach().cpu()
+                heatmap = visualize_diff_map(
+                    heatmap_raw_cpu,
+                    context_image=ref_context,
+                    colormap_type=self.heatmap,
+                    use_cpu=False
+                ).detach().type(torch.float16).cpu().unsqueeze(0)
+        else:
+            q_jod = self.do_pooling_and_jods(features, saliency_features)
+            heatmap = None
+
+        vid_sz = vid_source.get_video_size()
+        height, width, n_frames = vid_sz
+
+        stats = {}
+        stats['rho_band'] = self.lpyr.get_freqs()
+        stats['frames_per_second'] = vid_source.get_frames_per_second()
+        stats['width'] = width
+        stats['height'] = height
+        stats['N_frames'] = n_frames
+
+        if self.dump_channels:
+            self.dump_channels.close()
+
+        if use_ml_heatmap:
+            stats['heatmap'] = heatmap
+
+        return (q_jod.squeeze(), stats)
+
+    def do_pooling_and_jods(self, features, saliency_features, return_heatmap=False):
 
         no_bands = len(features)
         batch_sz = features[0].shape[0]
@@ -1890,6 +3628,18 @@ class cvvdp_ml_saliency_plus(cvvdp_ml_saliency_base):
         Q_JOD = torch.ones((batch_sz), device=self.device) * 10.
 
         is_image = (features[0].shape[4] == 3)
+
+        heatmap_pyr = None
+        heatmap_band_maps = None
+        if return_heatmap:
+            heatmap_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+            heatmap_band_maps = [None] * no_bands
+            dummy_heatmap = torch.zeros(
+                (1, 1, self.lpyr.H, self.lpyr.W),
+                dtype=features[0].dtype,
+                device=self.device
+            )
+            heatmap_pyr.decompose(dummy_heatmap)
 
         saliency_maps = saliency_features[0].to(self.device)
         if saliency_maps.dim() == 3:
@@ -1924,10 +3674,45 @@ class cvvdp_ml_saliency_plus(cvvdp_ml_saliency_base):
             if is_image:
                 D_all *= self.image_int
 
+            if return_heatmap:
+                heatmap_band_maps[bb] = D_all.squeeze(-1)
+
             Q_JOD -= self.spatiotemporal_pooling(D_all)
 
         assert(not Q_JOD.isnan().any())
-        return Q_JOD
+        if not return_heatmap:
+            return Q_JOD
+
+        for bb in range(no_bands):
+            band_map = heatmap_band_maps[bb]
+            target_h = heatmap_pyr.get_lband(bb).shape[-2]
+            target_w = heatmap_pyr.get_lband(bb).shape[-1]
+
+            if band_map.shape[-2] != target_h or band_map.shape[-1] != target_w:
+                bsz, nframes, src_h, src_w = band_map.shape
+                band_map_resized = Func.adaptive_avg_pool2d(
+                    band_map.reshape(bsz * nframes, 1, src_h, src_w),
+                    output_size=(target_h, target_w)
+                ).reshape(bsz, nframes, target_h, target_w)
+            else:
+                band_map_resized = band_map
+
+            heatmap_band_maps[bb] = band_map_resized
+
+        n_frames = heatmap_band_maps[0].shape[1]
+        heatmap_raw = torch.empty((batch_sz, n_frames, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device)
+
+        with torch.no_grad():
+            for bidx in range(batch_sz):
+                for ff in range(n_frames):
+                    frame_pyr = lpyr_dec_2(self.lpyr.W, self.lpyr.H, self.pix_per_deg, self.device)
+                    frame_pyr.decompose(torch.zeros((1, 1, self.lpyr.H, self.lpyr.W), dtype=features[0].dtype, device=self.device))
+                    for bb in range(no_bands):
+                        frame_pyr.set_lband(bb, heatmap_band_maps[bb][bidx:bidx+1, ff:ff+1, :, :])
+                    frame_map = 1. - (self.met2jod(frame_pyr.reconstruct()) / 10.)
+                    heatmap_raw[bidx:bidx+1, ff:ff+1, :, :] = frame_map
+
+        return Q_JOD, heatmap_raw
 
     def full_name(self):
         return "ColorVideoVDP-ML-Saliency-Plus"
