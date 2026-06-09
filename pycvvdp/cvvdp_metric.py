@@ -999,7 +999,7 @@ class cvvdp(vq_metric):
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
 
         if not self.block_channels is None:
-            Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels                
+            Q_tc = self.lp_norm(Q_sc[:, self.block_channels[0:no_channels],...], self.beta_tch, dim=2, normalize=False)  # Sum across temporal and chromatic channels                
         else:
             Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels
 
@@ -1193,7 +1193,7 @@ class cvvdp(vq_metric):
         return M
 
     def ce_overconstancy(self, C, S):
-        num_ch = C.shape[0]
+        num_ch = C.shape[1]
         zero_tens = torch.as_tensor(0., device=C.device)
         C_t = torch.minimum( 1/S, torch.as_tensor(1.99, device=C.device) )
         p_t = 0.7
@@ -1203,7 +1203,7 @@ class cvvdp(vq_metric):
 
 
     def transd_overconstancy(self, C, S):
-        num_ch = C.shape[0]
+        num_ch = C.shape[1]
         zero_tens = torch.as_tensor(0., device=C.device)
         C_t = torch.minimum( 1/S, torch.as_tensor(1.99, device=C.device) )
         p_t = 0.7
@@ -1225,7 +1225,7 @@ class cvvdp(vq_metric):
         return D
 
     def cm_transd(self, C_p):
-        num_ch = C_p.shape[0]
+        num_ch = C_p.shape[1]
 
         p = self.mask_p
         q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
@@ -1307,8 +1307,17 @@ class cvvdp(vq_metric):
                     T_t = self.cm_transd(T_p)
                     R_t = self.cm_transd(R_p)
 
+                    B, C, F, H, W = T_t.shape
+
+                    T_t = T_t.permute(0, 2, 1, 3, 4)   # [B, F, C, H, W]
+                    T_t = T_t.reshape(B * F, C, H, W)
+
+                    R_t = R_t.permute(0, 2, 1, 3, 4)   # [B, F, C, H, W]
+                    R_t = R_t.reshape(B * F, C, H, W)
+
                     mu_T = self.tex_blur.forward(T_t)
                     mu_R = self.tex_blur.forward(R_t)
+
 
                     mu_T_sq = mu_T * mu_T
                     mu_R_sq = mu_R * mu_R
@@ -1320,6 +1329,22 @@ class cvvdp(vq_metric):
 
                     #cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
                     #ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
+
+                    _, C, H, W = mu_T.shape
+
+                    mu_T = mu_T.reshape(B, F, C, H, W)
+                    mu_T = mu_T.permute(0, 2, 1, 3, 4)  # back to [B, C, F, H, W]
+
+                    mu_R = mu_R.reshape(B, F, C, H, W)
+                    mu_R = mu_R.permute(0, 2, 1, 3, 4)  # back to [B, C, F, H, W]
+
+                    _, C, H, W = sigma_T_sq.shape
+
+                    sigma_T_sq = sigma_T_sq.reshape(B, F, C, H, W)
+                    sigma_T_sq = sigma_T_sq.permute(0, 2, 1, 3, 4)  # back to [B, C, F, H, W]
+
+                    sigma_R_sq = sigma_R_sq.reshape(B, F, C, H, W)
+                    sigma_R_sq = sigma_R_sq.permute(0, 2, 1, 3, 4)  # back to [B, C, F, H, W]
 
                     D = torch.abs(mu_T-mu_R) + torch.abs(sigma_T_sq.sqrt()-sigma_R_sq.sqrt())
 
@@ -1338,8 +1363,8 @@ class cvvdp(vq_metric):
         elif self.masking_model in ["smooth_clamp_cont", "min_mutual_masking_perc_norm2", "fvvdp_ch_gain"]:
 
             if self.masking_model == "fvvdp_ch_gain":
-                num_ch = T.shape[0]
-                ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (4, 1, 1, 1) )[:num_ch,...] 
+                num_ch = T.shape[1]
+                ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:, :num_ch,...] 
                 #print( f"max T[0] = {T[0,...].max()}; \tT[1] = {T[1,...].max()/0.610649}" )
                 #print( f"mean S[0] = {S[0,...].mean()}; \tS[1] = {S[1,...].mean()}; \tS[2] = {S[2,...].mean()}" )
                 T = T*S*ch_gain
@@ -1352,11 +1377,11 @@ class cvvdp(vq_metric):
 
             # Cross-channel masking
             if self.do_xchannel_masking:
-                num_ch = M_pu.shape[0]
+                num_ch = M_pu.shape[1]
                 M = torch.empty_like(M_pu)
-                xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4,1,1,1) )[:num_ch,...]
+                xcm_weights = torch.reshape( (2**self.xcm_weights), (1, 4,4,1,1,1) )[:, :num_ch,...]
                 for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                    M[:,cc:(cc+1),...] = torch.sum( M_pu * xcm_weights[:,cc], dim=0, keepdim=True )
+                    M[:,:,cc:(cc+1),...] = torch.sum( M_pu * xcm_weights[:,:,cc], dim=1, keepdim=True )
             else:
                 M = M_pu
 
@@ -1380,8 +1405,8 @@ class cvvdp(vq_metric):
         elif self.dclamp_type == "none":
             Dc = D
         elif self.dclamp_type == "per_channel":
-            num_ch = D.shape[0]
-            max_v = 10**(self.d_max[:num_ch,...].view(-1,1,1,1))
+            num_ch = D.shape[1]
+            max_v = 10**(self.d_max[:,:num_ch,...].view(-1,1,1,1))
             Dc = max_v * D / (max_v + D)
         else:
             raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
