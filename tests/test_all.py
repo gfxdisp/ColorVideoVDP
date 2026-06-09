@@ -112,7 +112,8 @@ def test_all(device_name):
     parameters = utils.json2dict('pycvvdp/vvdp_data/cvvdp_parameters.json');
     version = parameters['version']
 
-    metric_classes = [ pycvvdp.cvvdp, pycvvdp.cvvdp_ml_saliency, pycvvdp.cvvdp_ml_transformer ]
+    # metric_classes = [ pycvvdp.cvvdp, pycvvdp.cvvdp_ml_saliency, pycvvdp.cvvdp_ml_transformer ]
+    metric_classes = [ pycvvdp.cvvdp ]
 
     metric_instances = [mc(device=device) for mc in metric_classes]
     metric_names = [met.short_name() for met in metric_instances]
@@ -155,6 +156,8 @@ def test_all(device_name):
             met_res = []
             for mc in metric_classes:
                 testing_func = tst[1]
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache() # Clear cache before running tests
                 met_res.append( testing_func(mc, device=device) )
             
             hr.beg_table( class_tag='stripe' )

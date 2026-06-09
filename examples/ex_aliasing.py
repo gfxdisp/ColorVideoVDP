@@ -32,6 +32,7 @@ def aliasing_example( metric_class = pycvvdp.cvvdp, device=None ):
         tst_time = end-start
         print( 'Quality for {}: {:.3f} JOD (took {:.4f} secs to compute)'.format(tst_label, Q_JOD, tst_time) )
         res.append( (tst_label, Q_JOD, tst_time) )
+        
 
     return res
 

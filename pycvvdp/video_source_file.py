@@ -436,20 +436,20 @@ class video_source_video_file(video_source_dm):
     # Get a test (reference) video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
-    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+    def get_test_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
         self.init_readers()
         #print( f"{self.test_fname} - {self.fs_width}x{self.fs_height}" )
         # if not self.last_test_frame is None and frame == self.last_test_frame[0]:
         #     return self.last_test_frame[1]
-        L = self._get_frame( self.test_vidr, frame, device, colorspace )
+        L = self._get_frame( self.test_vidr, frame_idx, device, colorspace )
         # self.last_test_frame = (frame,L)
         return L
 
-    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
+    def get_reference_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
         self.init_readers()
         # if not self.last_reference_frame is None and frame == self.last_reference_frame[0]:
         #     return self.last_reference_frame[1]
-        L = self._get_frame( self.reference_vidr, frame, device, colorspace )
+        L = self._get_frame( self.reference_vidr, frame_idx, device, colorspace )
         # self.reference_test_frame = (frame,L)
         return L
 
@@ -528,17 +528,18 @@ class video_source_temp_resample_file(video_source_video_file):
         return super().get_video_size()
 
 
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame_idx, device, colorspace ):        
 
-        frame_ind = int(safe_floor((frame+0.5) * vid_reader.avg_fps/self.resample_fps))
+        # Frame index after temporal resampling
+        resample_frame_idx = int(safe_floor((frame_idx+0.5) * vid_reader.avg_fps/self.resample_fps))
 
         ce = 0 if vid_reader == self.test_vidr else 1
 
-        if self.cache_ind[ce] == frame_ind:  # if quering the same frame in the source video, return the cache entry
+        if self.cache_ind[ce] == resample_frame_idx:  # if quering the same frame in the source video, return the cache entry
             return self.cache_frame[ce]
         else:
-            self.cache_ind[ce] = frame_ind
-            self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
+            self.cache_ind[ce] = resample_frame_idx
+            self.cache_frame[ce] = super()._get_frame( vid_reader, resample_frame_idx, device=device, colorspace=colorspace )
             #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
             return self.cache_frame[ce]            
 
@@ -626,24 +627,24 @@ class video_source_image_frames(video_source_dm):
 
         return self.video_size
 
-    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        if frame==0 and not self.img_cache is None: # Use cache to avoid loading the same image twice
-            I = self._get_frame( self.test_fname, frame, device, colorspace, self.img_cache )
+    def get_test_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
+        if frame_idx==0 and not self.img_cache is None: # Use cache to avoid loading the same image twice
+            I = self._get_frame( self.test_fname, frame_idx, device, colorspace, self.img_cache )
             self.img_cache = None
             return I
         else:
-            return self._get_frame( self.test_fname, frame, device, colorspace)
+            return self._get_frame( self.test_fname, frame_idx, device, colorspace)
 
-    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        return self._get_frame( self.reference_fname, frame, device, colorspace)
+    def get_reference_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
+        return self._get_frame( self.reference_fname, frame_idx, device, colorspace)
 
-    def _get_frame(self, file_name, frame, device, colorspace, cache_img=None):
+    def _get_frame(self, file_name, frame_idx, device, colorspace, cache_img=None):
 
         if not cache_img is None: 
             img = cache_img
         else:
             if self.fps>0: # video
-                frame_num = self.frame_range[frame]
+                frame_num = self.frame_range[frame_idx]
                 file_name = file_name.format(frame_num)
             img = load_image_as_array(file_name)
 
@@ -813,8 +814,8 @@ class video_source_file(video_source):
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
-    def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        return self.vs.get_test_frame( frame, device, colorspace )
+    def get_test_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
+        return self.vs.get_test_frame( frame_idx, device, colorspace )
 
-    def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        return self.vs.get_reference_frame( frame, device, colorspace )
+    def get_reference_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
+        return self.vs.get_reference_frame( frame_idx, device, colorspace )

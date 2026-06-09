@@ -106,7 +106,7 @@ class cvvdp_frame_buffers:
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="replicate", use_checkpoints=False, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.temp_padding = temp_padding
@@ -228,7 +228,7 @@ class cvvdp(vq_metric):
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
         # other parameters
-        self.debug = False
+        self.debug = True
 
     def update_from_checkpoint(self, ckpt):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
@@ -354,9 +354,13 @@ class cvvdp(vq_metric):
         if self.device.type == 'cuda' and torch.cuda.is_available() and not is_image:
             # GPU utilization is better if we process many frames, but it requires more GPU memory
             pix_cnt = width*height*batch_sz
-            block_N_frames = self.estimate_block_N(pix_cnt, N_frames)
+            block_N_frames = max(1, min(self.estimate_block_N(pix_cnt, self.filter_len), N_frames))
         else:
             block_N_frames = 1
+
+        if self.debug:
+            logging.debug( f"Processing a block of {block_N_frames} frames at a time.")
+
 
         # block_N_frames = min(block_N_frames,1)
         # print( f'Block of frames: {block_N_frames}')
@@ -435,12 +439,16 @@ class cvvdp(vq_metric):
 
         if self.debug: 
             logging.debug( f"Processing {block_N_frames} frames in a batch." )
+            logging.debug( f"Filter length {self.filter_len} frames." )
             logging.debug( f"Resolution: {width}x{height} = {width*height/1e6} Mpixels" )
-            mem_allocated_peak = torch.cuda.max_memory_allocated(self.device)            
+            # mem_allocated_peak = torch.cuda.max_memory_allocated(self.device)            
             # logging.debug( f"Memory allocated at start: {self.start_allocated/1e9} GB" )
             if hasattr( self, "sw_buf_allocated" ):
                 logging.debug( f"Memory allocated for temp. filter buffers: {self.sw_buf_allocated/1e9} GB" )
             logging.debug( f"Max memory allocated: {torch.cuda.max_memory_allocated()/1e9} GB" )
+            # The model is:  total_mem = a + pix_cnt*(block_N_frames+filter_len-1)*b + pix_cnt*block_N_frames*c
+
+
 
         return (Q_jod.squeeze(), stats)
 
@@ -566,35 +574,51 @@ class cvvdp(vq_metric):
 
     # Determine how many frames we can process in a single batch 
     # Larger batch means faster processing, but it requires more memory
-    def estimate_block_N(self, pix_cnt, N_frames):
+    def estimate_block_N(self, pix_cnt, filter_len):
         # Determine how much memory we have
+        free, _ = torch.cuda.mem_get_info()
+        cached = torch.cuda.memory_reserved() - torch.cuda.memory_allocated()
+        mem_avail_pytorch = free + cached 
+
         if has_nvml:
-            # This is more accurate estimate
+            # This is a more accurate estimate
             nvmlInit()
             dev_index = self.device.index if self.device.index is not None else torch.cuda.current_device()
             h = nvmlDeviceGetHandleByIndex(dev_index)
             info = nvmlDeviceGetMemoryInfo(h)
-            mem_avail = info.free - 1e9  # We reserving some space, not to use all the memory
+            cached = torch.cuda.memory_reserved() - torch.cuda.memory_allocated()
+            mem_avail_nvml = info.free + cached  
+            mem_avail = min( mem_avail_nvml, mem_avail_pytorch)
         else:
-            # Torch does not allow us to querry the free memory on the GPU so this is an inaccurate estimate - likely to fail if other applications are using a GPU
-            total = torch.cuda.get_device_properties(self.device).total_memory
-            allocated = torch.cuda.memory_allocated(self.device)
-            mem_avail = total-allocated - 2e9  # Total available minus 2G (used by other apps)
+            mem_avail = mem_avail_pytorch
+        # else:
+        #     # Torch does not allow us to querry the free memory on the GPU so this is an inaccurate estimate - likely to fail if other applications are using a GPU
+        #     total = torch.cuda.get_device_properties(self.device).total_memory
+        #     allocated = torch.cuda.memory_allocated(self.device)
+        #     mem_avail = total-allocated - 2e9  # Total available minus 2G (used by other apps)
+
+        # We can also use Torch cached memory
+        # cached = torch.cuda.memory_reserved(self.device) - torch.cuda.memory_allocated(self.device)
+        # mem_avail += cached
 
         if not self.gpu_mem is None:
             mem_avail = min(int(self.gpu_mem*1e9), mem_avail)
 
-        if self.debug:
-            logging.debug( f"Available memory: {mem_avail/1e9} GB")
         # Estimate how much we need for processing
-        # The model is:  total_mem = a + pix_cnt*(N_frames+filter_len-1)*b + pix_cnt*N_frames*c
+        # The model is:  total_mem = a + pix_cnt*(block_N_frames+filter_len-1)*b + pix_cnt*block_N_frames*c
         a = 1.6e9
-        b = 16
-        c = 320 if not self.training_mode else 800 # A different value for training
+        b = 12 # 3 channel x 4-byte float
+        # c = 320 if not self.training_mode else 800 # A different value for training
+        c = 450 if not self.training_mode else 800 # A different value for training
 
-        max_frames = int(math.floor((mem_avail-a-pix_cnt*(self.filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
+        block_N_frames = int(math.floor((mem_avail-a-pix_cnt*(filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
 
-        block_N_frames = max(1, min(max_frames,N_frames))  # Process so many frames in one pass 
+        if self.debug:
+            logging.debug( f"Available memory (PyTorch): {mem_avail_pytorch/1e9} GB")
+            logging.debug( f"Available memory (NVML): {mem_avail_nvml/1e9} GB")
+            total_mem_est = a + pix_cnt*(block_N_frames+filter_len-1)*b + pix_cnt*block_N_frames*c
+            logging.debug( f"Estimated memory use: {total_mem_est/1e9} GB")
+
         return block_N_frames
 
 
