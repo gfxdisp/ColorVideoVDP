@@ -38,17 +38,18 @@ def safe_floor(x):
 # A custom video source that generates distortions on the fly
 class vs_spatiotemporal_dist(pycvvdp.video_source_filter):
 
-    def __init__(self, vs: pycvvdp.video_source, resolution_scale: float, frame_rate_scale: float, velocity_pps: float):
+    def __init__(self, vs: pycvvdp.video_source, pixels_per_degree: float, resolution_scale: float, frame_rate_scale: float, velocity_dps: float):
         super().__init__(vs)
         self.resolution_scale = resolution_scale
         self.frame_rate_scale = frame_rate_scale
-        self.velocity_pps = velocity_pps
-
+        self.velocity_dps = velocity_dps
+        self.ppd = pixels_per_degree
 
     def get_reference_frame( self, frame_idx, device, colorspace ) -> Tensor:
         frame = super().get_reference_frame( frame_idx, device, colorspace )
 
-        velocity_ppf = self.velocity_pps / self.get_frames_per_second() # Velocity in pixels per frame
+        velocity_pps = self.ppd * self.velocity_dps # Velocity in pixels per second
+        velocity_ppf = velocity_pps / self.get_frames_per_second() # Velocity in pixels per frame
         motion_pos_x = int(round(velocity_ppf * float(frame_idx)))
             
         # Shift the content of the tensor by 'motion_pos_x' columns in the right direction. The content that is pushed to the right is wrapped around and appears on the left side of the tensor (roll).
@@ -63,9 +64,10 @@ class vs_spatiotemporal_dist(pycvvdp.video_source_filter):
         # print(f"frame: {frame_idx} resampled: {resample_frame_idx} fr_scale: {self.frame_rate_scale}")
         
         frame=super().get_test_frame( resample_frame_idx, device, colorspace )    
-
-        velocity_ppf = self.velocity_pps / self.get_frames_per_second() # Velocity in pixels per frame
-        motion_pos_x = int(round(velocity_ppf * float(frame_idx)))
+        
+        velocity_pps = self.ppd * self.velocity_dps # Velocity in pixels per second
+        velocity_ppf = velocity_pps / self.get_frames_per_second() # Velocity in pixels per frame
+        motion_pos_x = int(round(velocity_ppf * float(resample_frame_idx)))
             
         # Shift the content of the tensor by 'motion_pos_x' columns in the right direction. The content that is pushed to the right is wrapped around and appears on the left side of the tensor (roll).
         frame = torch.roll(frame, motion_pos_x, dims=-1)
@@ -82,23 +84,24 @@ from pycvvdp.dm_preview_metric import *
 
 def compute_spatiotemp_quality( result_file, metric_class = pycvvdp.cvvdp, device=None ):
 
-    display_name = 'sdr_fhd_24'
+    display_name = 'standard_4k'
 
     # reference_file = os.path.join(os.path.dirname(__file__), '..',
     #                             'example_media', 'aliasing', 'ferris-ref.mp4')
 
     reference_file = os.path.join(os.path.dirname(__file__), '..',
-                                'example_media', 'brotato_crop.mp4')
+                                'example_media', 'cyberpunk_crop.mp4')
 
-    RESOLUTIONs = np.linspace( 0.25, 1, 11 ).tolist()
+    RESOLUTIONs = [1.0, 0.9, 0.75, 0.5, 0.25 ] #np.linspace( 0.25, 1, 11 ).tolist()
     FRAME_RATEs = [1.0, 60/120, 40/120, 30/120, 15/120] #np.linspace( 0.25, 1, 11 ).tolist()
-    VELOCITYs = [0, 30] # Velocity in degrees per second    
+    VELOCITYs = [0, 5] # Velocity in degrees per second    
 
     if False: # dm_preview_sbs will generate video with the test and reference videos - great way to debug a custom video_source
         metric = dm_preview_sbs(display_name=display_name, device=device)
         vs_source = pycvvdp.video_source_file( reference_file, reference_file, display_photometry=display_name, preload=True )
-        vs = vs_spatiotemporal_dist( vs_source, 0.2, 0.93, 20 )
-        metric.base_fname = 'spatiotemp_space'
+        dg = vvdp_display_geometry.load( display_name )
+        vs = vs_spatiotemporal_dist( vs_source, dg.get_ppd(), 1.0, 30/120, 5 )
+        metric.base_fname = 'spatiotemp_example'
         Q_JOD, stats_static = metric.predict_video_source( vs )        
 
     metric = metric_class(display_name=display_name, device=device, heatmap=None, quiet=True)
@@ -107,29 +110,29 @@ def compute_spatiotemp_quality( result_file, metric_class = pycvvdp.cvvdp, devic
     vs_source = pycvvdp.video_source_file( reference_file, reference_file, display_photometry=display_name, preload=True )
 
     base_res = (vs_source.get_video_size()[1], vs_source.get_video_size()[0])
-    res_str = [ f"{round(base_res[0]*rs)}x{round(base_res[1]*rs)}" for rs in RESOLUTIONs]
-    print( f"Base resolution {base_res}; tested resolutions: {res_str}" )
+    res_label = [ f"{round(base_res[0]*rs)}x{round(base_res[1]*rs)}" for rs in RESOLUTIONs]
+    print( f"Base resolution {base_res}; tested resolutions: {res_label}" )
 
     base_fps = vs_source.get_frames_per_second()
-    fps_str = [ f"{round(fs*base_fps)} fps" for fs in FRAME_RATEs]
-    print( f"Base frame rate {base_fps}; tested frame rates: {fps_str}" )
+    fr_label = [ f"{round(fs*base_fps)}" for fs in FRAME_RATEs]
+    print( f"Base frame rate {base_fps}; tested frame rates: {fr_label} fps" )
 
     with open(result_file, 'wt') as fh:
-        fh.write( 'res_scale, fr_scale, velocity, Q_JOD\n' )
+        fh.write( 'res_scale, res_label, fr_scale, fr_label, velocity, Q_JOD\n' )
         start = time.time()
         total_it = len(RESOLUTIONs)*len(FRAME_RATEs)*len(VELOCITYs)
         for res_scale, fr_scale, velocity_dps in tqdm(product( RESOLUTIONs, FRAME_RATEs, VELOCITYs ), unit="it", total=total_it):
 
-            # Velocity in pixels per second
-            velocity_pps = metric.display_geometry.get_ppd() * velocity_dps
-            vs = vs_spatiotemporal_dist( vs_source, res_scale, fr_scale, velocity_pps )
+            vs = vs_spatiotemporal_dist( vs_source, metric.display_geometry.get_ppd(), res_scale, fr_scale, velocity_dps )
 
             Q_JOD, stats_static = metric.predict_video_source( vs )        
             if metric.device.type == 'cuda':
                 torch.cuda.empty_cache() # Clear cache to avoid memory problems
 
+            res_idx = RESOLUTIONs.index(res_scale)
+            fr_idx = FRAME_RATEs.index(fr_scale)
             # print( f'Quality for resolution {res_scale} and frame rate {fr_scale}: {Q_JOD:.3f} JOD' )
-            fh.write( f'{res_scale}, {fr_scale}, {velocity_dps}, {Q_JOD}\n' )
+            fh.write( f'{res_scale}, {res_label[res_idx]}, {fr_scale}, {fr_label[fr_idx]}, {velocity_dps}, {Q_JOD}\n' )
 
         end = time.time()
         tst_time = end-start
@@ -137,6 +140,9 @@ def compute_spatiotemp_quality( result_file, metric_class = pycvvdp.cvvdp, devic
 
 def plot_spatiotemp_quality( result_file ):
     df = pd.read_csv(result_file, sep=',', skipinitialspace=True)
+
+    tick_df_fr = df[['fr_scale', 'fr_label']].drop_duplicates().sort_values('fr_scale')
+    tick_df_res = df[['res_scale', 'res_label']].drop_duplicates().sort_values('res_scale')
 
     velocities = sorted(df['velocity'].unique())
     n = len(velocities)
@@ -155,10 +161,12 @@ def plot_spatiotemp_quality( result_file ):
 
         ax.plot_surface(X, Y, Z, color=color, edgecolor='k', linewidth=0.3, alpha=0.6)
 
-    ax.set_xlabel('resolution scale')
-    ax.set_ylabel('frame rate scale')
+    ax.set_xlabel('resolution')
+    ax.set_ylabel('frame rate')
     ax.set_zlabel('Q_JOD')
     ax.set_title('Spatio-temporal quality (Q_JOD)')
+    ax.set_xticks(tick_df_res['res_scale'], labels=tick_df_res['res_label'])    
+    ax.set_yticks(tick_df_fr['fr_scale'], labels=tick_df_fr['fr_label'])    
 
     legend_handles = [Patch(facecolor=color, label=f'{vel} dps') for color, vel in zip(colors, velocities)]
     ax.legend(handles=legend_handles, title='velocity')
@@ -176,10 +184,11 @@ def plot_spatiotemp_quality( result_file ):
             label = f'{vel} dps, res={res:.2f}'
             ax2.plot(row['fr_scale'], row['Q_JOD'], color=color, linestyle=ls, marker='o', label=label)
 
-    ax2.set_xlabel('frame rate scale')
+    ax2.set_xlabel('frame rate')
     ax2.set_ylabel('Q_JOD')
-    ax2.set_title('Q_JOD vs frame rate scale')
+    ax2.set_title('Q_JOD vs frame rate')
     ax2.legend(title='velocity / res_scale', fontsize='small')
+    ax2.set_xticks(tick_df_fr['fr_scale'], labels=tick_df_fr['fr_label'])    
 
     plt.tight_layout()
     plt.show()
