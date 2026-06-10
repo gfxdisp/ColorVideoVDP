@@ -2,12 +2,12 @@ import abc
 
 from pycvvdp.video_source import *
 
-# A base class for the video quality metrtics
-
+# Class used for video quality metric exceptions
 class vq_exception(Exception):
     def __init__(self, message):
         super().__init__(message)
 
+# A base class for the video quality metrics
 class vq_metric:
 
     '''
@@ -54,6 +54,7 @@ class vq_metric:
 
     def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[]):
         if display_photometry is None:
+            from pycvvdp.display_model import vvdp_display_photometry
             self.display_photometry = vvdp_display_photometry.load(display_name, config_paths)
             self.display_name = display_name
         else:

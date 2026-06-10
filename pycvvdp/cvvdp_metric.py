@@ -228,7 +228,7 @@ class cvvdp(vq_metric):
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
         # other parameters
-        self.debug = True
+        self.debug = False
 
     def update_from_checkpoint(self, ckpt):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
@@ -591,15 +591,6 @@ class cvvdp(vq_metric):
             mem_avail = min( mem_avail_nvml, mem_avail_pytorch)
         else:
             mem_avail = mem_avail_pytorch
-        # else:
-        #     # Torch does not allow us to querry the free memory on the GPU so this is an inaccurate estimate - likely to fail if other applications are using a GPU
-        #     total = torch.cuda.get_device_properties(self.device).total_memory
-        #     allocated = torch.cuda.memory_allocated(self.device)
-        #     mem_avail = total-allocated - 2e9  # Total available minus 2G (used by other apps)
-
-        # We can also use Torch cached memory
-        # cached = torch.cuda.memory_reserved(self.device) - torch.cuda.memory_allocated(self.device)
-        # mem_avail += cached
 
         if not self.gpu_mem is None:
             mem_avail = min(int(self.gpu_mem*1e9), mem_avail)
@@ -608,8 +599,11 @@ class cvvdp(vq_metric):
         # The model is:  total_mem = a + pix_cnt*(block_N_frames+filter_len-1)*b + pix_cnt*block_N_frames*c
         a = 1.6e9
         b = 12 # 3 channel x 4-byte float
-        # c = 320 if not self.training_mode else 800 # A different value for training
-        c = 450 if not self.training_mode else 800 # A different value for training
+        if os.name == 'nt': # For some reason, more memory is consumed on Windows
+            c = 450 if not self.training_mode else 800 # A different value for training
+        else:
+            c = 320 if not self.training_mode else 800 # A different value for training
+
 
         block_N_frames = int(math.floor((mem_avail-a-pix_cnt*(filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
 
