@@ -602,7 +602,7 @@ class cvvdp(vq_metric):
         if os.name == 'nt': # For some reason, more memory is consumed on Windows
             c = 450 if not self.training_mode else 800 # A different value for training
         else:
-            c = 320 if not self.training_mode else 800 # A different value for training
+            c = 320 if not self.training_mode else 600 # A different value for training
 
 
         block_N_frames = int(math.floor((mem_avail-a-pix_cnt*(filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
