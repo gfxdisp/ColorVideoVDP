@@ -370,6 +370,14 @@ class video_source_video_file(video_source_dm):
         self.init_readers()
         return self.frames
 
+    def rewind(self):
+        # Recreate readers so frame access can start from 0 again.
+        for reader in [self.test_vidr, self.reference_vidr]:
+            if reader is not None and hasattr(reader, 'close'):
+                reader.close()
+        self.test_vidr = None
+        self.reference_vidr = None
+
     def init_readers(self):
         if self.reference_vidr is None:
             self.reference_vidr = self.reader(self.reference_fname, self.in_frames, resize_fn=self.full_screen_resize, resize_width=self.fs_width, resize_height=self.fs_height, verbose=self.verbose)
@@ -498,7 +506,12 @@ class video_source_temp_resample_file(video_source_video_file):
         # First check if we can find an integer resampling rate
         if test_fps % 1 == 0 and ref_fps % 1 == 0:
             gcd = math.gcd(int(test_fps),int(ref_fps))
-            self.resample_fps = min( test_fps * ref_fps/gcd, __class__.max_fps )
+            lcm = test_fps * ref_fps / gcd
+            if lcm <= __class__.max_fps:
+                self.resample_fps = lcm
+            else:
+                self.resample_fps = max(test_fps, ref_fps)
+            # self.resample_fps = min( test_fps * ref_fps/gcd, __class__.max_fps )
         else:
             self.resample_fps = __class__.max_fps
 
@@ -526,6 +539,11 @@ class video_source_temp_resample_file(video_source_video_file):
 
     def get_video_size(self):
         return super().get_video_size()
+
+    def rewind(self):
+        super().rewind()
+        self.cache_ind = [-1, -1]
+        self.cache_frame = [None, None]
 
 
     def _get_frame( self, vid_reader, frame, device, colorspace ):        
@@ -670,6 +688,13 @@ class video_source_image_frames(video_source_dm):
 The same functionality as to fvvdp_video_source_video_file, but preloads all the frames and stores in the CPU memory - allows for random access.
 '''
 class video_source_video_file_preload(video_source_video_file):
+
+    def rewind(self):
+        super().rewind()
+        if hasattr(self, 'frame_array_tst'):
+            del self.frame_array_tst
+        if hasattr(self, 'frame_array_ref'):
+            del self.frame_array_ref
     
     def _get_frame( self, vid_reader, frame, device, colorspace ):        
 
@@ -809,6 +834,10 @@ class video_source_file(video_source):
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
         return self.vs.get_frames_per_second()
+
+    def rewind(self):
+        if hasattr(self.vs, 'rewind'):
+            self.vs.rewind()
     
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
