@@ -233,6 +233,11 @@ class YUVReader:
     def __exit__(self, type, value, tb):
         self.mm = None
 
+    # This is to ensure that the pickled object does not contain non-pickleable memmap
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['mm'] = None  # close mmap before pickling; it will reopen lazily
+        return state
 
 """
 This class is compatible with ffmpeg video readers - supports resizing and can be used with video_source_video_file
