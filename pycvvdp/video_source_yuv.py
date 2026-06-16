@@ -277,56 +277,45 @@ class video_source_yuv_file(video_source_dm):
 
         self.reference_vidr = YUVReader(reference_fname)
         self.test_vidr = YUVReader(test_fname)
+        self.total_frames = self.test_vidr.frames
+        self.frames = self.total_frames if frames==-1 else min(self.total_frames, frames)
         self.offset = 0     # Offset for random access of a shorter subsequence
+
         self.full_screen_resize = full_screen_resize
-        self.retain_aspect_ratio = retain_aspect_ratio
-        self.reference_fname = reference_fname
-        self.test_fname = test_fname
+        if retain_aspect_ratio:
+            h, w = self.test_vidr.height, self.test_vidr.width
+            if h / resize_resolution[1] * resize_resolution[0] <= w:
+                # retain provided width: resize_resolution[0]
+                resize_resolution = (resize_resolution[0], int(resize_resolution[0] / w * h))
+            else:
+                # retain provided height: resize_resolution[1]
+                resize_resolution = (int(resize_resolution[1] / h * w), resize_resolution[1])
+
         self.resize_resolution = resize_resolution
-        self.frames_arg = frames
+
+        # if color_space_name=='auto':
+        #     if self.test_vidr.color_space=='2020':
+        #         color_space_name="BT.2020"
+        #     else:
+        #         color_space_name="sRGB"
 
         super().__init__(display_photometry=display_photometry)        
 
+        for vr in [self.test_vidr, self.reference_vidr]:
+            if vr == self.test_vidr:
+                logging.debug(f"Test video '{test_fname}':")
+            else:
+                logging.debug(f"Reference video '{reference_fname}':")
+            if full_screen_resize is None:
+                rs_str = ""
+            else:
+                rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
+            logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry.EOTF}, fps: {vr.avg_fps}, frames: {self.frames}" )
 
-    # Delay openning video readers until they are needed so that the video_source object can be pickled
-    def _lazy_open_video_readers(self):
-        if self.reference_vidr is None:
-            self.reference_vidr = YUVReader(self.reference_fname)
-            self.test_vidr = YUVReader(self.test_fname)
-
-            self.total_frames = self.test_vidr.frames
-            self.frames = self.total_frames if self.frames_arg==-1 else min(self.total_frames, self.frames_arg)
-
-            if self.retain_aspect_ratio:
-                h, w = self.test_vidr.height, self.test_vidr.width
-                if h / resize_resolution[1] * resize_resolution[0] <= w:
-                    # retain provided width: resize_resolution[0]
-                    resize_resolution = (resize_resolution[0], int(resize_resolution[0] / w * h))
-                else:
-                    # retain provided height: resize_resolution[1]
-                    resize_resolution = (int(resize_resolution[1] / h * w), resize_resolution[1])
-
-            # if color_space_name=='auto':
-            #     if self.test_vidr.color_space=='2020':
-            #         color_space_name="BT.2020"
-            #     else:
-            #         color_space_name="sRGB"
-
-            for vr in [self.test_vidr, self.reference_vidr]:
-                if vr == self.test_vidr:
-                    logging.debug(f"Test video '{self.test_fname}':")
-                else:
-                    logging.debug(f"Reference video '{self.reference_fname}':")
-                if self.full_screen_resize is None:
-                    rs_str = ""
-                else:
-                    rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-                logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry.EOTF}, fps: {vr.avg_fps}, frames: {self.frames}" )
-
+        
     # Return (height, width, frames) touple with the resolution and
     # the length of the video clip.
     def get_video_size(self):
-        self._lazy_open_video_readers()
         if not self.full_screen_resize is None:
             return [self.resize_resolution[1], self.resize_resolution[0], self.frames]
         else:
@@ -334,19 +323,16 @@ class video_source_yuv_file(video_source_dm):
 
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
-        self._lazy_open_video_readers()
         return self.test_vidr.avg_fps
     
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        self._lazy_open_video_readers()
         L = self._get_frame( self.test_vidr, frame, device, colorspace )
         return L
 
     def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        self._lazy_open_video_readers()
         L = self._get_frame( self.reference_vidr, frame, device, colorspace )
         return L
 
@@ -367,11 +353,9 @@ class video_source_yuv_file(video_source_dm):
 
     # Depreciated
     def get_total_frames(self):
-        self._lazy_open_video_readers()
         return self.total_frames
 
     def set_num_frames(self, num_frames:int):
-        self._lazy_open_video_readers()
         if self.offset + num_frames > self.total_frames:
             logging.error(f'Cannot set num_frames={num_frames} because offset={self.offset} and total_frames={self.total_frames}. '
                           f'Clipping num_frames to {self.total_frames - self.offset}')
