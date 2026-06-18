@@ -94,7 +94,7 @@ def compute_spatiotemp_quality( result_file, metric_class = pycvvdp.cvvdp, devic
 
     RESOLUTIONs = [1.0, 0.9, 0.75, 0.5, 0.25 ] #np.linspace( 0.25, 1, 11 ).tolist()
     FRAME_RATEs = [1.0, 60/120, 40/120, 30/120, 15/120] #np.linspace( 0.25, 1, 11 ).tolist()
-    VELOCITYs = [0, 5] # Velocity in degrees per second    
+    VELOCITYs = [0, 1, 3, 5] # Velocity in degrees per second    
 
     if False: # dm_preview_sbs will generate video with the test and reference videos - great way to debug a custom video_source
         metric = dm_preview_sbs(display_name=display_name, device=device)
