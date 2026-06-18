@@ -529,6 +529,7 @@ class video_source_temp_resample_file(video_source_video_file):
 
 
     def _get_frame( self, vid_reader, frame_idx, device, colorspace ):        
+        super().init_readers()
 
         # Frame index after temporal resampling
         resample_frame_idx = int(safe_floor((frame_idx+0.5) * vid_reader.avg_fps/self.resample_fps))
@@ -542,6 +543,13 @@ class video_source_temp_resample_file(video_source_video_file):
             self.cache_frame[ce] = super()._get_frame( vid_reader, resample_frame_idx, device=device, colorspace=colorspace )
             #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
             return self.cache_frame[ce]            
+
+    # This is to ensure that the pickled object does not contain non-pickleable VideoReaders
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['reference_vidr'] = None  
+        state['test_vidr'] = None  
+        return state
 
 
 '''
