@@ -17,6 +17,7 @@ import ex_utils as utils
 import pycvvdp
 import time
 import imageio.v2 as io
+from tqdm import tqdm
 
 from torchvision.transforms import GaussianBlur
 
@@ -85,7 +86,9 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-2 )
 
 cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
 
-loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
+# loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
+loss_fn = lambda pred, y : cvvdp.loss_weighted_l1( pred, y, dim_order="CHW")
+
 
 plt.ion()
 fig = plt.figure()
@@ -103,8 +106,7 @@ max_iter = 1001
 loss_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 grad_mag_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 
-for kk in range(max_iter):
-    print( f"Iteration {kk}" )
+for kk in tqdm(range(max_iter)):
     optimizer.zero_grad()
 
     pred = model()

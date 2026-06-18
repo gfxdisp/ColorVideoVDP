@@ -106,9 +106,10 @@ class cvvdp_frame_buffers:
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, dump_channels=None, gpu_mem = None, do_dist_map = False):
         self.quiet = quiet
         self.heatmap = heatmap
+        self.do_dist_map = do_dist_map
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for end-to-end training, these are NOT model checkpoints
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
@@ -300,6 +301,30 @@ class cvvdp(vq_metric):
         return (10.-Q_jod)
 
 
+    def loss_weighted_l1(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, stop_grad=True):
+
+        self.do_dist_map = True
+        test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        (Q_jod, stats) = self.predict_video_source(test_vs)
+
+        dist_map = stats['dist_map'].detach() if stop_grad else stats['dist_map']
+        loss = torch.mean((test_cont-reference_cont).abs() * dist_map)
+
+        return loss
+
+    def loss_weighted_l2(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, stop_grad=True):
+
+        self.do_dist_map = True
+        test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        (Q_jod, stats) = self.predict_video_source(test_vs)
+
+        dist_map = stats['dist_map'].detach() if stop_grad else stats['dist_map']
+        loss = torch.mean((test_cont-reference_cont)**2 * dist_map)
+
+        return loss
+
+
+
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays. Video source is recommended when processing long videos as it allows frame-by-frame loading.
     '''
@@ -326,7 +351,7 @@ class cvvdp(vq_metric):
             else:
                 raise RuntimeError( f"Unknown contrast {self.contrast}" )
 
-            if self.do_heatmap:
+            if self.do_heatmap or self.do_dist_map:
                 self.heatmap_pyr = lpyr_dec_2(width, height, self.pix_per_deg, self.device)
 
         #assert self.W == R_vid.shape[-1] and self.H == R_vid.shape[-2]
@@ -348,6 +373,11 @@ class cvvdp(vq_metric):
             heatmap = torch.zeros([1,dmap_channels,N_frames,height,width], dtype=torch.float16, device=torch.device('cpu')) # Store heatmap in the CPU memory
         else:
             heatmap = None
+
+        if self.do_dist_map:
+            dist_map = torch.zeros([1,1,N_frames,height,width], dtype=torch.float16, device=self.device) 
+        else:
+            dist_map = None
 
         Q_per_ch = None
 
@@ -402,11 +432,15 @@ class cvvdp(vq_metric):
             # print_large_tensors()
 
             if self.do_heatmap:
+                hm_scaled = 1.-(self.met2jod( heatmap_block )/10.)
                 if self.heatmap == "raw":
-                    heatmap[:,:,ff:ff_end,...] = heatmap_block.detach().type(torch.float16).cpu()
+                    heatmap[:,:,ff:ff_end,...] = hm_scaled.detach().type(torch.float16).cpu()
                 else:
                     ref_frame = R[:,0, :, :, :]
-                    heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach().type(torch.float16).cpu()
+                    heatmap[:,:,ff:ff_end,...] = visualize_diff_map(hm_scaled, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach().type(torch.float16).cpu()
+
+            if self.do_dist_map:
+                dist_map[:,:,ff:ff_end,...] = heatmap_block
 
         if self.temp_resample: # This may not be needed anymore
             t_end = N_frames/vid_source.get_frames_per_second() # Video duration in s
@@ -436,6 +470,9 @@ class cvvdp(vq_metric):
 
         if self.do_heatmap:            
             stats['heatmap'] = heatmap
+
+        if self.do_dist_map:
+            stats['dist_map'] = dist_map
 
         if self.debug: 
             logging.debug( f"Processing {block_N_frames} frames in a batch." )
@@ -753,7 +790,7 @@ class cvvdp(vq_metric):
 
             Q_per_ch_block[:,:,:,bb] = self.lp_norm(D, self.beta, dim=(-2,-1), normalize=True, keepdim=False) # Pool across all pixels (spatial pooling)
 
-            if self.do_heatmap:
+            if self.do_heatmap or self.do_dist_map:
 
                 # We need to reduce the differences across the channels using the right weights
                 # Weights for the channels: sustained, RG, YV, [transient]
@@ -772,8 +809,9 @@ class cvvdp(vq_metric):
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
                 self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w)
 
-        if self.do_heatmap:
-            heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
+        if self.do_heatmap or self.do_dist_map:
+            # heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
+            heatmap_block = self.heatmap_pyr.reconstruct()
         else:
             heatmap_block = None
 

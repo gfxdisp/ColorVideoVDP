@@ -20,11 +20,14 @@ import ex_utils as utils
 import pycvvdp
 import time
 import imageio.v2 as io
+from tqdm import tqdm
 
 from torchvision.transforms import GaussianBlur
 
 debug = False
 save_results = False
+show_steps = True
+
 if save_results:
     output_dir = "outputs"
     os.makedirs(output_dir, exist_ok=True)
@@ -60,7 +63,8 @@ class NoiseField(torch.nn.Module):
     def loss(self, pred, y) -> torch.Tensor:
         alpha = 100000
         # return self.metric.loss( pred, y, dim_order="CHW") + alpha * ((2**self.amplitudes).sum()/self.amplitudes.numel()-1)**2
-        return self.metric.loss( pred, y, dim_order="CHW") + alpha * (((pred-y)**2).mean()-self.target_mse)**2
+        # return self.metric.loss( pred, y, dim_order="CHW") + alpha * (((pred-y)**2).mean()-self.target_mse)**2
+        return self.metric.loss_weighted_l2( pred, y, dim_order="CHW", stop_grad=False) + alpha * (((pred-y)**2).mean()-self.target_mse)**2
     
     def psnr(self):
         mse = torch.mean((self.forward() - self.bkg_img) ** 2)
@@ -104,8 +108,7 @@ max_iter = 1001
 loss_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 grad_mag_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 
-for kk in range(max_iter):
-    print( f"Iteration {kk}" )
+for kk in tqdm(range(max_iter)):
     optimizer.zero_grad()
 
     pred = model()
@@ -113,28 +116,28 @@ for kk in range(max_iter):
 
     loss_tab[kk] = loss.item()
 
-    if kk % 20 == 0:
+    if (kk % 20 == 0 and show_steps) or kk==(max_iter-1):
            
         opt_img = pred.detach().permute((1,2,0)).cpu().numpy()
         ax[0].clear()
         ax[0].imshow( (I_initial*255).astype(np.uint8) )
-        ax[0].set_title( f"Initial image ({PSNR_initial} dB)" )
+        ax[0].set_title( f"Initial image ({PSNR_initial:.4f} dB)" )
         ax[1].clear()
         ampl = (2**model.amplitudes).detach().permute((1,2,0)).cpu().numpy()
         ampl_norm = ampl.sum()/ampl.size
         ax[1].imshow( (ampl/2*255).astype(np.uint8) )
-        ax[1].set_title( f"Amplitudes {ampl_norm}" )
+        ax[1].set_title( f"Amplitudes {ampl_norm:.4f}" )
         with torch.no_grad():    
             PSNR_current = model.psnr()
         ax[2].clear()
         ax[2].imshow( opt_img )
-        ax[2].set_title( f"Optimized ({PSNR_current} dB)" )
+        ax[2].set_title( f"Optimized ({PSNR_current:.4f} dB)" )
 
         ax[3].clear()
         it_x = range(max_iter)
         ax[3].plot( it_x, loss_tab )
         ax[3].set_xlabel( 'Iteration' )
-        ax[3].set_ylabel( 'Loss [JOD]' )
+        ax[3].set_ylabel( 'Loss' )
         ax[3].set_yscale( 'log' )
 
         ax_gm.clear()
