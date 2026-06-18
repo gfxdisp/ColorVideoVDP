@@ -1,8 +1,9 @@
-# This example tests ColorVideoVDP performance as a loss function. It is inspired by the analysis presented in Sec. 3 of https://doi.org/10.1007/s11263-020-01419-7
+# This example tests ColorVideoVDP performance as a loss function. It is
+# inspired by the analysis presented in Sec. 3 of
+# https://doi.org/10.1007/s11263-020-01419-7
 #
-# The code will optimize for pixel values in an image so that they match the pixel values in a reference image (no network, direct reconstruction). 
-# The optimization will succeed in reconstructing the reference image if the initialization is sufficiently close to the reference images. A random 
-# initialization will cause the optimization to get stuck in a local minimum. 
+# The code will optimise for pixel values in an image so that they match the
+# pixel values in a reference image (no network, direct reconstruction). 
 
 # Important: This and other examples should be executed from the main ColorVideoVDP directory:
 # python examples/ex_<...>.py
@@ -80,18 +81,11 @@ model = ImageRecovery( T_ref, initialization="random" )
 
 model.to(device)
 
-# optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0, weight_decay=0, dampening=0)
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.5, eps=1e-3, amsgrad=True )
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-2 )
 
 cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
 
-# Use a "pure" cvvdp loss only if the initialization is close to the reference image (e.g., "blurred" passed to ImageRecovery above)
 loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
-
-# A Mixture of cvvdp loss and L2 works better with random initialization
-# loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW") + 1*torch.mean((pred - y)**2)
-# loss_fn = mix_loss
 
 plt.ion()
 fig = plt.figure()
@@ -116,9 +110,6 @@ for kk in range(max_iter):
     pred = model()
     loss = loss_fn(pred.clamp(0, 1), T_ref)  # clamp only in loss call
 
-    # pred = model().clamp(0.,1.)
-    # loss = loss_fn(pred, T_ref)
-
     loss_tab[kk] = loss.item()
 
     if kk % 20 == 0:
@@ -128,7 +119,7 @@ for kk in range(max_iter):
         ax[0].imshow( opt_img )
         ax[0].set_title( "Optimized" )
         ax[1].clear()
-        ax[1].imshow( (I_ref/256).astype(np.uint8) )
+        ax[1].imshow( (I_ref/255).astype(np.uint8) )
         ax[1].set_title( "Target" )
 
         ax[2].clear()
@@ -151,7 +142,7 @@ for kk in range(max_iter):
             ax[pp].set_xticks([])        
             ax[pp].set_yticks([])        
 
-        # plt.tight_layout()
+        plt.tight_layout()
 
         if save_results and kk % 100 == 0:
             io.imwrite( f'{output_dir}/reconstructed_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
