@@ -12,12 +12,6 @@ import examples.ex_utils as utils
 import pycvvdp
 import time
 
-'''
-Results of current version (for reference):
-Noise - Quality: 8.955 JOD
-Blur - Quality: 8.514 JOD
-'''
-
 def simple_image_example( metric_class = pycvvdp.cvvdp, debug=False, device=None ):
 
     I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))

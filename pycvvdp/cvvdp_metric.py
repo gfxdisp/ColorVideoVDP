@@ -39,6 +39,7 @@ from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
 
 from pycvvdp.dump_channels import DumpChannels
+from pycvvdp.video_writer import VideoWriter
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
@@ -106,9 +107,13 @@ class cvvdp_frame_buffers:
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
 """
 class cvvdp(vq_metric):
-    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], heatmap=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, dump_channels=None, gpu_mem = None):
+    def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], 
+                 heatmap=None, heatmap_file=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, 
+                 dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
+        self.heatmap_file = heatmap_file
+        self.heatmap_vw = None
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for end-to-end training, these are NOT model checkpoints
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
@@ -343,7 +348,7 @@ class cvvdp(vq_metric):
 
         no_channels = 2+temp_ch
 
-        if self.do_heatmap:
+        if self.do_heatmap and self.heatmap_file is None:
             dmap_channels = 1 if self.heatmap == "raw" else 3
             heatmap = torch.zeros([1,dmap_channels,N_frames,height,width], dtype=torch.float16, device=torch.device('cpu')) # Store heatmap in the CPU memory
         else:
@@ -360,7 +365,6 @@ class cvvdp(vq_metric):
 
         if self.debug:
             logging.debug( f"Processing a block of {block_N_frames} frames at a time.")
-
 
         # block_N_frames = min(block_N_frames,1)
         # print( f'Block of frames: {block_N_frames}')
@@ -403,10 +407,22 @@ class cvvdp(vq_metric):
 
             if self.do_heatmap:
                 if self.heatmap == "raw":
-                    heatmap[:,:,ff:ff_end,...] = heatmap_block.detach().type(torch.float16).cpu()
+                    heatmap_vis = heatmap_block[0,...].detach()
                 else:
                     ref_frame = R[:,0, :, :, :]
-                    heatmap[:,:,ff:ff_end,...] = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach().type(torch.float16).cpu()
+                    heatmap_vis = visualize_diff_map(heatmap_block, context_image=ref_frame, colormap_type=self.heatmap, use_cpu=self.device.type == 'mps').detach()
+
+                if self.heatmap_file is None:
+                    heatmap[:,:,ff:ff_end,...] = heatmap_vis.type(torch.float16).cpu()
+                else:
+                    if self.heatmap_vw is None:
+                        self.heatmap_vw = VideoWriter( self.heatmap_file, hdr_mode=False, fps=vid_source.get_frames_per_second() )
+                    for kk in range(heatmap_vis.shape[1]):
+                        if heatmap_vis.shape[0]==1: # grayscale heatmap
+                            self.heatmap_vw.write_frame_rgb((heatmap_vis[:,kk,:,:]/10).view((height,width,1)).tile((1,1,3)).cpu().numpy())
+                        else:
+                            self.heatmap_vw.write_frame_rgb(heatmap_vis[:,kk,:,:].permute((1,2,0)).cpu().numpy())
+
 
         if self.temp_resample: # This may not be needed anymore
             t_end = N_frames/vid_source.get_frames_per_second() # Video duration in s
@@ -434,7 +450,10 @@ class cvvdp(vq_metric):
         if self.dump_channels:
             self.dump_channels.close()
 
-        if self.do_heatmap:            
+        if self.heatmap_vw is not None:
+            self.heatmap_vw.close()
+
+        if heatmap is not None:
             stats['heatmap'] = heatmap
 
         if self.debug: 

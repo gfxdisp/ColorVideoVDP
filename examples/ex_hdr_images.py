@@ -7,6 +7,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import ex_utils as utils
+import torch
 
 import pycvvdp
 
@@ -54,15 +55,15 @@ Q_JOD_blur, stats_blur = metric.predict( I_test_blur, I_ref, dim_order="HWC" )
 blur_str = f'Blur - Quality: {Q_JOD_blur:.3f} JOD'
 print( blur_str )
 
-# f, axs = plt.subplots(1, 2)
-# axs[0].imshow( stats_noise['heatmap'][0,:,0,:,:].permute([1,2,0]).cpu().numpy() )
-# axs[0].set_xticks([])
-# axs[0].set_yticks([])
-# axs[0].set_title(noise_str)
-# axs[1].imshow( stats_blur['heatmap'][0,:,0,:,:].permute([1,2,0]).cpu().numpy() )
-# axs[1].set_xticks([])
-# axs[1].set_yticks([])
-# axs[1].set_title(blur_str)
+f, axs = plt.subplots(1, 2)
+axs[0].imshow( stats_noise['heatmap'][0,:,0,:,:].permute([1,2,0]).to(torch.float32).cpu().numpy() )
+axs[0].set_xticks([])
+axs[0].set_yticks([])
+axs[0].set_title(noise_str)
+axs[1].imshow( stats_blur['heatmap'][0,:,0,:,:].permute([1,2,0]).to(torch.float32).cpu().numpy() )
+axs[1].set_xticks([])
+axs[1].set_yticks([])
+axs[1].set_title(blur_str)
 
-# f.show()
-# plt.waitforbuttonpress()
+f.show()
+plt.waitforbuttonpress()

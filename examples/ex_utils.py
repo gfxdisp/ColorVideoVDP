@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from scipy.ndimage import gaussian_filter
 
 
@@ -90,7 +91,10 @@ def lin2srgb( L ):
     t = 0.0031308
     a = 0.055
     L = L.clip(0,1)
-    p = np.where( L<=t, L*12.92, (1+a)*(L)**(1/2.4) - a )
+    if isinstance( L, torch.Tensor ):
+        p = torch.where( L<=t, L*12.92, (1+a)*(L)**(1/2.4) - a )
+    else:
+        p = np.where( L<=t, L*12.92, (1+a)*(L)**(1/2.4) - a )
     return p
 
 __xyz2lms = np.array( [ [0.3592, 0.6976, -0.0358],\
@@ -278,9 +282,7 @@ _ycbcr2rgb_rec709 = np.array([[1, 0, 1.402],
     
 _rgb_rec7092ycbcr = np.array([[0.298999944347618, 0.587000125991912, 0.113999929660470],\
   [-0.168735860241319,  -0.331264179453675,   0.500000039694994],\
-  [0.500000039694994,  -0.418687679024188,  -0.081312360670806]], dtype=np.float32)
-
-    
+  [0.500000039694994,  -0.418687679024188,  -0.081312360670806]], dtype=np.float32)    
 
 def srgb2ycbcr(RGB):
     width = RGB.shape[1]

@@ -46,15 +46,15 @@ heatmap = (stats_noise["heatmap"][0,:,0,:,:].permute([1,2,0])*255).to(torch.uint
 
 fig, axs = plt.subplots( 3, 1, figsize=(8,8) )
 
-axs[0].imshow( (lin2srgb(T_ref/L_peak)).numpy(), cmap='gray' )
+axs[0].imshow( (lin2srgb(T_ref/L_peak)).numpy(), cmap='gray', vmin=0, vmax=1 )
 axs[0].set_title( 'Reference image' )
 axs[0].axis('off')
 
-axs[1].imshow( (lin2srgb(T_test/L_peak)).numpy(), cmap='gray' )
+axs[1].imshow( (lin2srgb(T_test/L_peak)).numpy(), cmap='gray', vmin=0, vmax=1 )
 axs[1].set_title( 'Test image' )
 axs[1].axis('off')
 
-axs[2].imshow( heatmap )
+axs[2].imshow( heatmap, vmin=0, vmax=1 )
 axs[2].set_title( "ColorVideoVDP heatmap" )
 axs[2].axis('off')
 
