@@ -24,9 +24,10 @@ import imageio.v2 as io
 from torchvision.transforms import GaussianBlur
 
 debug = False
-save_results = False
+save_results = True
+show_loss_plot = False
 if save_results:
-    output_dir = "outputs"
+    output_dir = "noise_concealment"
     os.makedirs(output_dir, exist_ok=True)
 
 class NoiseField(torch.nn.Module):
@@ -89,13 +90,20 @@ with torch.no_grad():
 
 
 plt.ion()
-fig = plt.figure(figsize=(20, 10))
-ax = [None]*4
-ax[0] = plt.subplot2grid((3, 3), (0, 0), rowspan=2)
-ax[1] = plt.subplot2grid((3, 3), (0, 1), rowspan=2)
-ax[2] = plt.subplot2grid((3, 3), (0, 2), rowspan=2)
-ax[3] = plt.subplot2grid((3, 3), (2, 0), colspan=3)
-ax_gm = ax[3].twinx()  # Second y-axis
+if show_loss_plot:
+    fig = plt.figure(figsize=(20, 10))
+    ax = [None]*4
+    ax[0] = plt.subplot2grid((3, 3), (0, 0), rowspan=2)
+    ax[1] = plt.subplot2grid((3, 3), (0, 1), rowspan=2)
+    ax[2] = plt.subplot2grid((3, 3), (0, 2), rowspan=2)
+    ax[3] = plt.subplot2grid((3, 3), (2, 0), colspan=3)
+    ax_gm = ax[3].twinx()  # Second y-axis
+else:
+    fig = plt.figure(figsize=(20, 5))
+    ax = [None]*3
+    ax[0] = plt.subplot2grid((1, 3), (0, 0))
+    ax[1] = plt.subplot2grid((1, 3), (0, 1))
+    ax[2] = plt.subplot2grid((1, 3), (0, 2))
 
 grad_mag = -1
 
@@ -118,42 +126,45 @@ for kk in range(max_iter):
         opt_img = pred.detach().permute((1,2,0)).cpu().numpy()
         ax[0].clear()
         ax[0].imshow( (I_initial*255).astype(np.uint8) )
-        ax[0].set_title( f"Initial image ({PSNR_initial} dB)" )
+        ax[0].set_title( f"Initial image ({PSNR_initial:.3f} dB)" )
         ax[1].clear()
         ampl = (2**model.amplitudes).detach().permute((1,2,0)).cpu().numpy()
         ampl_norm = ampl.sum()/ampl.size
         ax[1].imshow( (ampl/2*255).astype(np.uint8) )
-        ax[1].set_title( f"Amplitudes {ampl_norm}" )
+        ax[1].set_title( f"Amplitudes {ampl_norm:.3f}" )
         with torch.no_grad():    
             PSNR_current = model.psnr()
         ax[2].clear()
         ax[2].imshow( opt_img )
-        ax[2].set_title( f"Optimized ({PSNR_current} dB)" )
+        ax[2].set_title( f"Optimized ({PSNR_current:.3f} dB)" )
 
-        ax[3].clear()
-        it_x = range(max_iter)
-        ax[3].plot( it_x, loss_tab )
-        ax[3].set_xlabel( 'Iteration' )
-        ax[3].set_ylabel( 'Loss [JOD]' )
-        ax[3].set_yscale( 'log' )
+        if show_loss_plot:
+            ax[3].clear()
+            it_x = range(max_iter)
+            ax[3].plot( it_x, loss_tab )
+            ax[3].set_xlabel( 'Iteration' )
+            ax[3].set_ylabel( 'Loss [JOD]' )
+            ax[3].set_yscale( 'log' )
 
-        ax_gm.clear()
-        color2 = 'tab:red'
-        ax_gm.plot( it_x, grad_mag_tab, color=color2, label='Gradient magnitude')
-        ax_gm.yaxis.set_label_position("right")
-        ax_gm.set_ylabel('Gradient magnitude', color=color2)
-        ax_gm.tick_params(axis='y', labelcolor=color2)        
+            ax_gm.clear()
+            color2 = 'tab:red'
+            ax_gm.plot( it_x, grad_mag_tab, color=color2, label='Gradient magnitude')
+            ax_gm.yaxis.set_label_position("right")
+            ax_gm.set_ylabel('Gradient magnitude', color=color2)
+            ax_gm.tick_params(axis='y', labelcolor=color2)        
 
         fig.suptitle( f"Iteration {kk}: loss {loss.item():.4f}" )
         
-        for pp in range(2):
+        for pp in range(3):
             ax[pp].set_xticks([])        
             ax[pp].set_yticks([])        
 
-        plt.tight_layout()
+        if kk==0:
+            plt.tight_layout()
 
-        if save_results and kk % 100 == 0:
-            io.imwrite( f'{output_dir}/reconstructed_image_i{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
+        if save_results: # and kk % 100 == 0:
+            plt.savefig(f'{output_dir}/frame_{kk:04d}.png', dpi=100, bbox_inches='tight') 
+            # io.imwrite( f'{output_dir}/frame_{kk:04d}.png', (opt_img*255).astype(np.ubyte) )
 
         fig.canvas.draw()
         fig.canvas.flush_events()

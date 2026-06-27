@@ -1,4 +1,5 @@
-# This example shows how ColorVideoVDP varies the visibility of blue noise to account for luminance masking
+# This example shows how to generate test and reference videos, save them in files and then pass them to ColorVideoVDP. 
+# It also illustrates the effect of contrast masking.
 
 # Important: This and other examples should be executed from the main ColorVideoVDP directory:
 # python examples/ex_<...>.py
