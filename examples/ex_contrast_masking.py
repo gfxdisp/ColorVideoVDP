@@ -30,38 +30,41 @@ def tensor_to_numpy_image(T):
 
 
 def generate_video( test_vid_fname, ref_vid_fname ):
-    tile_sz = 64
+    tile_sz = 128
     L_peak = 100
     L_mean = 30
 
     tiles = 8
     C_mask = torch.logspace( math.log10(0.05), math.log10(0.8), tiles )
 
-    w, h = tiles*tile_sz, tile_sz # Image width and height
+    w, h = tiles*tile_sz, tile_sz*3 # Image width and height
 
     T_ref = torch.ones( (h,w) )
 
     # Band-pass noise
-    sigma1 = 2
+    sigma1 = 4
     kernel_size = 2 * int(4 * sigma1 + 0.5) + 1
     blur1 = GaussianBlur(kernel_size=kernel_size, sigma=sigma1)
-    sigma2 = 6
+    sigma2 = 12
     kernel_size = 2 * int(4 * sigma2 + 0.5) + 1
     blur2 = GaussianBlur(kernel_size=kernel_size, sigma=sigma2)
     noise_white = torch.rand((tile_sz, tile_sz))
     noise_bl = (blur1(noise_white.view(1,tile_sz,tile_sz)) - blur2(noise_white.view(1,tile_sz,tile_sz))).view(tile_sz,tile_sz)
-    noise_bl /= noise_bl.abs().max()
+    noise_bl /= noise_bl.abs().max()    # Band-limited noise
+    noise_hp = noise_white - blur1(noise_white.view(1,tile_sz,tile_sz)).view(tile_sz,tile_sz)
+    noise_hp /= noise_hp.abs().max()    # High-pass noise
+    uniform = torch.zeros((tile_sz,tile_sz))
 
-    for kk in range(C_mask.numel()):
+    for kk in range(tiles):
         pos = kk*tile_sz
-        T_ref[:,pos:(pos+tile_sz)] = L_mean + L_mean*noise_bl*C_mask[kk]
+        T_ref[:,pos:(pos+tile_sz)] = L_mean + L_mean*torch.cat((uniform, noise_hp, noise_bl), dim=0)*C_mask[kk]
 
     noise_white = torch.rand((tile_sz, tile_sz))
     noise_bl2 = (blur1(noise_white.view(1,tile_sz,tile_sz)) - blur2(noise_white.view(1,tile_sz,tile_sz))).view(tile_sz,tile_sz)
-    noise_bl2 /= noise_bl2.abs().max()
+    noise_bl2 /= noise_bl2.abs().max()  # Band-limited noise for the target
 
     [xx, yy] = torch.meshgrid( torch.linspace( -1, 1, tile_sz), torch.linspace( -1, 1, tile_sz) )
-    sigma = 0.5
+    sigma = 0.3
     gauss_env = torch.exp( -(xx**2+yy**2)/(2*sigma**2) )
 
     fps = 30
@@ -69,6 +72,9 @@ def generate_video( test_vid_fname, ref_vid_fname ):
     time_moving = 0.4
     time_total = time_on_tile*tiles + time_moving*(tiles-1)
     frames = int(time_total*fps)
+
+    C_test = 0.2
+    det_target = L_mean*noise_bl2*gauss_env*C_test
 
     with (VideoWriter( test_vid_fname, hdr_mode=False, fps=fps, codec='h265', verbose=False) as vw_t,
         VideoWriter( ref_vid_fname, hdr_mode=False, fps=fps, codec='h265', verbose=False) as vw_r):
@@ -82,8 +88,7 @@ def generate_video( test_vid_fname, ref_vid_fname ):
             move_r = max(ts_tile - time_on_tile, 0)/time_moving
             pos = int(tile_index*tile_sz + move_r*tile_sz)
 
-            C_test = 0.2
-            T_test[:,pos:(pos+tile_sz)] = (T_test[:,pos:(pos+tile_sz)] + L_mean*noise_bl2*gauss_env*C_test).clamp( 0.001, L_peak )
+            T_test[:,pos:(pos+tile_sz)] = (T_test[:,pos:(pos+tile_sz)] + det_target.tile((3,1))).clamp( 0.001, L_peak )
 
             vw_t.write_frame_rgb(tensor_to_numpy_image(lin2srgb(T_test/L_peak)))
             vw_r.write_frame_rgb(tensor_to_numpy_image(lin2srgb(T_ref/L_peak)))
