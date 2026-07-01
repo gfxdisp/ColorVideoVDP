@@ -671,11 +671,6 @@ class cvvdp(vq_metric):
         #height, width, N_frames = vid_sz
         all_ch = 2+temp_ch
         batch_sz = R.shape[0]
-        
-        if self.diff_sensitivity:
-            dim_S = 2
-        else:
-            dim_S = 1
 
         #torch.autograd.set_detect_anomaly(True)
 
@@ -717,8 +712,8 @@ class cvvdp(vq_metric):
             ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
             if self.diff_sensitivity:
                 # Differential sensitivity sampling
-                S = torch.empty((dim_S,batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-                for ss in range(dim_S):
+                S = torch.empty((2,batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+                for ss in range(2):
                     for cc in range(all_ch):
                         tch = 0 if cc<3 else 1  # Sustained or transient
                         cch = cc if cc<3 else 0 # Y, rg, yv
