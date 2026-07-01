@@ -25,9 +25,9 @@ The metric is explained in detail in:
 
 If you use the metric in your research, please cite the paper above. 
 
-# Other metrics: ColorVideoVDP-ML, PU-PSNR
+# Other metrics: ColorVideoVDP-ML, ColorVideoVDP-tm, PU-PSNR
 
-The repository also contains code for other metrics, such as PU-PSNR, or ColorVideoVDP-ML. See [metrics.md](/metrics.md) for more information.
+The repository also contains code for other metrics, such as PU-PSNR, ColorVideoVDP-tm, or ColorVideoVDP-ML. See [metrics.md](/metrics.md) for more information.
 
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:

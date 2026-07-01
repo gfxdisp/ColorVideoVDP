@@ -6,6 +6,12 @@ The code can run one of the following metrics (selected with `--metrics` or `-m`
 
   The original ColorVideoVDP metric, as described in the [SIGGRAPH paper](https://doi.org/10.1145/3658144).
 
+* `cvvdp-tm`
+
+  This version of ColorVideoVDP works for stimuli scaled at much different absolute luminance range, e.g. due to tone mapping of HDR content. This extension is described in detail in our [SIGGRAPH 2026 paper](https://kenchen10.github.io/projects/tmometric/index.html).
+
+  This metric is backward-compatible, and only requires specification of a new flag, `"diff_sensitivity": "on"`, in the `cvvdp_parameters.json`. 
+
 * `cvvdp-ml-saliency` [experimental]
 
   The extended version of ColorVideoVDP with a machine-learning based regressor and a saliency model, as explained in the [ICME paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/hammou2025_ICME_GC_ColorVideoVDP_ML.pdf).
