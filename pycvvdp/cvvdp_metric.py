@@ -226,7 +226,9 @@ class cvvdp(vq_metric):
         
         if 'diff_sensitivity' in parameters:
             self.diff_sensitivity = True if parameters['diff_sensitivity'] == "on" else False
-
+        else:
+            self.diff_sensitivity = False
+            
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
