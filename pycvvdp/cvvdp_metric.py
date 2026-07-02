@@ -228,7 +228,7 @@ class cvvdp(vq_metric):
         self.omega = [0, 5]
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
-
+            
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
