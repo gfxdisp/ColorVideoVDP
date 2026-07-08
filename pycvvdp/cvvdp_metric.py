@@ -699,15 +699,15 @@ class cvvdp(vq_metric):
     def compute_CSF( self, bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames ):
         rho = rho_band[bb] # Spatial frequency in cpd
         ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
-        S_test = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
         S_ref = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+        if self.lum_adapt_reference: # For backward compatibility
+            S_test = S_ref
         for cc in range(all_ch):
             tch = 0 if cc<3 else 1  # Sustained or transient
             cch = cc if cc<3 else 0 # Y, rg, yv
             if self.lum_adapt_reference:
                 # The sensitivity is computed assuming the adaptation to the luminance of the sustained channel of the reference image only
-                S_ref = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
-                S_test = S_ref
+                S_ref[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
             else:
                 # The sensitivity is computed assuming the adaptation to the lumiance of the sustained channel of the test and reference images
                 S_both = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
