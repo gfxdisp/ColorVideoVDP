@@ -222,9 +222,7 @@ class cvvdp(vq_metric):
         self.d_max = torch.as_tensor( parameters['d_max'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
 
-        self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
-        self.bfilt_duration = parameters['bfilt_duration']
-
+        self.lum_adapt_reference = parameters.get( 'lum_adapt_reference', True )
         self.omega = [0, 5]
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
@@ -706,10 +704,15 @@ class cvvdp(vq_metric):
         for cc in range(all_ch):
             tch = 0 if cc<3 else 1  # Sustained or transient
             cch = cc if cc<3 else 0 # Y, rg, yv
-            # The sensitivity is always extracted for the sustained channel of test and reference images
-            S_both = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
-            S_test[:,cc:(cc+1),:,:,:] = S_both[:,0:1,:,:,:]
-            S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
+            if self.lum_adapt_reference:
+                # The sensitivity is computed assuming the adaptation to the luminance of the sustained channel of the reference image only
+                S_ref = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                S_test = S_ref
+            else:
+                # The sensitivity is computed assuming the adaptation to the lumiance of the sustained channel of the test and reference images
+                S_both = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                S_test[:,cc:(cc+1),:,:,:] = S_both[:,0:1,:,:,:]
+                S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
         return (S_test, S_ref)
 
 
