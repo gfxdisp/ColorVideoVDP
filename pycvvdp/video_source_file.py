@@ -415,7 +415,7 @@ class video_source_video_file(video_source_dm):
 
 
 
-        if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry.EOTF!="PQ":
+        if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry[0].EOTF!="PQ":
             logging.warning( f"Video color transfer function ({self.test_vidr.color_transfer}) inconsistent with EOTF of the display model ({self.dm_photometry.EOTF})" )
 
 
