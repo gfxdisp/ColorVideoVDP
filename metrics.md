@@ -4,7 +4,13 @@ The code can run one of the following metrics (selected with `--metrics` or `-m`
 
 * `cvvdp`
 
-  The original ColorVideoVDP metric, as described in the [SIGGRAPH paper](https://doi.org/10.1145/3658144).
+  The latest version of ColorVideoVDP metric, with latest improvements.
+
+  ColorVideoVDP v0.6.0 introduced a small change that has greatly improved metric performance when evaluating the results of tone mapping (see Sec. 3.3 in [this paper](http://dx.doi.org/10.1145/3799902.3811107)) and also improved stability when ColorVideoVDP is used for optimization. Prior to v0.6.0, ColorVideoVDP used the reference image to find the background luminance for contrast sensitivity. From v0.6.0 onwards, the sensitivity is computed separately for the test and reference images. Moreover, ColorVideoVDP 0.6.0 has been retrained on 4 datasets: [XR-DAVID](https://doi.org/10.17863/CAM.108210), [UPIQ](https://doi.org/10.17863/CAM.68372), [KADID10k](https://database.mmsp-kn.de/kadid-10k-database.html) and the dataset from QoMEX 2026 Challenge [Video Quality Assessment for Asymmetric Encoded Videos](https://sites.google.com/view/qomex26-vqm-gc/home).
+
+* `cvvdp-0-5-6`
+
+  The original ColorVideoVDP metric, as described in the [SIGGRAPH paper](https://doi.org/10.1145/3658144). The model parameters has not changed until version 0.5.6.
 
 * `cvvdp-ml-saliency` [experimental]
 

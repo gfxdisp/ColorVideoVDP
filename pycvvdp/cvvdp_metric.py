@@ -702,6 +702,8 @@ class cvvdp(vq_metric):
         S_ref = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
         if self.lum_adapt_reference: # For backward compatibility
             S_test = S_ref
+        else:
+            S_test = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
         for cc in range(all_ch):
             tch = 0 if cc<3 else 1  # Sustained or transient
             cch = cc if cc<3 else 0 # Y, rg, yv
@@ -1311,3 +1313,11 @@ class cvvdp(vq_metric):
 
 
 register_metric( cvvdp )
+
+class cvvdp_0_5_6(cvvdp):
+    def __init__(self, config_paths=[], **kwargs):
+        path = os.path.join(os.path.dirname(__file__), "vvdp_data", 'cvvdp_parameters-0_5_6.json' )
+        config_paths.insert(0,path)
+        super().__init__(**kwargs, config_paths=config_paths)
+
+register_metric( cvvdp_0_5_6 )

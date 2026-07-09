@@ -111,12 +111,12 @@ class cvvdp_ml_base(cvvdp):
 
     # use_checkpoints - this is for memory-efficient gradient propagation (to be used with stage1 training only)
     # random_init - do not load NN from a checkpoint file, use a random initialization
-    def __init__(self, random_init = False, disabled_features=None, **kwargs):
+    def __init__(self, config_paths=[], random_init = False, disabled_features=None, **kwargs):
 
         self.random_init = random_init
         self.disabled_features = disabled_features        
 
-        super().__init__(**kwargs)
+        super().__init__(**kwargs, config_paths=config_paths)
 
         if self.heatmap is not None and self.heatmap!='none':
             raise vq_exception( "Currently cvvdp-ml metrics do not produce heatmaps" )
