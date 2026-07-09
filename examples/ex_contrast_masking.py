@@ -99,7 +99,7 @@ def run_cvvdp_on_video( test_vid_fname, ref_vid_fname, heatmap_vid_fname ):
 
     vs = pycvvdp.video_source_file( test_vid_fname, ref_vid_fname, display_photometry=display_name )
 
-    Q_JOD, stats_static = metric.predict_video_source( vs, heatmap_file=heatmap_vid_fname )    
+    Q_JOD, stats = metric.predict_video_source( vs, heatmap_file=heatmap_vid_fname )    
 
 
 if __name__ == '__main__':
