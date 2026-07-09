@@ -27,10 +27,11 @@ V_ref = np.repeat(I_ref[...,np.newaxis], N, axis=3) # Reference video (in color)
 SIGMAs = np.concatenate((np.linspace(0.01, sigma_max, N//2), np.linspace(sigma_max, 0.01, N//2)))
 V_blur = utils.imgaussblur(V_ref, SIGMAs)
 
-metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap=None)
+metric = pycvvdp.cvvdp(display_name='standard_4k', heatmap='supra-threshold')
+heatmap_file = 'blur_over_time.mp4'
 
 start = time.time()
-Q_JOD, stats = metric.predict(V_blur, V_ref, dim_order="HWCF", frames_per_second=fps)
+Q_JOD, stats = metric.predict(V_blur, V_ref, dim_order="HWCF", frames_per_second=fps, heatmap_file=heatmap_file)
 end = time.time()
 
 print(f'Quality for blur-over-time: {Q_JOD:.3f} JOD (took {end-start:.4f} secs to compute)')

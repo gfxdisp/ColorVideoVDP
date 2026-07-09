@@ -1,5 +1,6 @@
 # v0.6.0 (?)
 * Added: The contrast sensitivity is computed separately for test and reference images. This much improves the predictions of display quality and for tone mapping. See Sec. 3.3 in [this paper](http://dx.doi.org/10.1145/3799902.3811107).
+* Added: Display photometry can now be specified separately for the test and reference content. This is useful when evaluating tone mapping, e.g., comparing a tone-mapped sRGB image to HDR reference.
 * Added: `heatmap_file` passed to the `cvvdp.predict` allows to save heatmaps to video files (of infinite length) rather than store them in memory
 * Added: new examples - `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
 

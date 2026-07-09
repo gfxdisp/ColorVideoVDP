@@ -94,7 +94,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
     parser.add_argument("--result", type=str, default=None, help="write metric prediction results to a CSV file passed as an argument.")
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
-    parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
+    parser.add_argument("-d", "--display", type=str, nargs='+', default=["standard_4k"], help="one or two display names, e.g. 'HTC Vive', or ? to print the list of models. If two are given, the first is used for the test and the second for the reference.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
     parser.add_argument("--count-frames", action='store_true', default=False, help="Use accurate method to count frames in a video. Slower but accurate. Use if you see frame read errors.")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
@@ -115,6 +115,10 @@ def parse_args(arg_list=None):
         args = parser.parse_args(arg_list)
     else:
         args = parser.parse_args()
+
+    if len(args.display) not in (1, 2):
+        parser.error("--display/-d accepts either one or two values.")
+
     return args
 
 def run_on_args(args):
@@ -131,7 +135,7 @@ def run_on_args(args):
         import platform
         logging.debug( f'Platform: {platform.platform()}' )
 
-    if args.display == "?":
+    if args.display[0] == "?":
         pycvvdp.vvdp_display_photometry.list_displays(args.config_paths)
         return
 
@@ -156,38 +160,9 @@ def run_on_args(args):
             frame_range = range(sn[0],(sn[1]+1))
         
 
-
-    # Changed option to include MPS support for Macbooks
-    # if args.gpu >= 0 and torch.cuda.is_available():
-    #     device = torch.device('cuda:' + str(args.gpu))
-    # else:
-    #     device = torch.device('cpu')
-
     device = utils.get_best_device(args.device)
-    # args.device = args.device.lower()
-    # if args.device == 'auto': # Auto-detect CUDA or MPS
-    #     if torch.cuda.is_available():
-    #         args.device = 'cuda'
-    #     elif torch.backends.mps.is_available():
-    #         args.device = 'mps'
-    #     else:
-    #         logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')            
-    #         args.device = 'cpu'
-
-    # if args.device.startswith('cuda') and torch.cuda.is_available():
-    #     device = torch.device(args.device)
-    # elif args.device == 'mps':
-    #     torch_version = list(map(int, re.search(r'\d+\.\d+\.\d+', torch.__version__).group(0).split('.')))
-    #     assert torch_version[0] > 2 or (torch_version[0] == 2 and torch_version[1] > 0), f'Please use torch>=2.1.0 with MPS. Current version is {torch.__version__}.'
-    #     assert sys.platform == 'darwin', 'Device "mps" is only valid on a Mac.'
-    #     device = torch.device(args.device)
-    # else:
-    #     if args.device != 'cpu':
-    #         logging.warning(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
-    #     device = torch.device('cpu')
 
     logging.info("Running on device: " + str(device))
-
 
     heatmap_types = ["raw", "threshold", "supra-threshold"]
 
@@ -233,9 +208,13 @@ def run_on_args(args):
         sys.exit()
 
     metrics = []
-    display_photometry = pycvvdp.vvdp_display_photometry.load(args.display, config_paths=args.config_paths)
+    if len(args.display) == 2: # Separate photometry for the test and reference displays
+        display_photometry = (pycvvdp.vvdp_display_photometry.load(args.display[0], config_paths=args.config_paths), pycvvdp.vvdp_display_photometry.load(args.display[1], config_paths=args.config_paths))
+    else:
+        display_photometry = pycvvdp.vvdp_display_photometry.load(args.display[0], config_paths=args.config_paths)
+
     if args.pix_per_deg is None:
-        display_geometry = pycvvdp.vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
+        display_geometry = pycvvdp.vvdp_display_geometry.load(args.display[0], config_paths=args.config_paths)
     else:
         display_geometry = pycvvdp.vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
 

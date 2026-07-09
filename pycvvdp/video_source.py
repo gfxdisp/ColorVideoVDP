@@ -203,20 +203,29 @@ This video_source uses a photometric display model to convert input content (e.g
 """
 class video_source_dm( video_source ):
 
-    def __init__( self,  display_photometry='sdr_4k_30', config_paths=[] ):
-
-#        self.color_trans = ColorTransform(color_space_name)
-
+    def _init_photometry(self, display_photometry, config_paths=[]):
         if isinstance( display_photometry, str ):
-            self.dm_photometry = vvdp_display_photometry.load(display_photometry, config_paths) 
+            return vvdp_display_photometry.load(display_photometry, config_paths) 
         elif isinstance( display_photometry, vvdp_display_photometry ):
-            self.dm_photometry = display_photometry
+            return display_photometry
         else:
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
+        
 
-    def apply_dm_and_color_transform(self, frame, target_colorspace):
+    def __init__( self, display_photometry='sdr_4k_30', config_paths=[] ):
 
-        I = self.dm_photometry.source_2_target_colorspace(frame, target_colorspace)
+        if isinstance( display_photometry, tuple ):
+            assert len(display_photometry)==2, "Pass display photometry for the test and reference displays as a tuple."
+            self.dm_photometry = (self._init_photometry( display_photometry[0], config_paths=config_paths ), self._init_photometry( display_photometry[1], config_paths=config_paths ))
+        else:
+            dp = self._init_photometry( display_photometry, config_paths=config_paths )
+            self.dm_photometry = (dp, dp)
+
+
+    def apply_dm_and_color_transform(self, frame, target_colorspace, is_test):
+
+        pm_idx = 0 if is_test else 1
+        I = self.dm_photometry[pm_idx].source_2_target_colorspace(frame, target_colorspace)
 
         self.check_if_valid(I, target_colorspace)
         return I
@@ -312,12 +321,12 @@ class video_source_array( video_source_dm ):
     # gpuArray.
 
     def get_test_frame( self, frame_no, device, colorspace ):
-        return self._get_frame(self.test_video, frame_no, device, colorspace )
+        return self._get_frame(self.test_video, frame_no, device, colorspace, is_test=True )
 
     def get_reference_frame( self, frame_no, device, colorspace ):
-        return self._get_frame(self.reference_video, frame_no, device, colorspace )
+        return self._get_frame(self.reference_video, frame_no, device, colorspace, is_test=False )
 
-    def _get_frame( self, from_array, frame_no, device, colorspace ):        
+    def _get_frame( self, from_array, frame_no, device, colorspace, is_test ):        
         # Determine the maximum value of the data type storing the
         # image/video
 
@@ -341,7 +350,7 @@ class video_source_array( video_source_dm ):
         else:
             raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
 
-        I = self.apply_dm_and_color_transform(frame, colorspace)
+        I = self.apply_dm_and_color_transform(frame, colorspace, is_test)
         
         return I
 

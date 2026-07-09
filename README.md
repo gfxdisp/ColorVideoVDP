@@ -336,6 +336,7 @@ When reporting a problem, run `cvvdp` with `--verbose` argument and paste the en
   - ColorVideoVDP v0.6.0 introduced a small change that has greatly improved metric performance when evaluating the results of tone mapping and also improved stability when ColorVideoVDP is used for optimization. Prior to v0.6.0, ColorVideoVDP used the reference image to find the background luminance for contrast sensitivity. From v0.6.0 onwards, the sensitivity is computed separately for the test and reference images. 
   - ColorVideoVDP 0.6.0 has been retrained on 4 datasets: [XR-DAVID](https://doi.org/10.17863/CAM.108210), [UPIQ](https://doi.org/10.17863/CAM.68372), [KADID10k](https://database.mmsp-kn.de/kadid-10k-database.html) and the dataset from QoMEX 2026 Challenge [Video Quality Assessment for Asymmetric Encoded Videos](https://sites.google.com/view/qomex26-vqm-gc/home).
   - `heatmap_file` passed to the `cvvdp.predict` allows to save heatmaps to video files (of infinite length) rather than store them in memory
+  - Display photometry can now be specified separately for the test and reference content. This is useful when evaluating tone mapping, e.g., comparing a tone-mapped sRGB image to HDR reference
   - The original ColorVideoVDP can be still run by passing `--metric cvvdp-0-5-6`
   - New examples: `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
 

@@ -291,7 +291,7 @@ class cvvdp(vq_metric):
 
         test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
 
-        return self.predict_video_source(test_vs)
+        return self.predict_video_source(test_vs, heatmap_file=heatmap_file)
 
     '''
     Compute a loss function between test and reference images/videos. Used as an optimization term in which the loss is minimized. 
@@ -1135,10 +1135,20 @@ class cvvdp(vq_metric):
         else:
             standard_str = f'custom-display: {self.display_name}'
 
-        L_black, L_refl = self.display_photometry.get_black_level()
-        return f'"{self.full_name()} v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
-               f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
-               f'Lblack={L_black:.4g}, Lrefl={L_refl:.4g} [cd/m^2], ({standard_str})"' 
+        if isinstance(self.display_photometry, tuple): # separate photometry for the test and reference
+            L_black_test, L_refl_test = self.display_photometry[0].get_black_level()
+            L_black_ref, L_refl_ref = self.display_photometry[1].get_black_level()
+            return f'"{self.full_name()} v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
+                f'Test: Lpeak={self.display_photometry[0].get_peak_luminance():.5g}, ' \
+                f'Lblack={L_black_test:.4g}, Lrefl={L_refl_test:.4g} [cd/m^2]; '  \
+                f'Reference: Lpeak={self.display_photometry[1].get_peak_luminance():.5g}, ' \
+                f'Lblack={L_black_ref:.4g}, Lrefl={L_refl_ref:.4g} [cd/m^2]"' 
+                
+        else:
+            L_black, L_refl = self.display_photometry.get_black_level()
+            return f'"{self.full_name()} v{self.version}, {self.pix_per_deg:.4g} [pix/deg], ' \
+                f'Lpeak={self.display_photometry.get_peak_luminance():.5g}, ' \
+                f'Lblack={L_black:.4g}, Lrefl={L_refl:.4g} [cd/m^2], ({standard_str})"' 
 
     def write_features_to_json(self, stats, dest_fname):
         Q_per_ch = stats['Q_per_ch'] # quality per channel [cc,ff,bb]

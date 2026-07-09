@@ -441,7 +441,7 @@ class video_source_video_file(video_source_dm):
         #print( f"{self.test_fname} - {self.fs_width}x{self.fs_height}" )
         # if not self.last_test_frame is None and frame == self.last_test_frame[0]:
         #     return self.last_test_frame[1]
-        L = self._get_frame( self.test_vidr, frame_idx, device, colorspace )
+        L = self._get_frame( self.test_vidr, frame_idx, device, colorspace, is_test=True )
         # self.last_test_frame = (frame,L)
         return L
 
@@ -449,11 +449,11 @@ class video_source_video_file(video_source_dm):
         self.init_readers()
         # if not self.last_reference_frame is None and frame == self.last_reference_frame[0]:
         #     return self.last_reference_frame[1]
-        L = self._get_frame( self.reference_vidr, frame_idx, device, colorspace )
+        L = self._get_frame( self.reference_vidr, frame_idx, device, colorspace, is_test=False )
         # self.reference_test_frame = (frame,L)
         return L
 
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace, is_test ):        
         self.init_readers()
 
         if frame != (vid_reader.curr_frame+1):
@@ -464,13 +464,13 @@ class video_source_video_file(video_source_dm):
         if frame_np is None:
             raise vq_exception( f'Could not read frame {frame} of "{vid_reader.fname}". Try passing "--count-frames" or "-nframes".' )
 
-        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
+        return self._prepare_frame(frame_np, device, vid_reader.unpack, is_test=is_test, colorspace=colorspace)
 
-    def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y" ):
+    def _prepare_frame( self, frame_np, device, unpack_fn, is_test, colorspace="Y",  ):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
 
-        I = self.apply_dm_and_color_transform(frame_t, colorspace)
+        I = self.apply_dm_and_color_transform(frame_t, colorspace, is_test)
 
         return I
 
@@ -637,16 +637,16 @@ class video_source_image_frames(video_source_dm):
 
     def get_test_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
         if frame_idx==0 and not self.img_cache is None: # Use cache to avoid loading the same image twice
-            I = self._get_frame( self.test_fname, frame_idx, device, colorspace, self.img_cache )
+            I = self._get_frame( self.test_fname, frame_idx, device, colorspace, is_test=True, cache_img=self.img_cache )
             self.img_cache = None
             return I
         else:
-            return self._get_frame( self.test_fname, frame_idx, device, colorspace)
+            return self._get_frame( self.test_fname, frame_idx, device, is_test=True, colorspace=colorspace)
 
     def get_reference_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
-        return self._get_frame( self.reference_fname, frame_idx, device, colorspace)
+        return self._get_frame( self.reference_fname, frame_idx, device, is_test=False, colorspace=colorspace)
 
-    def _get_frame(self, file_name, frame_idx, device, colorspace, cache_img=None):
+    def _get_frame(self, file_name, frame_idx, device, colorspace, is_test, cache_img=None):
 
         if not cache_img is None: 
             img = cache_img
@@ -657,7 +657,7 @@ class video_source_image_frames(video_source_dm):
             img = load_image_as_array(file_name)
 
         img_torch = numpy2torch_frame(img, 0, device)
-        I = self.apply_dm_and_color_transform(img_torch, colorspace)    
+        I = self.apply_dm_and_color_transform(img_torch, colorspace, is_test=is_test)    
         return I
 
             # if not full_screen_resize is None:

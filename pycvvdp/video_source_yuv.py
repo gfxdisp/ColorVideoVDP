@@ -329,14 +329,14 @@ class video_source_yuv_file(video_source_dm):
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
     # starting from 0. 
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        L = self._get_frame( self.test_vidr, frame, device, colorspace )
+        L = self._get_frame( self.test_vidr, frame, device, is_test=True, colorspace=colorspace )
         return L
 
     def get_reference_frame( self, frame, device, colorspace="Y" ) -> Tensor:
-        L = self._get_frame( self.reference_vidr, frame, device, colorspace )
+        L = self._get_frame( self.reference_vidr, frame, device, is_test=False, colorspace=colorspace )
         return L
 
-    def _get_frame( self, vid_reader, frame, device, colorspace="Y" ):
+    def _get_frame( self, vid_reader, frame, device, is_test, colorspace="Y" ):
         RGB = vid_reader.get_frame_rgb_tensor(self.offset + frame, device)
         RGB_bcfhw = reshuffle_dims( RGB, in_dims='HWC', out_dims="BCFHW" )
 
@@ -345,7 +345,7 @@ class video_source_yuv_file(video_source_dm):
                                                 size=(self.resize_resolution[1], self.resize_resolution[0]),
                                                 mode=self.full_screen_resize).view(1,RGB_bcfhw.shape[1],1,self.resize_resolution[1],self.resize_resolution[0]).clip(0.,1.)
 
-        I = self.apply_dm_and_color_transform(RGB_bcfhw, colorspace)
+        I = self.apply_dm_and_color_transform(RGB_bcfhw, colorspace, is_test=is_test)
         return I
     
     def set_offset( self, offset:int ):
