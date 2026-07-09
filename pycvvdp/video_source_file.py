@@ -354,6 +354,7 @@ class video_source_video_file(video_source_dm):
         self.resize_resolution = resize_resolution
         self.ffmpeg_cc = ffmpeg_cc
         self.verbose = verbose
+        self.tf_warning = False
         self.fps = fps       
         self.ignore_framerate_mismatch = ignore_framerate_mismatch 
 
@@ -415,8 +416,9 @@ class video_source_video_file(video_source_dm):
 
 
 
-        if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry[0].EOTF!="PQ":
-            logging.warning( f"Video color transfer function ({self.test_vidr.color_transfer}) inconsistent with EOTF of the display model ({self.dm_photometry.EOTF})" )
+        if self.test_vidr.color_transfer=="smpte2084" and self.dm_photometry[0].EOTF!="PQ" and not self.tf_warning:
+            logging.warning( f"Video color transfer function ({self.test_vidr.color_transfer}) inconsistent with EOTF of the display model ({self.dm_photometry[0].EOTF})" )
+            self.tf_warning = True
 
 
     # Return (height, width, frames) touple with the resolution and

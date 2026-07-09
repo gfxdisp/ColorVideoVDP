@@ -614,6 +614,7 @@ class cvvdp(vq_metric):
             mem_avail = min( mem_avail_nvml, mem_avail_pytorch)
         else:
             mem_avail = mem_avail_pytorch
+            mem_avail_nvml = None
 
         if not self.gpu_mem is None:
             mem_avail = min(int(self.gpu_mem*1e9), mem_avail)
@@ -631,7 +632,7 @@ class cvvdp(vq_metric):
         block_N_frames = int(math.floor((mem_avail-a-pix_cnt*(filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
 
         if self.debug:
-            logging.debug( f"Available memory (PyTorch): {mem_avail_pytorch/1e9} GB")
+            logging.debug( f"Available memory (PyTorch): {mem_avail_pytorch/1e9} GB")            
             logging.debug( f"Available memory (NVML): {mem_avail_nvml/1e9} GB")
             total_mem_est = a + pix_cnt*(block_N_frames+filter_len-1)*b + pix_cnt*block_N_frames*c
             logging.debug( f"Estimated memory use: {total_mem_est/1e9} GB")
@@ -722,7 +723,6 @@ class cvvdp(vq_metric):
                 S_test[:,cc:(cc+1),:,:,:] = S_both[:,0:1,:,:,:]
                 S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
         return (S_test, S_ref)
-
 
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
         # R[batch,channels,frames,width,height]
