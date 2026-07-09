@@ -39,7 +39,7 @@ from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
 
 from pycvvdp.dump_channels import DumpChannels
-from pycvvdp.video_writer import VideoWriter
+from pycvvdp.video_writer import VideoWriter, ImageWriter
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
@@ -108,11 +108,11 @@ ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this 
 """
 class cvvdp(vq_metric):
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], 
-                 heatmap=None, heatmap_file=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, 
+                 heatmap=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, 
                  dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
-        self.heatmap_file = heatmap_file
+        self.heatmap_file = None
         self.heatmap_vw = None
         self.temp_padding = temp_padding
         self.use_checkpoints = use_checkpoints # Used for end-to-end training, these are NOT model checkpoints
@@ -287,7 +287,7 @@ class cvvdp(vq_metric):
           'replicate' - replicate the first frame (default)
           'symmetric'  - the video frames are mirrored so that frames -1, -2, ... correspond to frames 0, 1, ...
     '''
-    def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0):
+    def predict(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, heatmap_file=None):
 
         test_vs = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
 
@@ -306,8 +306,10 @@ class cvvdp(vq_metric):
     '''
     The same as `predict` but takes as input fvvdp_video_source_* object instead of Numpy/Pytorch arrays. Video source is recommended when processing long videos as it allows frame-by-frame loading.
     '''
-    def predict_video_source(self, vid_source):
+    def predict_video_source(self, vid_source, heatmap_file=None ):
         # We assume the pytorch default NCDHW layout
+
+        self.heatmap_file = heatmap_file
 
         vid_sz = vid_source.get_video_size() # H, W, F
         height, width, N_frames = vid_sz
@@ -414,7 +416,11 @@ class cvvdp(vq_metric):
                     heatmap[:,:,ff:ff_end,...] = heatmap_vis.type(torch.float16).cpu()
                 else:
                     if self.heatmap_vw is None:
-                        self.heatmap_vw = VideoWriter( self.heatmap_file, hdr_mode=False, fps=vid_source.get_frames_per_second() )
+                        if is_image:
+                            self.heatmap_vw = ImageWriter( self.heatmap_file )
+                        else:
+                            self.heatmap_vw = VideoWriter( self.heatmap_file, hdr_mode=False, fps=vid_source.get_frames_per_second() )
+    
                     for kk in range(heatmap_vis.shape[1]):
                         if heatmap_vis.shape[0]==1: # grayscale heatmap
                             self.heatmap_vw.write_frame_rgb((heatmap_vis[:,kk,:,:]/10).view((height,width,1)).tile((1,1,3)).cpu().numpy())

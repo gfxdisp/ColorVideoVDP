@@ -338,7 +338,17 @@ def run_on_args(args):
                 base_fname = os.path.join(out_dir, base)
                 mm.set_base_fname(base_fname)
 
-                Q_pred, stats = mm.predict_video_source(vs)
+                predict_args = inspect.getfullargspec(mm.__class__.predict_video_source)[0]
+                if 'heatmap_file' in predict_args and do_heatmap:
+                    height, width, N_frames = vs.get_video_size()
+                    is_image = N_frames==1
+                    heatmap_ext = 'png' if is_image else 'mp4'
+                    heatmap_file = os.path.join(out_dir, base + "_heatmap." + heatmap_ext)
+                    logging.info(f"Writing {args.heatmap} heatmap to '{heatmap_file}'...")
+
+                    Q_pred, stats = mm.predict_video_source(vs, heatmap_file=heatmap_file)
+                else:
+                    Q_pred, stats = mm.predict_video_source(vs)
                 Q_pred_scalar = Q_pred.item()
                 if args.quiet:
                     print( "{Q:0.4f}".format(Q=Q_pred_scalar) )                    
@@ -356,16 +366,6 @@ def run_on_args(args):
                     dest_name = os.path.join(out_dir, base + "_fmap.json")
                     logging.info("Writing feature map '" + dest_name + "' ...")
                     mm.write_features_to_json(stats, dest_name)
-
-                if do_heatmap and not stats is None:
-                    if stats["heatmap"].shape[2]>1: # if it is a video
-                        dest_name = os.path.join(out_dir, base + "_heatmap.mp4")
-                        logging.info("Writing heat map '" + dest_name + "' ...")
-                        np2vid(torch.squeeze(stats["heatmap"].permute((2,3,4,1,0)), dim=4).cpu().numpy(), dest_name, vs.get_frames_per_second(), args.verbose)
-                    else:
-                        dest_name = os.path.join(out_dir, base + "_heatmap.png")
-                        logging.info("Writing heat map '" + dest_name + "' ...")
-                        np2img(torch.squeeze(stats["heatmap"].permute((2,3,4,1,0)), dim=4).cpu().numpy(), dest_name)
 
                 if args.distogram != -1:
                     dest_name = os.path.join(out_dir, base + "_distogram.png")                    

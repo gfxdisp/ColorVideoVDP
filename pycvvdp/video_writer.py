@@ -111,6 +111,8 @@ class ImageWriter:
     BT.2020 + PQ for HDR
     """
     def write_frame_rgb(self, rgb):
+        if rgb.dtype != np.uint8:
+            rgb = (rgb * 255.0).astype(np.uint8)
         iio.imwrite(self.fname, rgb)
 
     # Delete or close if program was interrupted
