@@ -377,12 +377,12 @@ class video_source_packed_array( video_source_dm ):
         return h, w, n
 
     def get_test_frame(self, frame_no, device):
-        return self._get_frame(self.test_video, frame_no, device)
+        return self._get_frame(self.test_video, frame_no, device, is_test=True)
 
     def get_reference_frame(self, frame_no, device):
-        return self._get_frame(self.reference_video, frame_no, device)
+        return self._get_frame(self.reference_video, frame_no, device, is_test=False)
 
-    def _get_frame(self, from_array, idx, device):
+    def _get_frame(self, from_array, idx, device, is_test):
         n, h, w, bit_depth, chroma_ss, resize_h, resize_w = map(int, from_array[:7])
         if self.yuv:
             y_pixels = h*w
@@ -430,7 +430,8 @@ class video_source_packed_array( video_source_dm ):
             frame = frame.reshape(resize_h, resize_w, 3) / max_value
             frame = frame.permute(2,0,1).reshape(1, -1, 1, resize_h, resize_w)
 
-        L = self.dm_photometry.forward( frame )
+        pm_idx = 0 if is_test else 1
+        L = self.dm_photometry[pm_idx].forward( frame )
 
         if L.shape[1] == 3:
             # Convert to grayscale

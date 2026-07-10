@@ -14,7 +14,7 @@ The code can run one of the following metrics (selected with `--metrics` or `-m`
 
 * `cvvdp-ml-saliency` [experimental]
 
-  The extended version of ColorVideoVDP with a machine-learning based regressor and a saliency model, as explained in the [ICME paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/hammou2025_ICME_GC_ColorVideoVDP_ML.pdf).
+  The extended version of ColorVideoVDP with a machine-learning based regressor and a saliency model, as explained in the [ICME paper](https://www.cl.cam.ac.uk/~rkm38/pdfs/hammou2025_ICME_GC_ColorVideoVDP_ML.pdf) and on the project [web page](https://www.cl.cam.ac.uk/research/rainbow/projects/cvvdp-ml/).
 
   This metric has been calibrated to perform well on the challenge dataset - video streaming distortions due to reduce bit-rate and resolution in both SDR and HDR content. The model was ranked the 3rd in the challenge, performing slightly worse than `cvvdp-ml-transformer`. 
 

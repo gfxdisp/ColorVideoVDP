@@ -310,7 +310,7 @@ class video_source_yuv_file(video_source_dm):
                 rs_str = ""
             else:
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
-            logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry.EOTF}, fps: {vr.avg_fps}, frames: {self.frames}" )
+            logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry[0].EOTF}, fps: {vr.avg_fps}, frames: {self.frames}" )
 
         
     # Return (height, width, frames) touple with the resolution and

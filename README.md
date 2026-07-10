@@ -27,7 +27,15 @@ If you use the metric in your research, please cite the paper above.
 
 # Other metrics: ColorVideoVDP-ML, PU-PSNR
 
-The repository also contains code for other metrics, such as PU-PSNR, or ColorVideoVDP-ML. See [metrics.md](/metrics.md) for more information.
+The repository also contains code for other metrics, which can be activated by passing `--metric` argument. Those metrics include: 
+
+* ColorVideoVDP-tm - as shown in [this project](https://kenchen10.github.io/projects/tmometric/index.html), ColorVideoVDP performs well as a tone-mapping evaluation metric, outperforming dedicated tone mapping metrics, such as TMQI, FSITM and FFTMI. The change that improved the performance on tone mapping has been incorporated into ColorVideoVDP v0.6.0 so there is no need to change to another metric. See also [HDR content](#hdr-content).
+
+* `pu-psnr-rgb2020` and `pu-psnr-y` - this metric transforms high dynamic range content into [PU21](https://github.com/gfxdisp/pu21), perceptually uniform space, and then computes PSNR, either on BT.2020 RGB color values, or luminance. It is a simple metric intended for HDR content. 
+
+* `cvvdp-ml-saliency`, `cvvdp-ml-transformer` - the combination of ColorVideoVDP backbone with a machine-learning component, as explained [here](https://www.cl.cam.ac.uk/research/rainbow/projects/cvvdp-ml/). Those metrics performed very well in the [ICME](https://sites.google.com/view/icme25-vqm-gc/home?authuser=0) and [QoMEX](https://sites.google.com/view/qomex26-vqm-gc/home) video metric challenges and can be a great choice for the specific applications. However, at the moment they may not generalise as well as the regular ColorVideoVDP.
+
+More details can be found in [metrics.md](/metrics.md).
 
 ## PyTorch quickstart
 1. Start by installing [anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Then, create a new environment for ColorVideoVDP and activate it:
@@ -161,6 +169,13 @@ If you run the metric from Python code, the display photometry and geometry can 
 * HDR video files encoded using PQ (SMPTE ST 2084) or HLG EOTF functions. Pass the video files as `--test` and `--ref` arguments and specify `--display standard_hdr_pq` or `--display standard_hdr_hlg`.
 
 * OpenEXR images. The images *MUST* contain absolute linear color values (color graded values, emitted from the display). That is, if the disply peak luminance is 1000, RGB=(1000,1000,1000) corresponds to the maximum value emitted from the display. If you pass images with the maximum value of 1, the metric will assume that the images are very dark (the peak of 1 nit) and result in incorerect predictrions. You need to specify `--display standard_hdr_linear` to use correct EOTF. 
+
+* You can also use ColorVideoVDP to evaluate tone mapping. You need to pass two displays models:
+```bash
+cvvdp --test example_media/nancy_church_reinhard02.png --ref example_media/nancy_church.hdr -d standard_4k standard_hdr_linear
+```
+Note that `nancy_church.hdr` image must be scaled in the absolute units (e.g., cd/m^2).
+
 
 **Troubleshooting on Linux:** You may need to update your library path by adding the following line to your `~/.bashrc`:
 ```bash

@@ -530,7 +530,7 @@ class video_source_temp_resample_file(video_source_video_file):
         return super().get_video_size()
 
 
-    def _get_frame( self, vid_reader, frame_idx, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame_idx, device, colorspace, is_test ):        
         super().init_readers()
 
         # Frame index after temporal resampling
@@ -542,7 +542,7 @@ class video_source_temp_resample_file(video_source_video_file):
             return self.cache_frame[ce]
         else:
             self.cache_ind[ce] = resample_frame_idx
-            self.cache_frame[ce] = super()._get_frame( vid_reader, resample_frame_idx, device=device, colorspace=colorspace )
+            self.cache_frame[ce] = super()._get_frame( vid_reader, resample_frame_idx, device=device, colorspace=colorspace, is_test=is_test )
             #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
             return self.cache_frame[ce]            
 
