@@ -199,7 +199,9 @@ def numpy2torch_frame(np_array, frame, device, dim_order="HWC" ):
 
 
 """
-This video_source uses a photometric display model to convert input content (e.g. sRGB) to luminance maps. 
+This video_source uses a photometric display model to convert input content (e.g. sRGB) to the target color space used by the metric. 
+A separate model can be specified for test and reference content (as a tuple). If a single display_photometry is passed, the same model
+will be used for the test and reference.
 """
 class video_source_dm( video_source ):
 
@@ -212,6 +214,12 @@ class video_source_dm( video_source ):
             raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
         
 
+    """
+    display_photometry can be: a string with the name of the display as listed in display_models.json; 
+    an object of display_photometry class; a touple or either strings or objects, where the first element 
+    of the tuple is used for the test content and the second for the reference content.
+    config_paths - a list of paths to folders or files where display_models.json can be found.
+    """
     def __init__( self, display_photometry='sdr_4k_30', config_paths=[] ):
 
         if isinstance( display_photometry, tuple ):
