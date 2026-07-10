@@ -682,7 +682,7 @@ The same functionality as to fvvdp_video_source_video_file, but preloads all the
 '''
 class video_source_video_file_preload(video_source_video_file):
     
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace, is_test ):        
 
         if not hasattr( self, "frame_array_tst" ):
 
@@ -710,7 +710,7 @@ class video_source_video_file_preload(video_source_video_file):
         if frame_np is None:
             raise vq_exception( 'Could not read frame {}'.format(frame) )
 
-        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
+        return self._prepare_frame(frame_np, device, vid_reader.unpack, is_test=is_test, colorspace=colorspace)
 
 
 '''
@@ -829,3 +829,6 @@ class video_source_file(video_source):
 
     def get_reference_frame( self, frame_idx, device, colorspace="Y" ) -> Tensor:
         return self.vs.get_reference_frame( frame_idx, device, colorspace )
+
+    def set_display_photometry(self, display_photometry, config_paths=[] ):
+        self.vs.set_display_photometry(display_photometry, config_paths )

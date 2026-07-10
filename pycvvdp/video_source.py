@@ -221,14 +221,15 @@ class video_source_dm( video_source ):
     config_paths - a list of paths to folders or files where display_models.json can be found.
     """
     def __init__( self, display_photometry='sdr_4k_30', config_paths=[] ):
+        self.set_display_photometry( display_photometry, config_paths=config_paths )
 
+    def set_display_photometry(self, display_photometry, config_paths=[] ):
         if isinstance( display_photometry, tuple ):
             assert len(display_photometry)==2, "Pass display photometry for the test and reference displays as a tuple."
             self.dm_photometry = (self._init_photometry( display_photometry[0], config_paths=config_paths ), self._init_photometry( display_photometry[1], config_paths=config_paths ))
         else:
             dp = self._init_photometry( display_photometry, config_paths=config_paths )
             self.dm_photometry = (dp, dp)
-
 
     def apply_dm_and_color_transform(self, frame, target_colorspace, is_test):
 
