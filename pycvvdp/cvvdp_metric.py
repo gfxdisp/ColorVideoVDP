@@ -73,6 +73,37 @@ from pycvvdp.csf import castleCSF
 #     for obj in objs_sorted:
 #         print( obj[1] )
 
+class SeparableGaussianBlur:
+    """
+    Compute two sequential orthogonal 1D convolutions.
+    Faster than performing one 2D convolution.
+    """
+
+    def __init__(self, kernel_size, sigma, device=None, dtype=torch.float32):
+        k = int(kernel_size)
+        half = (k - 1) * 0.5
+        x = torch.linspace(-half, half, k, device=device, dtype=dtype)
+        pdf = torch.exp(-0.5 * (x / float(sigma)) ** 2)
+        k1d = pdf / pdf.sum()
+        self.pad = (k // 2,) * 4  # (left, right, top, bottom)
+        self.k_vert = k1d.view(1, 1, k, 1)
+        self.k_horiz = k1d.view(1, 1, 1, k)
+
+    def to(self, device):
+        self.k_vert = self.k_vert.to(device)
+        self.k_horiz = self.k_horiz.to(device)
+        return self
+
+    def forward(self, img):  # img: (N, 1, H, W)
+        x = Func.pad(img, self.pad, mode="reflect")
+        x = Func.conv2d(x, self.k_vert)
+        x = Func.conv2d(x, self.k_horiz)
+        return x
+
+    __call__ = forward
+
+
+
 # A differentiable variant of a power function
 def safe_pow( x:Tensor, p ): 
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
@@ -157,7 +188,7 @@ class cvvdp(vq_metric):
         self.mask_c = torch.as_tensor( parameters['mask_c'], device=self.device ) # content masking adjustment
         self.pu_dilate = parameters['pu_dilate']
         if self.pu_dilate>0:
-            self.pu_blur = GaussianBlur(int(self.pu_dilate*4)+1, self.pu_dilate)
+            self.pu_blur = SeparableGaussianBlur(int(self.pu_dilate*4)+1, self.pu_dilate, device=self.device)
             self.pu_padsize = int(self.pu_dilate*2)
             
         self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
@@ -197,8 +228,10 @@ class cvvdp(vq_metric):
         self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
 
         self.do_xchannel_masking = True if parameters['xchannel_masking'] == "on" else False
-        self.xcm_weights = torch.as_tensor( parameters['xcm_weights'], device=self.device, dtype=torch.float32 ) 
-        
+        self.xcm_weights = torch.as_tensor( parameters['xcm_weights'], device=self.device, dtype=torch.float32 )
+        # Precompute the cross-channel masking weights (constant per model); consumed by mask_pool's einsum.
+        self.xcm_pow = 2**self.xcm_weights
+
         self.image_int = torch.as_tensor( parameters['image_int'], device=self.device )
 
         if 'ch_chrom_w' in parameters:
@@ -215,6 +248,9 @@ class cvvdp(vq_metric):
         #     self.baseband_weight = self.baseband_weight.repeat(4)
         self.dclamp_type = parameters['dclamp_type']  # clamping mode: soft or hard
         self.d_max = torch.as_tensor( parameters['d_max'], device=self.device ) # Clamping of difference values
+        # Precompute elementwise powers
+        self.mask_c_pow = 10.0**self.mask_c
+        self.d_max_pow = 10.0**self.d_max
         self.version = parameters['version']
 
         self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
@@ -464,7 +500,7 @@ class cvvdp(vq_metric):
         is_image = (N_frames==1)  # Can run faster on images
 
         if is_image:
-            R = torch.zeros((batch_sz, 6, 1, height, width), device=self.device)
+            R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
             R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
             R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
 
@@ -758,10 +794,8 @@ class cvvdp(vq_metric):
         # Cross-channel masking
         num_ch = C.shape[-4]
         if self.do_xchannel_masking:
-            M = torch.empty_like(C)
-            xcm_weights = torch.reshape( (2**self.xcm_weights), (4,4) )[:num_ch,:]
-            for cc in range(num_ch): # for each channel: Sust, RG, VY, Trans
-                M[:,cc:(cc+1),...] = torch.sum( C * xcm_weights[:,cc].view(1,-1,1,1,1), dim=-4, keepdim=True )
+            W = torch.reshape(self.xcm_pow, (4, 4))[:num_ch, :num_ch]
+            M = torch.einsum('bkfhw,kc->bcfhw', C, W)
         else:
             cm_weights = torch.reshape( (2**self.xcm_weights), (1,4,1,1,1) )[:,:num_ch,...]
             M = C * cm_weights
@@ -807,7 +841,7 @@ class cvvdp(vq_metric):
 
         M = self.phase_uncertainty(self.mask_pool(safe_pow(torch.abs(C_p),q)))
 
-        D_max = 10**self.d_max
+        D_max = self.d_max_pow
 
         return D_max * pow_neg( C_p, p ) / (0.2 + M)
 
@@ -836,9 +870,10 @@ class cvvdp(vq_metric):
                     T_p = T * S
                     R_p = R * S
                 else:
-                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
-                    T_p = T * S * ch_gain
-                    R_p = R * S * ch_gain
+                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...]
+                    Sg = S * ch_gain
+                    T_p = T * Sg
+                    R_p = R * Sg
 
             if self.masking_model.endswith( "none" ):
                 D = self.clamp_diffs(torch.abs(T_p-R_p))
@@ -850,7 +885,7 @@ class cvvdp(vq_metric):
                 p = self.mask_p
                 q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
 
-                M = self.mask_pool(safe_pow(torch.abs(M_mm),q))
+                M = self.mask_pool(safe_pow(M_mm,q))
 
                 #D_band = safe_pow(torch.abs(T_p - R_p),p)
                 # k_c = self.k_c
@@ -902,7 +937,7 @@ class cvvdp(vq_metric):
                 T_p_m = self.phase_uncertainty(self.mask_pool(torch.abs(T_p)))
                 R_p_m = self.phase_uncertainty(self.mask_pool(torch.abs(R_p)))
     
-                D_max = 10**self.d_max
+                D_max = self.d_max_pow
                 epsilon = D_max-1
 
                 D = D_max - D_max*(2*torch.abs(T_p)*torch.abs(R_p)+epsilon)/(T_p_m*T_p_m + R_p_m*R_p_m + epsilon)
@@ -916,15 +951,15 @@ class cvvdp(vq_metric):
 
     def clamp_diffs(self,D):
         if self.dclamp_type == "hard":
-            Dc = torch.clamp(D, max=(10**self.d_max))
+            Dc = torch.clamp(D, max=self.d_max_pow)
         elif self.dclamp_type == "soft":
-            max_v = 10**self.d_max
+            max_v = self.d_max_pow
             Dc = max_v * D / (max_v + D)
         elif self.dclamp_type == "none":
             Dc = D
         elif self.dclamp_type == "per_channel":
             num_ch = D.shape[0]
-            max_v = 10**(self.d_max[:num_ch,...].view(-1,1,1,1))
+            max_v = self.d_max_pow[:num_ch,...].view(-1,1,1,1)
             Dc = max_v * D / (max_v + D)
         else:
             raise RuntimeError( f"Unknown difference clamping type {self.dclamp_type}" )
@@ -937,9 +972,9 @@ class cvvdp(vq_metric):
         if self.pu_dilate != 0 and M.shape[-2]>self.pu_padsize and M.shape[-1]>self.pu_padsize:
             #M_pu = utils.imgaussfilt( M, self.pu_dilate ) * torch.pow(10.0, self.mask_c)
             H, W = M.shape[-2], M.shape[-1] # We need to reshape because the Gaussian does not work with 5D tensors
-            M_pu = self.pu_blur.forward(M.view(-1,1,H,W)).view( M.shape[0:-2] + (H,W) ) * (10**self.mask_c)
+            M_pu = self.pu_blur.forward(M.view(-1,1,H,W)).view( M.shape[0:-2] + (H,W) ) * self.mask_c_pow
         else:
-            M_pu = M * (10**self.mask_c)
+            M_pu = M * self.mask_c_pow
         return M_pu
 
     def phase_uncertainty_no_c(self, M):
@@ -975,7 +1010,7 @@ class cvvdp(vq_metric):
         return R
 
     def smooth_clamp_cont( self, C, p ):
-        max_v = 10**self.d_max
+        max_v = self.d_max_pow
         C_clamped = torch.div( (max_v*(C**p)+1), (max_v + C**p) )
         return C_clamped
 
