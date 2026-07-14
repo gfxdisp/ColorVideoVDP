@@ -3,6 +3,7 @@
 * Added: Display photometry can now be specified separately for the test and reference content. This is useful when evaluating tone mapping, e.g., comparing a tone-mapped sRGB image to HDR reference.
 * Added: `heatmap_file` passed to the `cvvdp.predict` allows to save heatmaps to video files (of infinite length) rather than store them in memory
 * Added: new examples - `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
+* Fixed: Code optimizations that reduce the inference and backpropagation times (up to 43% on a CUDA device) - thanks to Ethan Chen
 
 # v0.5.6 (4/06/2026)
 * Bug fix: incorrect assert in dm_preview_metric.py

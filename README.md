@@ -142,6 +142,7 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
     - [Loss function](#loss-function)
     - [Matlab interface](#matlab-interface)
 - [How to report issues?](#how-to-report-issues)
+- [Pull requests](#pull-requests)
 - [Release notes](#release-notes)
 
 ## Display specification
@@ -345,6 +346,14 @@ Please use "Issues" tab in GitHub.
 
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
+# Pull requests
+
+If you found a way to improve ColorVideoVDP, submit your pull request. To ensure that your pull request is swiftly accepted:
+
+* Make the pull request using as the base the latest development branch (`dev_<verision>`) rather than the `main` branch.
+
+* Run `tests/test_all.py` before and after introducing your changes and compare the results. 
+
 # Release notes
 
 * v0.6.0 (?)
@@ -354,6 +363,7 @@ When reporting a problem, run `cvvdp` with `--verbose` argument and paste the en
   - Display photometry can now be specified separately for the test and reference content. This is useful when evaluating tone mapping, e.g., comparing a tone-mapped sRGB image to HDR reference
   - The original ColorVideoVDP can be still run by passing `--metric cvvdp-0-5-6`
   - New examples: `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
+  - The inference and backpropagation is be up to 40% faster thanks to various code optimisations (thanks to Ethan Chen)
 
 
 * v0.5.6 (4/June/2026)
