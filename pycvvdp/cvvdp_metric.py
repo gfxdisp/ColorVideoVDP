@@ -724,6 +724,7 @@ class cvvdp(vq_metric):
                 S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
         return (S_test, S_ref)
 
+    # @torch.compile
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
         # R[batch,channels,frames,width,height]
         # Channel order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y

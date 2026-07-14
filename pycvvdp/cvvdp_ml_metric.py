@@ -172,7 +172,7 @@ class cvvdp_ml_base(cvvdp):
                 getattr(self, net).load_state_dict(state_dict)
                 #.to(device=self.device)
 
-    def predict_video_source(self, vid_source):
+    def predict_video_source(self, vid_source, heatmap_file=None):
         # We assume the pytorch default NCDHW layout
 
         assert vid_source.get_batch_size()==1 or self.heatmap is None or self.heatmap=='none', 'Heatmaps not supported when batches are used'
