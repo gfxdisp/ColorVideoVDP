@@ -263,10 +263,7 @@ class vvdp_display_photometry:
             else:
                 raise RuntimeError( f"Unknown colorspace '{target_colorspace}'" )
 
-            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear color space
-            # To avoid permute (slow), perform separate dot products
-            for cc in range(3):
-                ABC[:,cc:(cc+1),:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
+            ABC = torch.einsum('ck,bkfhw->bcfhw', rgb2abc, RGB_lin)
 
             if target_colorspace=="logLMS_DKLd65":
                 ABC = lms2006_to_dkld65( torch.log10(ABC) )
