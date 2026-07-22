@@ -109,7 +109,9 @@ def test_all(device_name):
 
     header_file = os.path.join(os.path.dirname(__file__), "header_example.html")
 
-    parameters = utils.json2dict('pycvvdp/vvdp_data/cvvdp_parameters.json');
+    param_file = utils.config_files.find( 'cvvdp_parameters.json', [] )
+    parameters = utils.json2dict(param_file)
+    # parameters = utils.json2dict('pycvvdp/vvdp_data/cvvdp_parameters.json');
     version = parameters['version']
 
     metric_classes = [ pycvvdp.cvvdp, pycvvdp.cvvdp_ml_saliency, pycvvdp.cvvdp_ml_transformer ]

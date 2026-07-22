@@ -124,6 +124,7 @@ class DumpChannels:
 
         b0 = lpyr.get_band(bands, 0)
         b0_sh = b0.shape
+        # width = ceil8((b0_sh[-1]*1.5 + 1)*2)
         width = ceil8((b0_sh[-1] + lpyr.get_band(bands, 1).shape[-1] + 1)*2)
         height = ceil8((b0_sh[-2]+1)*2)
         frames = b0_sh[2]
@@ -159,12 +160,12 @@ class DumpChannels:
             frame_de = ((lpv[:,ff,...]) ** (1/2.2) * 255).clip(0, 255)
             self.vw_lpyr.write_frame_rgb( frame_de.permute((1,2,0)).to(torch.uint8).cpu().numpy() )
 
-    def set_diff_band( self, width, height, pix_per_deg, bb, band):
+    def set_diff_band( self, width, height, pix_per_deg, bb, band, padding_type='zero'):
         if not self.do_dump_diff:
             return
 
         if not self.diff_pyr:
-            self.diff_pyr = lpyr_dec_2(width, height, pix_per_deg, band.device)
+            self.diff_pyr = lpyr_dec_2(width, height, pix_per_deg, band.device, padding_type=padding_type)
         self.diff_pyr.set_lband(bb, band)
 
 

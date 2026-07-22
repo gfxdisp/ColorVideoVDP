@@ -67,5 +67,7 @@
     "dclamp_type": "soft",
     "d_max": 2.358919858932495,
     "image_int": 0.8322205543518066,
-    "lum_adapt_reference": false
+    "lum_adapt_reference": false,
+    "temporal_padding": "symmetric",
+    "spatial_padding": "symmetric"
 }

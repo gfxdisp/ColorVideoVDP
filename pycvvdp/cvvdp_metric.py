@@ -136,16 +136,23 @@ class cvvdp_frame_buffers:
 
 """
 ColorVideoVDP metric. Refer to pytorch_examples for examples on how to use this class. 
+
+spatial_padding - how to pad areas outside the image when computing a multi-scale decomposition. 
+    Pass: "zero" - zero padding, "symmetric" - mirror-like reflection, "valid" - ignore edges, None - use model's default (recommended)
+
+temp_padding - how to pad frames before the first frame in the sequence when computing temporal filters. 
+    Pass: "replicate" - repeat the first frame, "symmetric" - mirror-like reflection, None - use model's default (recommended)
 """
 class cvvdp(vq_metric):
     def __init__(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[], 
-                 heatmap=None, quiet=False, device=None, temp_padding="symmetric", use_checkpoints=False, 
+                 heatmap=None, quiet=False, device=None, temp_padding=None, spatial_padding=None, use_checkpoints=False, 
                  dump_channels=None, gpu_mem = None):
         self.quiet = quiet
         self.heatmap = heatmap
         self.heatmap_file = None
         self.heatmap_vw = None
         self.temp_padding = temp_padding
+        self.spatial_padding = spatial_padding
         self.use_checkpoints = use_checkpoints # Used for end-to-end training, these are NOT model checkpoints
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
         self.training_mode = False
@@ -213,6 +220,10 @@ class cvvdp(vq_metric):
         self.contrast = parameters['contrast']  # One of: 'weber_g0_ref', 'weber_g1_ref', 'weber_g1', 'log'
         self.jod_a = torch.as_tensor( parameters['jod_a'], device=self.device )
         self.jod_exp = torch.as_tensor( parameters['jod_exp'], device=self.device )
+        if self.spatial_padding is None:
+            self.spatial_padding = parameters.get( 'spatial_padding', 'symmetric' )
+        if self.temp_padding is None:
+            self.temp_padding = parameters.get( 'temp_padding', 'symmetric' )
 
         if 'ce_g' in parameters:
             self.ce_g = torch.as_tensor( parameters['ce_g'], device=self.device )
@@ -361,7 +372,7 @@ class cvvdp(vq_metric):
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.contrast.startswith("weber"):
-                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast, padding_type=self.spatial_padding)
             elif self.contrast.startswith("log"):
                 self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
             else:
@@ -837,7 +848,7 @@ class cvvdp(vq_metric):
                 height = R.shape[-2]
                 t_int = self.image_int if is_image else 1.0
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
-                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w)
+                self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w, padding_type=self.spatial_padding)
 
         if self.do_heatmap:
             heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)

@@ -4,13 +4,15 @@
 * Added: `heatmap_file` passed to the `cvvdp.predict` allows to save heatmaps to video files (of infinite length) rather than store them in memory
 * Added: new examples - `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
 * Fixed: Code optimizations that reduce the inference and backpropagation times (up to 43% on a CUDA device) - thanks to Ethan Chen
+* Fix: the number of pyramid levels is set to stop at 0.2 cpd (excluding the base band)
+* Added: added multplipe spatial padding options
 
 # v0.5.6 (4/06/2026)
 * Bug fix: incorrect assert in dm_preview_metric.py
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
 * Fix: YCbCr to RGB transform changed from BT.601 to BT.709 (issue #36)
-* Bug fix: --dump-channels works again (was broken after adding the batch mode)
-* Fix: --device=mps works again (on Apple Silicon)
+* Bug fix: `--dump-channels` works again (was broken after adding the batch mode)
+* Fix: `--device=mps` works again (on Apple Silicon)
 * Added: Progress bar
 * Added: `--debug` will display the full stack trace when error is encountered. Otherwise, the stack trace should be hidden.
 * Added: `--count-frames` will use slow but accurate method to ensure that we know the exact number of frames in the stream.

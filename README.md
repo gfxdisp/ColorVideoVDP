@@ -137,6 +137,7 @@ Check [examples](examples/) folder showing how to call ColorVideoVDP from Python
     - [Visualization](#visualization)
     - [Configuration files](#configuration-files)
     - [Display model preview](#display-model-preview)
+    - [Spatial and temporal padding](#spatial-and-temporal-padding)
     - [Interactive mode](#Interactive-mode)
     - [Python interface](#python-interface)
     - [Loss function](#loss-function)
@@ -293,6 +294,23 @@ You can also alternative versions of this debug "metric":
 * `--metric dm-preview-exr` - when processing video, OpenEXR frames will be written instead of a video file. 
 * `--metric dm-preview-sbs` - instead of creating two separate files, one for reference and one for test, put those in the same frame side-by-side. 
 * `--metric dm-preview-exr-sbs` - the two above combined
+
+## Spatial and temporal padding
+
+ColorVideoVDP sometimes need to access pixels outside the frame, or frames before the first frame. This is required for the causal temporal filters that operate on a 250 ms window, and the Laplacian filters used for spatial decomposition. The padding options specify how those missing pixels should be generated. 
+
+You set **temporal padding** by passing `--temp-padding` argument to the `cvvdp` command line, or setting `temp_padding` argument of the `cvvdp` class constructor. The available options are:
+* `replicate` - repeat the first frame.
+* `symmetric` - a mirror-like reflection; if the first frame has index 0, frame -1 has index 1 and so on. If the video sequence is shorter than what is required by the temporal filter, the video sequence will be repeated in a ping-pong manner. This padding better preserves the dynamic of the video and is used by default from version 0.6.0.
+
+You set **spatial padding** by passing `--spatial-padding` argument to the `cvvdp` command line, or setting `spatial_padding` argument of the `cvvdp` class constructor. The available options are:
+* `zero` - pixels outside the frame are assumed to have zero values.
+* `symmetric` - a mirror-like reflection (default).
+* `valid` - the subbands are shrunk to contain only the pixels for which the spatial filter can be computed. 
+
+The `symmetric` padding is best at preserving image and motion statistics, but it comes with a consequence: the distortion that is near the frame edge (or the beginning of the video) will be duplicated and, therefore, count twice when computing quality. 
+
+The metric has been calibrated for the default values of the padding parameters. Changing padding will change the predictions and may result in a slightlt less accurate metric performance. 
 
 ## Interactive mode
 
