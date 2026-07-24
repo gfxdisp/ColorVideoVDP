@@ -167,6 +167,9 @@ class config_files:
         # Then, check CVVDP_PATH
         ev_config_dir = os.getenv("CVVDP_PATH")
         if not ev_config_dir is None:
+            if os.path.isfile(ev_config_dir) and os.path.basename(ev_config_dir).startswith(bname) and os.path.basename(ev_config_dir).endswith(ext):
+                return ev_config_dir
+
             path = os.path.join( ev_config_dir, fname )
             if os.path.isfile(path):
                 return path

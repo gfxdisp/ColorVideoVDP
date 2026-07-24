@@ -99,7 +99,8 @@ def parse_args(arg_list=None):
     parser.add_argument("--count-frames", action='store_true', default=False, help="Use accurate method to count frames in a video. Slower but accurate. Use if you see frame read errors.")
     parser.add_argument("-f", "--full-screen-resize", choices=['bilinear', 'bicubic', 'nearest', 'area'], default=None, help="Both test and reference videos will be resized to match the full resolution of the display. Currently works only with videos.")
     parser.add_argument("-m", "--metric", choices=available_metrics, nargs='+', default=['cvvdp'], help='Select which metric(s) to run')
-    parser.add_argument("--temp-padding", choices=['replicate', 'symmetric', 'valid'], default='symmetric', help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "symmetric" - mirror the first frames. "valid" - skip initial frames until buffer is fully populated (no padding artifacts).')
+    parser.add_argument("--temp-padding", choices=['replicate', 'symmetric', 'valid'], default=None, help='How to pad the video in the time domain (for the temporal filters). "replicate" - repeat the first frame. "symmetric" - mirror the first frames. "valid" - skip initial frames until buffer is fully populated (no padding artifacts). The metric default is used when unspecified.')
+    parser.add_argument("--spatial-padding", choices=['symmetric', 'zero', 'valid'], default=None, help='How to pad the video beyond the image frame (for the spatial decomposition). "symmetric" - mirror-like reflection. "valid" - crop the pixels for which spatial filters cannot be applied; "zero" - set the pixels outside the frame to 0. The metric default is used when unspecified.')
     parser.add_argument("--pix-per-deg", type=float, default=None, help='Overwrite display geometry and use the provided pixels per degree value.')
     parser.add_argument("--fps", type=float, default=None, help='Frames per second. It will overwrite frame rate stores in the video file. Required when passing an array of image files.')
     parser.add_argument("--frames", type=str, default=None, help='Range of frames specified as first:step:last, first:last, or first: (Matlab notation). Currently works only with frames provided as images.')
@@ -249,6 +250,8 @@ def run_on_args(args):
             met_args['heatmap'] = args.heatmap        
         if 'temp_padding' in constructor_args:
             met_args['temp_padding'] = args.temp_padding        
+        if 'spatial_padding' in constructor_args:
+            met_args['spatial_padding'] = args.spatial_padding        
         if 'config_paths' in constructor_args:
             met_args['config_paths'] = args.config_paths        
         if 'gpu_mem' in constructor_args:
