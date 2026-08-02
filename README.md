@@ -65,6 +65,11 @@ pip install -e .
 ```bash
 pip install cvvdp
 ```
+or, on systems with CUDA support
+```bash
+pip install cvvdp[cuda]
+```
+
 *Note:* If you skip the steps 1-4 and directly install from the pip package, ColorVideoVDP may still work, but will not use CUDA acceleration, and may be missing ffpmeg or FreeImage libraries. 
 
 
@@ -331,6 +336,10 @@ Please use "Issues" tab in GitHub.
 When reporting a problem, run `cvvdp` with `--verbose` argument and paste the entire output of the terminal, including the command line used to run `cvvdp`. If possible, include images/video on which the problem can be reproduced. 
 
 # Release notes
+
+* v0.5.7 (2/August/2026)
+  - Bug fix: `--temp-padding=symmetric` now works with very short video files
+  - `--temp-padding=replicate` is used as the default
 
 * v0.5.6 (4/June/2026)
   - added `--debug` and `--count-frames`
