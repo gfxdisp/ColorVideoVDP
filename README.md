@@ -73,6 +73,11 @@ pip install -e .
 ```bash
 pip install cvvdp
 ```
+or, on systems with CUDA support
+```bash
+pip install cvvdp[cuda]
+```
+
 *Note:* If you skip the steps 1-4 and directly install from the pip package, ColorVideoVDP may still work, but will not use CUDA acceleration, and may be missing ffpmeg or FreeImage libraries. 
 
 
@@ -383,6 +388,9 @@ If you found a way to improve ColorVideoVDP, submit your pull request. To ensure
   - New examples: `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
   - The inference and backpropagation is be up to 40% faster thanks to various code optimisations (thanks to Ethan Chen)
 
+* v0.5.7 (2/August/2026)
+  - Bug fix: `--temp-padding=symmetric` now works with very short video files
+  - `--temp-padding=replicate` is used as the default
 
 * v0.5.6 (4/June/2026)
   - added `--debug` and `--count-frames`

@@ -593,7 +593,8 @@ class cvvdp(vq_metric):
                     elif self.temp_padding == "symmetric":
 
                         # If the cur_block_N_frames smaller than the filter length, we need to read those frames ahead
-                        for fi in range(max(fl-cur_block_N_frames,0)):
+                        frames_in_video = N_frames-ff-cur_block_N_frames # How many frames are left unread in the video
+                        for fi in range(min(max(fl-cur_block_N_frames,0),frames_in_video)):
                             ind = ff+cur_block_N_frames+fi
                             fb.ra_buf[0].append(vid_source.get_test_frame(ind, device=self.device, colorspace=met_colorspace))
                             fb.ra_buf[1].append(vid_source.get_reference_frame(ind, device=self.device, colorspace=met_colorspace))

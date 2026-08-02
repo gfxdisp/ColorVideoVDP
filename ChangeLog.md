@@ -7,6 +7,10 @@
 * Fix: the number of pyramid levels is set to stop at 0.2 cpd (excluding the base band)
 * Added: added multplipe spatial padding options
 
+# v0.5.7 (2/08/2026)
+* Bug fix: `--temp-padding=symmetric` now works with very short videos (when the number of frames in the stream is smaller than the temporal filter length)
+* Change: `--temp-padding` is set to `replicate` by default for compatibility with the previous versions
+
 # v0.5.6 (4/06/2026)
 * Bug fix: incorrect assert in dm_preview_metric.py
 * Fix: disabled some unnecessary warning messages when dm-preview was selected
