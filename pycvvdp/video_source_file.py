@@ -337,7 +337,7 @@ The readers are initialized on the first frame access - this allows to pickle an
 '''
 class video_source_video_file(video_source_dm):
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, ignore_framerate_mismatch=False ):
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', test_display_photometry=None, reference_display_photometry=None, config_paths=[], fps=None, frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False, ignore_framerate_mismatch=False ):
 
         self.fs_width = -1 if full_screen_resize is None else resize_resolution[0]
         self.fs_height = -1 if full_screen_resize is None else resize_resolution[1]
@@ -357,7 +357,7 @@ class video_source_video_file(video_source_dm):
         self.fps = fps       
         self.ignore_framerate_mismatch = ignore_framerate_mismatch 
 
-        super().__init__(display_photometry=display_photometry, config_paths=config_paths)
+        super().__init__(display_photometry=display_photometry, test_display_photometry=test_display_photometry, reference_display_photometry=reference_display_photometry, config_paths=config_paths)
 
         # Resolutions may be different here because upscaling may happen on the GPU
         # if self.test_vidr.height != self.reference_vidr.height or self.test_vidr.width != self.reference_vidr.width:
@@ -441,7 +441,7 @@ class video_source_video_file(video_source_dm):
         #print( f"{self.test_fname} - {self.fs_width}x{self.fs_height}" )
         # if not self.last_test_frame is None and frame == self.last_test_frame[0]:
         #     return self.last_test_frame[1]
-        L = self._get_frame( self.test_vidr, frame, device, colorspace )
+        L = self._get_frame( self.test_vidr, frame, device, colorspace, dm=self.test_dm )
         # self.last_test_frame = (frame,L)
         return L
 
@@ -449,11 +449,11 @@ class video_source_video_file(video_source_dm):
         self.init_readers()
         # if not self.last_reference_frame is None and frame == self.last_reference_frame[0]:
         #     return self.last_reference_frame[1]
-        L = self._get_frame( self.reference_vidr, frame, device, colorspace )
+        L = self._get_frame( self.reference_vidr, frame, device, colorspace, dm=self.reference_dm )
         # self.reference_test_frame = (frame,L)
         return L
 
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace, dm=None ):        
         self.init_readers()
 
         if frame != (vid_reader.curr_frame+1):
@@ -464,13 +464,13 @@ class video_source_video_file(video_source_dm):
         if frame_np is None:
             raise vq_exception( f'Could not read frame {frame} of "{vid_reader.fname}". Try passing "--count-frames" or "-nframes".' )
 
-        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace)
+        return self._prepare_frame(frame_np, device, vid_reader.unpack, colorspace, dm=dm)
 
-    def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y" ):
+    def _prepare_frame( self, frame_np, device, unpack_fn, colorspace="Y", dm=None ):
         frame_t_hwc = unpack_fn(frame_np, device)
         frame_t = reshuffle_dims( frame_t_hwc, in_dims='HWC', out_dims="BCFHW" )
 
-        I = self.apply_dm_and_color_transform(frame_t, colorspace)
+        I = self.apply_dm_and_color_transform(frame_t, colorspace, dm=dm)
 
         return I
 
@@ -483,8 +483,8 @@ class video_source_temp_resample_file(video_source_video_file):
 
     max_fps = 166 # upsample to at most this FPS
 
-    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
-        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize, 
+    def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', test_display_photometry=None, reference_display_photometry=None, config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
+        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, test_display_photometry=test_display_photometry, reference_display_photometry=reference_display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize, 
                          resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
 
 
@@ -528,7 +528,7 @@ class video_source_temp_resample_file(video_source_video_file):
         return super().get_video_size()
 
 
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace, dm=None ):        
 
         frame_ind = int(safe_floor((frame+0.5) * vid_reader.avg_fps/self.resample_fps))
 
@@ -538,7 +538,7 @@ class video_source_temp_resample_file(video_source_video_file):
             return self.cache_frame[ce]
         else:
             self.cache_ind[ce] = frame_ind
-            self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
+            self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace, dm=dm )
             #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
             return self.cache_frame[ce]            
 

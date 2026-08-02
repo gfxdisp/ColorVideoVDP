@@ -201,23 +201,34 @@ def numpy2torch_frame(np_array, frame, device, dim_order="HWC" ):
 """
 This video_source uses a photometric display model to convert input content (e.g. sRGB) to luminance maps. 
 """
+def _load_dm(dm, config_paths):
+    if isinstance(dm, str):
+        return vvdp_display_photometry.load(dm, config_paths)
+    elif isinstance(dm, vvdp_display_photometry):
+        return dm
+    else:
+        raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
+
 class video_source_dm( video_source ):
 
-    def __init__( self,  display_photometry='sdr_4k_30', config_paths=[] ):
+    def __init__( self,  display_photometry='sdr_4k_30', test_display_photometry=None, reference_display_photometry=None, config_paths=[] ):
 
-#        self.color_trans = ColorTransform(color_space_name)
+        if test_display_photometry is None:
+            test_display_photometry = display_photometry
 
-        if isinstance( display_photometry, str ):
-            self.dm_photometry = vvdp_display_photometry.load(display_photometry, config_paths) 
-        elif isinstance( display_photometry, vvdp_display_photometry ):
-            self.dm_photometry = display_photometry
-        else:
-            raise RuntimeError( "display_model must be a string or fvvdp_display_photometry subclass" )
+        if reference_display_photometry is None:
+            reference_display_photometry = display_photometry
 
-    def apply_dm_and_color_transform(self, frame, target_colorspace):
+        self.test_dm = _load_dm(test_display_photometry, config_paths)
+        self.reference_dm = _load_dm(reference_display_photometry, config_paths)
 
-        I = self.dm_photometry.source_2_target_colorspace(frame, target_colorspace)
+        # backwards compatibility
+        self.dm_photometry = self.test_dm
 
+    def apply_dm_and_color_transform(self, frame, target_colorspace, dm=None):
+        if dm == None:
+            dm = self.dm_photometry
+        I = dm.source_2_target_colorspace(frame, target_colorspace)
         self.check_if_valid(I, target_colorspace)
         return I
 
@@ -240,9 +251,9 @@ class video_source_array( video_source_dm ):
     #   class
     # color_space_name - name of the color space (see
     #   fvvdp_data/color_spaces.json)
-    def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30', config_paths=[], ):
+    def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30', test_display_photometry=None, reference_display_photometry=None, config_paths=[], ):
 
-        super().__init__(display_photometry=display_photometry, config_paths=config_paths)        
+        super().__init__(display_photometry=display_photometry, test_display_photometry=test_display_photometry, reference_display_photometry=reference_display_photometry, config_paths=config_paths)        
 
         if test_video.shape != reference_video.shape:
             ind = dim_order.find('B')
@@ -312,12 +323,12 @@ class video_source_array( video_source_dm ):
     # gpuArray.
 
     def get_test_frame( self, frame, device, colorspace ):
-        return self._get_frame(self.test_video, frame, device, colorspace )
+        return self._get_frame(self.test_video, frame, device, colorspace, self.test_dm )
 
     def get_reference_frame( self, frame, device, colorspace ):
-        return self._get_frame(self.reference_video, frame, device, colorspace )
+        return self._get_frame(self.reference_video, frame, device, colorspace, self.reference_dm )
 
-    def _get_frame( self, from_array, frame, device, colorspace ):        
+    def _get_frame( self, from_array, frame, device, colorspace, dm=None ):        
         # Determine the maximum value of the data type storing the
         # image/video
 
@@ -341,7 +352,7 @@ class video_source_array( video_source_dm ):
         else:
             raise RuntimeError( f"Only uint8, uint16 and float32 is currently supported. {from_array.dtype} encountered." )
 
-        I = self.apply_dm_and_color_transform(frame, colorspace)
+        I = self.apply_dm_and_color_transform(frame, colorspace, dm=dm)
         
         return I
 

@@ -223,7 +223,12 @@ class cvvdp(vq_metric):
         self.omega = [0, 5]
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
-
+        
+        if 'diff_sensitivity' in parameters:
+            self.diff_sensitivity = True if parameters['diff_sensitivity'] == "on" else False
+        else:
+            self.diff_sensitivity = False
+            
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
         
@@ -706,15 +711,28 @@ class cvvdp(vq_metric):
             # Compute CSF
             rho = rho_band[bb] # Spatial frequency in cpd
             ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
-            S = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
-            for cc in range(all_ch):
-                tch = 0 if cc<3 else 1  # Sustained or transient
-                cch = cc if cc<3 else 0 # Y, rg, yv
-                # The sensitivity is always extracted for the reference frame
-                S[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+            if self.diff_sensitivity:
+                # Differential sensitivity sampling
+                S = torch.empty((2,batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+                for ss in range(2):
+                    for cc in range(all_ch):
+                        tch = 0 if cc<3 else 1  # Sustained or transient
+                        cch = cc if cc<3 else 0 # Y, rg, yv
+                        # The sensitivity is extracted for the reference & test frame
+                        S[ss,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,ss,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+            else:
+                S = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
+                for cc in range(all_ch):
+                    tch = 0 if cc<3 else 1  # Sustained or transient
+                    cch = cc if cc<3 else 0 # Y, rg, yv
+                    # The sensitivity is always extracted for the reference frame
+                    S[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
 
             if is_baseband:
-                D = (torch.abs(T_f-R_f) * S)
+                if self.diff_sensitivity:
+                    D = (torch.abs(T_f*S[0,...]-R_f*S[-1,...]))
+                else:
+                    D = (torch.abs(T_f-R_f) * S)
             else:
                 # dimensions: [channel,frame,height,width]
                 D = self.apply_masking_model(T_f, R_f, S)
@@ -829,17 +847,28 @@ class cvvdp(vq_metric):
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
                 ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
-                C_t = 1/S
-                T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
-                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_t)*ch_gain + 1, zero_tens )
+                if self.diff_sensitivity:
+                    C_T = 1/S[0,...]
+                    C_R = 1/S[-1,...]
+                else:
+                    C_T = 1/S
+                    C_R = C_T
+                T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_T)*ch_gain + 1, zero_tens )
+                R_p = self.diff_sign(R) * torch.maximum( (torch.abs(R)-C_R)*ch_gain + 1, zero_tens )
             else:
+                if self.diff_sensitivity:
+                    S_T = S[0,...]
+                    S_R = S[-1,...]
+                else:
+                    S_T = S
+                    S_R = S_T
                 if self.masking_model.endswith( "mutual-old" ):
-                    T_p = T * S
-                    R_p = R * S
+                    T_p = T * S_T
+                    R_p = R * S_R
                 else:
                     ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
-                    T_p = T * S * ch_gain
-                    R_p = R * S * ch_gain
+                    T_p = T * S_T * ch_gain
+                    R_p = R * S_R * ch_gain
 
             if self.masking_model.endswith( "none" ):
                 D = self.clamp_diffs(torch.abs(T_p-R_p))
