@@ -1,5 +1,7 @@
 import numpy as np
 import ffmpeg
+import imageio.v2 as iio
+import subprocess
 
 class VideoWriter:
 
@@ -16,6 +18,12 @@ class VideoWriter:
         self.process = None
         #self.bit_depth = 10
         self.codec = codec
+        if self.hdr_mode and self.codec == 'h265' and not self._encoder_available('libx265'):
+            self.codec = 'vp9'
+
+    def _encoder_available(self, encoder_name):
+        result = subprocess.run(['ffmpeg', '-hide_banner', '-encoders'], capture_output=True, text=True)
+        return encoder_name in result.stdout
 
 
     """
@@ -33,20 +41,18 @@ class VideoWriter:
                 if self.codec == 'h265':
                     self.process = (ffmpeg
                             .input('pipe:', format='rawvideo', pix_fmt='rgb48le', s='{}x{}'.format(W, H), r=self.fps, colorspace="bt2020nc", color_primaries="bt2020", color_trc="smpte2084")
-                            .output(self.fname, pix_fmt='yuv420p10le', crf=12, vcodec='libx265', **{'x265-params': 'hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(0,0)B(0,0)R(0,0)WP(0,0)L(0,0):max-cll=0,0'} )
+                            .output(self.fname, pix_fmt='yuv420p10le', crf=12, vcodec='libx265', **{'color_primaries': 'bt2020', 'color_trc': 'smpte2084', 'colorspace': 'bt2020nc'})
                             .overwrite_output()
                             .global_args( '-loglevel', 'info' if self.verbose else 'warning')
                             .global_args( '-hide_banner')
-                            .global_args( '-preset', 'fast' )
                             .run_async(pipe_stdin=True, quiet=not self.verbose)
                             )
                 elif self.codec == 'vp9':
                     self.process = (ffmpeg
                             .input('pipe:', format='rawvideo', pix_fmt='rgb48le', s='{}x{}'.format(W, H), r=self.fps, colorspace="bt2020nc", color_primaries="bt2020", color_trc="smpte2084")
-                            .output(self.fname, pix_fmt='yuv420p10le', crf=10, vcodec='libvpx-vp9', **{'color_primaries': '9', 'color_trc': '16', 'colorspace': '9', 'color_range': '1', 'profile:v': '2' , 'preset': 'fast', 'b:v': '0' } )
+                            .output(self.fname, pix_fmt='yuv420p10le', crf=10, vcodec='libvpx-vp9', **{'color_primaries': '9', 'color_trc': '16', 'colorspace': '9', 'color_range': '1', 'profile:v': '2', 'b:v': '0' } )
                             .overwrite_output()
                             .global_args( '-hide_banner')
-                            .global_args( '-preset', 'fast' )
                             .global_args( '-loglevel', 'info' if self.verbose else 'quiet')
                             .run_async(pipe_stdin=True)
                             )
@@ -86,8 +92,39 @@ class VideoWriter:
     def close(self):
         if not self.process is None:
             self.process.stdin.close()
-            self.process.wait()        
+            returncode = self.process.wait()
+            if returncode != 0:
+                raise RuntimeError(f'ffmpeg exited with status {returncode} while writing {self.fname}')
             self.process = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, tb):
+        self.close()
+
+
+
+class ImageWriter:
+
+    def __init__(self, fname, verbose=False):
+        self.fname = fname
+        self.verbose = verbose
+
+    """
+    Write a frame stored as numpy WxHxC matric to an image file. The frame must be in the right, display-encoded colour space:
+    BT.709 + sRGB nonlinearity for SDR
+    BT.2020 + PQ for HDR
+    """
+    def write_frame_rgb(self, rgb):
+        iio.imwrite(self.fname, rgb)
+
+    # Delete or close if program was interrupted
+    def __del__(self):
+        self.close()        
+
+    def close(self):
+        pass
 
     def __enter__(self):
         return self

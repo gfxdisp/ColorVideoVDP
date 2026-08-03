@@ -38,9 +38,9 @@
     "resolution": [3840, 2160], 
     "viewing_distance_meters":  0.7472,  
     "diagonal_size_inches": 30,   
-    "max_luminance": 1500,   
-    "contrast": 1000000,
-    "E_ambient": 10,
+    "max_luminance": 10000,   
+    "contrast": 1000000000000000,
+    "E_ambient": 0,
     "source": "none" },
 
   "standard_hdr_linear_dark": {

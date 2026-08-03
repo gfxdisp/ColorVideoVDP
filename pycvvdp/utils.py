@@ -4,7 +4,7 @@ import numpy as np
 import json
 import torch.nn.functional as Func
 import math
-from functools import cache
+from functools import lru_cache
 
 from pycvvdp.interp import interp1, interp1q
 #from PIL import Image
@@ -184,7 +184,7 @@ class PU():
       Journal of Vision, 20(4), 23. https://doi.org/10.1167/jov.20.4.23
     The implementation should work for both numpy arrays and torch tensors
     '''
-    def __init__(self, L_min=0.005, L_max=10000, type='banding_glare'):
+    def __init__(self, L_min=0.005, L_max=10000, type='banding'):
         self.L_min = L_min
         self.L_max = L_max
 
@@ -213,7 +213,7 @@ class PU():
         V = self.p[6]*(((self.p[0] + self.p[1]*Y_p)/(1 + self.p[2]*Y_p))**self.p[4] - self.p[5])
         return V
 
-    @cache
+    @lru_cache(maxsize=None)
     def _get_encode_lut(self, device):
         Y_lut = torch.linspace(math.log10(self.L_min), math.log10(self.L_max), 2048, device=device)
         V_lut = self._encode_direct(10**Y_lut)

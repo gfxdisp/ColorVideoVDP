@@ -1,5 +1,5 @@
 # Decimated Laplacian Pyramid
-from functools import cache
+from functools import lru_cache
 import torch
 import torch.nn.functional as Func
 import numpy as np 

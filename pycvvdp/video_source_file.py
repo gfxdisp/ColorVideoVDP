@@ -47,7 +47,7 @@ def load_image_as_array(imgfile):
         img = pyexr.read(imgfile, precision=precisions[0])
     else:
         # 16-bit PNG not supported by default
-        lib = 'PNG-FI' if ext == '.png' else None
+        lib = 'PNG-FI' if ext == '.png' else 'HDR-FI' if ext == '.hdr' else None
         try:
             img = io.imread(imgfile, format=lib)
         except RuntimeError:
@@ -628,7 +628,7 @@ class video_source_image_frames(video_source_dm):
                 file_name = file_name.format(frame_num)
             img = load_image_as_array(file_name)
 
-        img_torch = numpy2torch_frame(img, 0, device)
+        img_torch = numpy2torch_frame(img, 0, device) * self.dm_photometry.get_peak_luminance()
         I = self.apply_dm_and_color_transform(img_torch, colorspace)    
         return I
 
