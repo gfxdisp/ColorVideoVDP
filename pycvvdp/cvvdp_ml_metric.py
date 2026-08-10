@@ -106,6 +106,23 @@ class cvvdp_feature_pooling(torch.nn.Module):
         return F
 
 
+# Resize a per-patch heatmap prediction ([batch,frames,src_h,src_w]) to a band's
+# native resolution. When shrinking, average-pool as before. When growing (the
+# common case, since each patch covers ~1 visual degree), interpolate smoothly
+# instead of relying on adaptive_avg_pool2d, which in reverse just replicates
+# each patch value across a block of pixels and produces a blocky-looking map.
+def _resize_heatmap_band_map(band_map, target_h, target_w):
+    bsz, nframes, src_h, src_w = band_map.shape
+    flat = band_map.reshape(bsz * nframes, 1, src_h, src_w)
+
+    if target_h <= src_h and target_w <= src_w:
+        resized = Func.adaptive_avg_pool2d(flat, output_size=(target_h, target_w))
+    else:
+        resized = Func.interpolate(flat, size=(target_h, target_w), mode='bicubic', align_corners=False).clamp_min(0.)
+
+    return resized.reshape(bsz, nframes, target_h, target_w)
+
+
 """
 Base class for all ColorVideoVDP with ML heads
 """
@@ -1778,11 +1795,7 @@ class cvvdp_ml_dino_fusion(cvvdp_ml_dino_base):
             target_w = heatmap_pyr.get_lband(bb).shape[-1]
 
             if band_map.shape[-2] != target_h or band_map.shape[-1] != target_w:
-                bsz, nframes, src_h, src_w = band_map.shape
-                band_map = Func.adaptive_avg_pool2d(
-                    band_map.reshape(bsz * nframes, 1, src_h, src_w),
-                    output_size=(target_h, target_w)
-                ).reshape(bsz, nframes, target_h, target_w)
+                band_map = _resize_heatmap_band_map(band_map, target_h, target_w)
 
             heatmap_band_maps[bb] = band_map
 
@@ -3689,11 +3702,7 @@ class cvvdp_ml_saliency_plus(cvvdp_ml_saliency_base):
             target_w = heatmap_pyr.get_lband(bb).shape[-1]
 
             if band_map.shape[-2] != target_h or band_map.shape[-1] != target_w:
-                bsz, nframes, src_h, src_w = band_map.shape
-                band_map_resized = Func.adaptive_avg_pool2d(
-                    band_map.reshape(bsz * nframes, 1, src_h, src_w),
-                    output_size=(target_h, target_w)
-                ).reshape(bsz, nframes, target_h, target_w)
+                band_map_resized = _resize_heatmap_band_map(band_map, target_h, target_w)
             else:
                 band_map_resized = band_map
 
