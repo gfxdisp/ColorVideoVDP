@@ -20,14 +20,36 @@ import ex_utils as utils
 import pycvvdp
 import time
 import imageio.v2 as io
+from PIL import Image
 
 from torchvision.transforms import GaussianBlur
 
+def resize_width(img, width):
+    h, w = img.shape[:2]
+    new_h = round(h * width / w)
+    return np.array(Image.fromarray(img).resize((width, new_h), Image.BILINEAR))
+
+def ampl_to_heatmap(ampl, cmap="viridis", vmin=None, vmax=None):
+    # Collapse multi-channel amplitude maps (H,W,C) to a single channel
+    if ampl.ndim == 3:
+        ampl = ampl.mean(axis=-1)
+
+    vmin = ampl.min() if vmin is None else vmin
+    vmax = ampl.max() if vmax is None else vmax
+    vmax = min( vmax, 2 ) # Because amplitudes can become very high
+    norm = np.clip((ampl - vmin) / (vmax - vmin + 1e-12), 0, 1)
+
+    rgba = plt.get_cmap(cmap)(norm)
+    return (rgba[..., :3] * 255).astype(np.uint8)
+
+
 debug = False
-save_results = True
+save_results = False
 show_loss_plot = False
-if save_results:
-    output_dir = "noise_concealment"
+save_final = True
+output_dir = "noise_concealment"
+
+if save_results or save_final:
     os.makedirs(output_dir, exist_ok=True)
 
 class NoiseField(torch.nn.Module):
@@ -70,7 +92,11 @@ class NoiseField(torch.nn.Module):
 
 device = torch.device("cuda:0")
 
-I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
+#I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'wavy_facade.png'))
+I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'palm_beach.png'))
+I_ref = resize_width(I_ref, 1024)
+
+
 # The shape of the image will be CHW
 T_ref = torch.as_tensor( I_ref.astype(np.float32) ).to(device).permute((2,0,1))/np.iinfo( I_ref.dtype ).max
 
@@ -178,4 +204,15 @@ for kk in range(max_iter):
 
     optimizer.step()
 
+if save_final:
+    opt_img = pred.detach().permute((1,2,0)).cpu().numpy()
+    io.imwrite( f'{output_dir}/final_optimised_image.png', (opt_img*255).astype(np.ubyte) )
+    ampl = (2**model.amplitudes).detach().permute((1,2,0)).cpu().numpy()
+    io.imwrite( f'{output_dir}/final_noise_amplitudes_heatmap.png', ampl_to_heatmap(ampl) )
+    io.imwrite( f'{output_dir}/initial_image.png', (I_initial*255).astype(np.ubyte) )
+    io.imwrite( f'{output_dir}/reference_image.png', I_ref )
+
+    
+
 plt.waitforbuttonpress()
+
