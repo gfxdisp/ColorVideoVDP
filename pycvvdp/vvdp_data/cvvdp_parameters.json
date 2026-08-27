@@ -64,6 +64,14 @@
         0.3479975163936615,
         19.69533920288086
     ],
+    "baseband_freq_adapt": false,
+    "dc_term_enabled": false,
+    "dc_weight": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+    ],
     "dclamp_type": "soft",
     "d_max": 2.358919858932495,
     "image_int": 0.8322205543518066,

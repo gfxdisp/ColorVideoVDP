@@ -5,6 +5,7 @@ try:
 except ImportError:
     from numpy.lib.shape_base import expand_dims
 import math
+from dataclasses import dataclass, field
 import torch
 from torch.utils import checkpoint
 from torch.functional import Tensor
@@ -132,6 +133,24 @@ class cvvdp_frame_buffers:
     def __init__(self) -> None:
         self.sw_buf = [None, None] # Sliding window buffer [test: Tensor, reference: Tensor] - stores frames for applying a temporal filter
         self.ra_buf = [[], []] # Read-ahead buffer [test: List, reference: List] - used for the symmetric padding
+
+
+@dataclass
+class RefCache:
+    """
+    Precomputed, reference-only intermediates for cvvdp.*_with_cached_reference(),
+    valid only when masking_model=="mult-ref" and contrast is a *_ref mode (where
+    S_test==S_ref and both, plus the masking normalizer M, depend only on the
+    reference image - see precompute_reference()). Images only (no video).
+    """
+    bands: list             # per band: {'S_ref': ...} (baseband) or {'S_ref','R_p','M'} (masking bands)
+    reference: torch.Tensor # the raw reference tensor, kept so it can be re-interleaved with a new test tensor each call
+    width: int
+    height: int
+    masking_model: str
+    contrast: str
+    dim_order: str
+    frames_per_second: float
 
 
 """
@@ -271,6 +290,24 @@ class cvvdp(vq_metric):
 
         self.lum_adapt_reference = parameters.get( 'lum_adapt_reference', True )
         self.omega = [0, 5]
+
+        # If True, the baseband's CSF spatial frequency is derived from the actual
+        # difference content (differentiable spectral centroid) instead of a fixed
+        # 0.1 cpd, and baseband_weight is not applied. Off by default for full
+        # backward compatibility.
+        self.baseband_freq_adapt = parameters.get( 'baseband_freq_adapt', False )
+
+        # If True, an extra whole-frame "DC" term is appended after the last pyramid
+        # band: a Weber-law-normalized, full-resolution (pre-pyramid) mean opponent-
+        # channel difference. It exists to catch large-area/near-uniform casts that the
+        # CSF-frequency-based baseband term structurally can't see (their spectral
+        # centroid collapses to the CSF floor, same as a real DC pedestal, and the
+        # pyramid crushes the whole frame down to a tiny baseband grid before the
+        # spatial-frequency machinery ever runs). Off by default for full backward
+        # compatibility; when on, its per-channel weight is `dc_weight`, calibrated the
+        # same way as `baseband_weight` (a free multiplier fit in do_pooling_and_jods).
+        self.dc_term_enabled = parameters.get( 'dc_term_enabled', False )
+        self.dc_weight = torch.as_tensor( parameters.get( 'dc_weight', [1.0, 1.0, 1.0, 1.0] ), device=self.device )
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
 
@@ -522,6 +559,92 @@ class cvvdp(vq_metric):
 
         return (Q_jod.squeeze(), stats)
 
+    def _ensure_lpyr_for_size(self, width, height):
+        if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
+            if self.contrast.startswith("weber"):
+                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast, padding_type=self.spatial_padding)
+            elif self.contrast.startswith("log"):
+                self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
+            else:
+                raise RuntimeError( f"Unknown contrast {self.contrast}" )
+
+    '''
+    Precompute reference-only intermediates (S_ref, and per masking band R_p, M)
+    for a fixed reference image, to be reused across many calls to
+    predict_with_cached_reference()/loss_with_cached_reference() against
+    different test images - e.g. when cvvdp is used as a loss function to
+    optimize a test image toward a fixed reference (image recovery, style
+    transfer, etc). See RefCache for what's stored and why it's valid to cache.
+
+    Requires masking_model=="mult-ref" and contrast in ("weber_g1_ref",
+    "weber_g0_ref") - the only combination where S_test==S_ref and the masking
+    normalizer M depend solely on the reference. Images only (no video).
+    '''
+    def precompute_reference(self, reference, dim_order="CHW", frames_per_second=0):
+        if self.masking_model != "mult-ref":
+            raise RuntimeError( f"precompute_reference() requires masking_model=='mult-ref', got '{self.masking_model}'" )
+        if self.contrast not in ("weber_g1_ref", "weber_g0_ref"):
+            raise RuntimeError( f"precompute_reference() requires a *_ref contrast mode, got '{self.contrast}'" )
+        if self.dc_term_enabled or self.baseband_freq_adapt:
+            raise RuntimeError( "precompute_reference() does not support dc_term_enabled or baseband_freq_adapt - both still depend on the live test image every call, so the cache would be silently wrong." )
+
+        ref_vs = video_source_array( reference, reference, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        height, width, N_frames = ref_vs.get_video_size()
+        if N_frames != 1:
+            raise NotImplementedError( "precompute_reference() currently supports images only (N_frames==1)." )
+
+        self._ensure_lpyr_for_size(width, height)
+
+        met_colorspace = 'logLMS_DKLd65' if self.contrast=="log" else 'DKLd65'
+        batch_sz = ref_vs.get_batch_size()
+        ref_frame = ref_vs.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
+        R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
+        R[:,0::2,:,:,:] = ref_frame
+        R[:,1::2,:,:,:] = ref_frame
+
+        capture_ref = []
+        with torch.no_grad():
+            self.process_block_of_frames(R, (height,width,1), 1, self.lpyr, True, capture_ref=capture_ref)
+
+        return RefCache(bands=capture_ref, reference=ref_frame.detach(), width=width, height=height,
+                         masking_model=self.masking_model, contrast=self.contrast,
+                         dim_order=dim_order, frames_per_second=frames_per_second)
+
+    '''
+    Fast-path counterpart to predict(), reusing a RefCache from
+    precompute_reference() instead of recomputing reference-only quantities.
+    Returns Q_jod, with the same convention as predict()/predict_video_source().
+    '''
+    def predict_with_cached_reference(self, test, ref_cache: 'RefCache', dim_order="CHW"):
+        if self.masking_model != ref_cache.masking_model or self.contrast != ref_cache.contrast:
+            raise RuntimeError( "Metric configuration (masking_model/contrast) differs from what precompute_reference() was called with - the cache is no longer valid for this metric instance." )
+
+        test_vs = video_source_array( test, test, ref_cache.frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
+        height, width, N_frames = test_vs.get_video_size()
+        if N_frames != 1:
+            raise NotImplementedError( "predict_with_cached_reference() currently supports images only (N_frames==1)." )
+        if width != ref_cache.width or height != ref_cache.height:
+            raise RuntimeError( f"Test image size ({width}x{height}) does not match the size RefCache was built for ({ref_cache.width}x{ref_cache.height})." )
+
+        self._ensure_lpyr_for_size(width, height)
+
+        met_colorspace = 'logLMS_DKLd65' if self.contrast=="log" else 'DKLd65'
+        batch_sz = test_vs.get_batch_size()
+        R = torch.empty((batch_sz, 6, 1, height, width), device=self.device)
+        R[:,0::2,:,:,:] = test_vs.get_test_frame(0, device=self.device, colorspace=met_colorspace)
+        R[:,1::2,:,:,:] = ref_cache.reference
+
+        Q_per_ch_block, _ = self.process_block_of_frames(R, (height,width,1), 1, self.lpyr, True, ref_cache=ref_cache)
+        Q_jod = self.do_pooling_and_jods(Q_per_ch_block)
+        return Q_jod.squeeze()
+
+    '''
+    Same as predict_with_cached_reference() but returns a loss (10-JOD), with
+    the same convention as loss().
+    '''
+    def loss_with_cached_reference(self, test, ref_cache: 'RefCache', dim_order="CHW"):
+        return 10. - self.predict_with_cached_reference(test, ref_cache, dim_order=dim_order)
+
     # Get a positive index of a frame for symmetric padding
     # If a video is too short to match the filter length, in will replicate frames back and forth in a ping-pong manner
     def _get_symmetric_frame_index( self, frame_ind, frame_count ):
@@ -712,7 +835,13 @@ class cvvdp(vq_metric):
 
         # Weights for the spatial bands
         per_sband_w = torch.ones( (1,no_channels,1,no_bands), dtype=torch.float32, device=self.device)
-        per_sband_w[:,:,0,-1] = self.baseband_weight[0:no_channels]
+        # When the DC term is enabled it's appended as the last band, pushing the true
+        # (CSF-frequency) baseband to the second-to-last slot.
+        baseband_idx = -2 if self.dc_term_enabled else -1
+        if not self.baseband_freq_adapt:
+            per_sband_w[:,:,0,baseband_idx] = self.baseband_weight[0:no_channels]
+        if self.dc_term_enabled:
+            per_sband_w[:,:,0,-1] = self.dc_weight[0:no_channels]
 
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
@@ -751,8 +880,12 @@ class cvvdp(vq_metric):
         Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp)
         return Q_JOD
 
-    def compute_CSF( self, bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames ):
+    def compute_CSF( self, bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames, rho_override=None ):
         rho = rho_band[bb] # Spatial frequency in cpd
+        # rho_override: optional per-channel tensor (shape [all_ch]) of content-derived
+        # spatial frequencies, used only for the baseband when baseband_freq_adapt=True.
+        # When set, caching in csf.sensitivity is disabled (the value is content-dependent
+        # and would never hit the cache anyway, and must keep its autograd graph intact).
         ch_height, ch_width = logL_bkg.shape[-2], logL_bkg.shape[-1]
         S_ref = torch.empty((batch_sz,all_ch,block_N_frames,ch_height,ch_width), device=self.device)
         if self.lum_adapt_reference: # For backward compatibility
@@ -762,18 +895,55 @@ class cvvdp(vq_metric):
         for cc in range(all_ch):
             tch = 0 if cc<3 else 1  # Sustained or transient
             cch = cc if cc<3 else 0 # Y, rg, yv
+            this_rho = rho_override[cc] if rho_override is not None else rho
+            use_cache = rho_override is None
             if self.lum_adapt_reference:
-                # The sensitivity is computed assuming the adaptation to the luminance of the sustained channel of the reference image only
-                S_ref[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                # The sensitivity is computed assuming the adaptation to the luminance of the reference image only
+                S_ref[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(this_rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma, cache=use_cache) * 10.0**(self.sensitivity_correction/20.0)
             else:
                 # The sensitivity is computed assuming the adaptation to the lumiance of the sustained channel of the test and reference images
-                S_both = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                S_both = self.csf.sensitivity(this_rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma, cache=use_cache) * 10.0**(self.sensitivity_correction/20.0)
                 S_test[:,cc:(cc+1),:,:,:] = S_both[:,0:1,:,:,:]
                 S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
         return (S_test, S_ref)
 
+    def baseband_effective_rho(self, band_diff, ppd_band):
+        # Differentiable content-adaptive spatial-frequency estimate for the baseband,
+        # replacing the fixed 0.1 cpd anchor. Computed per channel as the power-spectrum-
+        # weighted mean frequency (spectral centroid) of the test-reference difference in
+        # that band. The DC bin is mapped to the CSF LUT's lowest tabulated frequency
+        # (rather than excluded), so a pure luminance-pedestal difference (all energy at
+        # DC) reproduces today's conservative behavior, and the estimate only shifts
+        # upward when the baseband difference has genuine spatial structure.
+        # band_diff: [batch, ch, frames, H, W]
+        H, W = band_diff.shape[-2], band_diff.shape[-1]
+        P = torch.fft.fft2(band_diff).abs()**2  # power spectrum, same shape as band_diff
+
+        fy = (torch.fft.fftfreq(H, device=self.device) * ppd_band).abs()
+        fx = (torch.fft.fftfreq(W, device=self.device) * ppd_band).abs()
+        rho_grid = torch.sqrt(fy[:,None]**2 + fx[None,:]**2)  # [H,W], cyc/deg per FFT bin
+
+        rho_min = 10.0**self.csf.log_rho[0]
+        rho_max = 10.0**self.csf.log_rho[-1]
+        rho_grid = rho_grid.clone()
+        rho_grid[0,0] = rho_min
+
+        P_sum = P.sum(dim=(0,2,3,4))  # aggregate over batch, frames, H, W - keep channel dim
+        rho_num = (P * rho_grid).sum(dim=(0,2,3,4))
+        rho_eff = rho_num / (P_sum + 1e-8)
+        return rho_eff.clamp(min=rho_min, max=rho_max)  # [ch]
+
     # @torch.compile
-    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
+    def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image, capture_ref=None, ref_cache=None):
+        # capture_ref: optional list - if given, appended per-band with a dict of
+        #   {'S_ref': ...} (baseband) or {'S_ref': ..., 'R_p': ..., 'M': ...}
+        #   (masking bands, filled in by apply_masking_model). Used to build a
+        #   RefCache in precompute_reference(). Mutually exclusive with ref_cache.
+        # ref_cache: optional RefCache - if given, S_ref/R_p/M are read from it
+        #   instead of being recomputed from R's reference channels (compute_CSF is
+        #   skipped entirely). Only valid for masking_model=="mult-ref" with a
+        #   *_ref contrast mode, where S_test==S_ref and both are reference-only.
+        #   Used by the *_with_cached_reference() fast path.
         # R[batch,channels,frames,width,height]
         # Channel order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
         # Images do not have the two last channels
@@ -804,7 +974,8 @@ class cvvdp(vq_metric):
         rho_band[lpyr.get_band_count()-1] = 0.1 # Baseband
 
         Q_per_ch_block = None
-        block_N_frames = R.shape[-3] 
+        block_N_frames = R.shape[-3]
+        n_bands_total = lpyr.get_band_count() + (1 if self.dc_term_enabled else 0)
 
         for bb in range(lpyr.get_band_count()):  # For each spatial frequency band
 
@@ -816,17 +987,37 @@ class cvvdp(vq_metric):
 
             logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
 
-            # Compute CSF
-            (S_test, S_ref) = self.compute_CSF( bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames )
+            rho_override = None
+            if is_baseband and self.baseband_freq_adapt:
+                ppd_band = lpyr.ppd * (T_f.shape[-2] / lpyr.H)
+                rho_override = self.baseband_effective_rho(T_f - R_f, ppd_band)
+
+            band_capture = None if capture_ref is None else {}
+
+            if ref_cache is not None:
+                # S_test == S_ref under a *_ref contrast mode (both derived only from
+                # the reference's L_bkg - see weber_g1_ref/weber_g0_ref in lpyr_dec.py),
+                # so both are just the cached reference-only sensitivity - no LUT lookup.
+                S_ref = ref_cache.bands[bb]['S_ref']
+                S_test = S_ref
+            else:
+                # Compute CSF
+                (S_test, S_ref) = self.compute_CSF( bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames, rho_override=rho_override )
+                if band_capture is not None:
+                    band_capture['S_ref'] = S_ref.detach()
 
             if is_baseband:
                 D = torch.abs(T_f*S_test-R_f*S_ref)
             else:
                 # dimensions: [channel,frame,height,width]
-                D = self.apply_masking_model(T_f, R_f, S_test, S_ref)
+                ref_cache_band = None if ref_cache is None else ref_cache.bands[bb]
+                D = self.apply_masking_model(T_f, R_f, S_test, S_ref, capture_out=band_capture, ref_cache_band=ref_cache_band)
+
+            if capture_ref is not None:
+                capture_ref.append(band_capture)
 
             if Q_per_ch_block is None:
-                Q_per_ch_block = torch.empty((batch_sz,all_ch, block_N_frames, lpyr.get_band_count()), device=self.device)
+                Q_per_ch_block = torch.empty((batch_sz,all_ch, block_N_frames, n_bands_total), device=self.device)
 
             #assert (not D.isnan().any()) and (not D.isinf().any()) and (D>=0).all(), "Must not be nan and must be positive"
 
@@ -838,7 +1029,7 @@ class cvvdp(vq_metric):
                 # Weights for the channels: sustained, RG, YV, [transient]
                 t_int = self.image_int if is_image else 1.0
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
-                if is_baseband:
+                if is_baseband and not self.baseband_freq_adapt:
                     per_ch_w *= self.baseband_weight[0:all_ch].view(-1,1,1,1)
 
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
@@ -850,6 +1041,23 @@ class cvvdp(vq_metric):
                 t_int = self.image_int if is_image else 1.0
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
                 self.dump_channels.set_diff_band(width, height, lpyr.ppd, bb, D*per_ch_w, padding_type=self.spatial_padding)
+
+        if self.dc_term_enabled:
+            # Whole-frame, Weber-normalized opponent-channel difference, computed directly
+            # on the full-resolution input (R), independent of the pyramid. Catches
+            # large-area/near-uniform casts the CSF-frequency baseband term structurally
+            # can't: their difference has ~no spatial structure (spectral centroid sits at
+            # the CSF floor either way), and the pyramid crushes the whole frame down to a
+            # tiny baseband grid before any of that machinery runs. No spatial extent, so
+            # it's appended after pooling rather than fed through the heatmap/dump_channels
+            # per-band visualization, which expects a spatial map per band.
+            T_full = R[:,0::2,...] # Test, all channels, full resolution
+            R_full = R[:,1::2,...] # Reference, all channels, full resolution
+            # Shared adaptation luminance: mean of test+ref sustained-Y, same simplification
+            # already used for the baseband's own Weber contrast (weber_g1 mode).
+            L_bkg_full = torch.clamp(R[:,0:2,...].mean(dim=1, keepdim=True), min=0.01)
+            D_dc = (torch.abs(T_full - R_full) / L_bkg_full).mean(dim=(-2,-1)) # [batch,ch,frames]
+            Q_per_ch_block[:,:,:,-1] = D_dc
 
         if self.do_heatmap:
             heatmap_block = 1.-(self.met2jod( self.heatmap_pyr.reconstruct() )/10.)
@@ -923,16 +1131,23 @@ class cvvdp(vq_metric):
         else:
             return torch.sign(x)
 
-    def apply_masking_model(self, T, R, S_test, S_ref):
+    def apply_masking_model(self, T, R, S_test, S_ref, capture_out=None, ref_cache_band=None):
         # T - test contrast tensor T[batch,channel,frame,width,height]
         # R - reference contrast tensor
         # S - sensitivity
+        # capture_out: optional dict - if given, the "ref" branch stores its
+        #   reference-only intermediates (R_p, M) into it, detached. Used by
+        #   precompute_reference() to build a RefCache.
+        # ref_cache_band: optional dict from a previously captured RefCache band -
+        #   if given, the "ref" branch reuses its R_p/M instead of recomputing them
+        #   from R/S_ref. Used by the *_with_cached_reference() fast path. Only
+        #   supported for masking_model=="mult-ref"; ignored otherwise.
 
-        if self.masking_model in [ "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
+        if self.masking_model in [ "mult-none", "add-transducer", "mult-transducer", "add-mutual", "mult-mutual", "mult-ref", "mult-mutual-old", "add-similarity", "mult-similarity", "mult-transducer-texture", "add-transducer-texture" ]:
             num_ch = T.shape[-4]
             if self.masking_model.startswith( "add" ):
                 zero_tens = torch.as_tensor(0., device=T.device)
-                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
+                ch_gain = self.ce_g * torch.reshape( torch.as_tensor( [1, 1.7, 0.237, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...]
                 C_t = 1/S_test
                 C_r = 1/S_ref
                 T_p = self.diff_sign(T) * torch.maximum( (torch.abs(T)-C_t)*ch_gain + 1, zero_tens )
@@ -942,9 +1157,12 @@ class cvvdp(vq_metric):
                     T_p = T * S_test
                     R_p = R * S_ref
                 else:
-                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...] 
+                    ch_gain = torch.reshape( torch.as_tensor( [1, 1.45, 1, 1.], device=T.device), (1, 4, 1, 1, 1) )[:,:num_ch,...]
                     T_p = T * S_test * ch_gain
-                    R_p = R * S_ref * ch_gain
+                    if ref_cache_band is None:
+                        R_p = R * S_ref * ch_gain
+                    else:
+                        R_p = ref_cache_band['R_p']
 
             if self.masking_model.endswith( "none" ):
                 D = self.clamp_diffs(torch.abs(T_p-R_p))
@@ -964,6 +1182,23 @@ class cvvdp(vq_metric):
                 #D = D_clamped / (1 + M)
                 D_u = safe_pow(torch.abs(T_p - R_p),p) / (1 + M)
                 D = self.clamp_diffs( D_u )
+
+            elif self.masking_model.endswith( "ref" ):
+
+                p = self.mask_p
+                if ref_cache_band is None:
+                    M_mm = self.phase_uncertainty(torch.abs(R_p))
+                    q = self.mask_q[0:num_ch].view(num_ch,1,1,1)
+                    M = self.mask_pool(safe_pow(M_mm,q))
+                else:
+                    M = ref_cache_band['M']
+
+                D_u = safe_pow(torch.abs(T_p - R_p),p) / (1 + M)
+                D = self.clamp_diffs( D_u )
+
+                if capture_out is not None:
+                    capture_out['R_p'] = R_p.detach()
+                    capture_out['M'] = M.detach()
 
             elif self.masking_model.endswith( "mutual-old" ):
 
@@ -1253,7 +1488,14 @@ class cvvdp(vq_metric):
 
         is_image = (Q_per_ch.shape[2]==1)
 
-        Q_per_ch[:,:,:,-1] *= self.baseband_weight[0:ch_no].view(-1,1)
+        # Note: with dc_term_enabled, Q_per_ch has one extra trailing band (the DC term)
+        # not represented in stats['rho_band'] used below for axis labels; this
+        # visualization is not band-axis-accurate in that mode.
+        baseband_idx = -2 if self.dc_term_enabled else -1
+        if not self.baseband_freq_adapt:
+            Q_per_ch[:,:,:,baseband_idx] *= self.baseband_weight[0:ch_no].view(-1,1)
+        if self.dc_term_enabled:
+            Q_per_ch[:,:,:,-1] *= self.dc_weight[0:ch_no].view(-1,1)
         Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
         dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
 

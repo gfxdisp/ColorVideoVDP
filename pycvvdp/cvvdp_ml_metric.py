@@ -334,8 +334,13 @@ class cvvdp_ml_base(cvvdp):
 
             logL_bkg = lpyr.get_gband(L_bkg_pyr, bb)
 
+            rho_override = None
+            if is_baseband and self.baseband_freq_adapt:
+                ppd_band = lpyr.ppd * (T_f.shape[-2] / lpyr.H)
+                rho_override = self.baseband_effective_rho(T_f - R_f, ppd_band)
+
             # Compute CSF
-            (S_test, S_ref) = self.compute_CSF( bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames )
+            (S_test, S_ref) = self.compute_CSF( bb, logL_bkg, rho_band, batch_sz, all_ch, block_N_frames, rho_override=rho_override )
 
             if is_baseband:
                 D = torch.abs(T_f*S_test-R_f*S_ref)
@@ -359,7 +364,7 @@ class cvvdp_ml_base(cvvdp):
                 # Weights for the channels: sustained, RG, YV, [transient]
                 t_int = self.image_int if is_image else 1.0
                 per_ch_w = self.get_ch_weights( all_ch ).view(-1,1,1,1) * t_int
-                if is_baseband:
+                if is_baseband and not self.baseband_freq_adapt:
                     per_ch_w *= self.baseband_weight[0:all_ch].view(-1,1,1,1)
 
                 D_chr = self.lp_norm(D*per_ch_w, self.beta_tch, dim=-4, normalize=False)  # Sum across temporal and chromatic channels
@@ -442,7 +447,7 @@ class cvvdp_ml(cvvdp_ml_base):
             D_all = self.feature_net(f)
 
             is_base_band = (bb==no_bands-1)
-            if is_base_band:
+            if is_base_band and not self.baseband_freq_adapt:
                 D_all *= self.baseband_weight
 
             if is_image:
@@ -523,7 +528,7 @@ class cvvdp_ml_saliency(cvvdp_ml):
             D_all = F.relu(D_all) * Att /no_bands
 
             is_base_band = (bb==no_bands-1)
-            if is_base_band:
+            if is_base_band and not self.baseband_freq_adapt:
                 D_all *= self.baseband_weight
 
             if is_image:
@@ -659,7 +664,7 @@ class cvvdp_ml_transformer(cvvdp_ml):
 
             delta = self.transformer_net(f_all) / len(features)
 
-            if bb == len(features)-1:
+            if bb == len(features)-1 and not self.baseband_freq_adapt:
                 delta *= self.baseband_weight
             if is_image:
                 delta *= self.image_int

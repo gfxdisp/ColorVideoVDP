@@ -124,24 +124,6 @@ class lpyr_dec():
 
         return lpyr, gpyr
 
-    def interleave_zeros_and_pad(self, x, exp_size, dim):
-        new_shape = [*x.shape]
-        new_shape[dim] = exp_size[dim]+4
-        z = torch.zeros( new_shape, dtype=x.dtype, device=x.device)
-        odd_no = (exp_size[dim]%2)
-        if dim==-2:
-            z[...,2:-2:2,:] = x
-            z[...,0,:] = x[...,0,:]
-            z[...,-2+odd_no,:] = x[...,-1,:]
-        elif dim==-1:
-            z[...,:,2:-2:2] = x
-            z[...,:,0] = x[...,:,0]
-            z[...,:,-2+odd_no] = x[...,:,-1]
-        else:
-            assert False, "Wrong dimension"
-
-        return z
-
     def gaussian_pyramid_dec(self, image, levels = -1, kernel_a = 0.4):
 
         default_levels = int(np.floor(np.log2(min(image.shape[-2], image.shape[-1]))))
@@ -217,20 +199,38 @@ class lpyr_dec():
         H = y.shape[-2]
         return y.view( x.shape[0:-2] + (H,-1) ) # Restore the batch dimensions
     
+    def interleave_zeros_and_pad(self, x, exp_size, dim):
+        new_shape = [*x.shape]
+        new_shape[dim] = exp_size[dim]+4
+        z = torch.zeros( new_shape, dtype=x.dtype, device=x.device)
+        odd_no = (exp_size[dim]%2)
+        if dim==-2:
+            z[...,2:-2:2,:] = x
+            z[...,0,:] = x[...,0,:]
+            z[...,-2+odd_no,:] = x[...,-1,:]
+        elif dim==-1:
+            z[...,:,2:-2:2] = x
+            z[...,:,0] = x[...,:,0]
+            z[...,:,-2+odd_no] = x[...,:,-1]
+        else:
+            assert False, "Wrong dimension"
+
+        return z
+
     # This function is (a bit) faster
     def gausspyr_expand(self, x, sz = None, kernel_a = 0.4):
         if sz is None:
             sz = [x.shape[-2]*2, x.shape[-1]*2]
 
-        H, W = x.shape[-2], x.shape[-1]        
+        H, W = x.shape[-2], x.shape[-1]
         x_ch = x.view(-1,1,H,W) # So that we can handle batches
 
         K_vert, K_horiz = self.get_kernels( kernel_a, device=x.device, dtype=x.dtype )
 
         if self.padding_type=='symmetric': # (v0.4)
             y_a = self.interleave_zeros_and_pad(x_ch, dim=-2, exp_size=sz)
-            H, W = y_a.shape[-2], y_a.shape[-1]        
-            y_a = Func.conv2d(y_a, K_vert*2)        
+            H, W = y_a.shape[-2], y_a.shape[-1]
+            y_a = Func.conv2d(y_a, K_vert*2)
             y   = self.interleave_zeros_and_pad(y_a, dim=-1, exp_size=sz)
             y = Func.conv2d(y, K_horiz*2)
         else: # 'zero' or 'valid'
@@ -339,6 +339,7 @@ class weber_contrast_pyr(lpyr_dec):
                 layer = gpyr[i]
                 if self.contrast.endswith('ref'):
                     L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
+                    L_bkg = L_bkg.expand(*L_bkg.shape[:-4], 2, *L_bkg.shape[-3:])
                 else:
                     # The sustained channels use the mean over the image as the background. Otherwise, they would be divided by itself and the contrast would be 1.
                     L_bkg = torch.mean(torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01), dim=[-1, -2], keepdim=True)
@@ -359,19 +360,21 @@ class weber_contrast_pyr(lpyr_dec):
                 # L_bkg is set to ref-sustained 
                 if self.contrast == 'weber_g1_ref':
                     L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
+                    L_bkg = L_bkg.expand(*L_bkg.shape[:-4], 2, *L_bkg.shape[-3:])
                 elif self.contrast == 'weber_g1':
                     L_bkg = torch.clamp(glayer_ex[...,0:2,:,:,:], min=0.01)
                 elif self.contrast == 'weber_g0_ref':
                     L_bkg = torch.clamp(gpyr[i][...,1:2,:,:,:], min=0.01)
+                    L_bkg = L_bkg.expand(*L_bkg.shape[:-4], 2, *L_bkg.shape[-3:])
                 else:
                     raise RuntimeError( f"Contrast {self.contrast} not supported")
 
             if L_bkg.shape[-4]==2: # If L_bkg NOT identical for the test and reference images
                 contrast = torch.empty_like(layer)
-                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0:1,:,:,:]), max=1000.0)    
-                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1:2,:,:,:]), max=1000.0)    
+                contrast[...,0::2,:,:,:] = 1000.0 * torch.tanh(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0:1,:,:,:]) / 1000.0)
+                contrast[...,1::2,:,:,:] = 1000.0 * torch.tanh(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1:2,:,:,:]) / 1000.0)
             else:
-                contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
+                contrast = 1000.0 * torch.tanh(torch.div(layer, L_bkg) / 1000.0)
 
             lpyr.append(contrast)
             L_bkg_pyr.append(torch.log10(L_bkg))

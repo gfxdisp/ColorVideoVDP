@@ -25,11 +25,14 @@ class castleCSF:
         self.logS_rho = {}
 
 
-    def sensitivity(self, rho, omega, logL_bkg, cc, sigma):
+    def sensitivity(self, rho, omega, logL_bkg, cc, sigma, cache=True):
         # rho - spatial frequency
         # omega - temporal frequency
         # L_bkg - background luminance
         # sigma - radius of spatial integration (Gaussian envelope)
+        # cache - set to False when rho is a content-derived tensor that varies every
+        #         call (e.g. content-adaptive baseband frequency), to avoid unbounded
+        #         growth of the cache and to keep rho's autograd graph intact
 
         # Which LUT to use
         oo = 0 if omega==0 else 1
@@ -37,13 +40,13 @@ class castleCSF:
 
         # First interpolate between spatial frequencies rho
         rho_str = f"o{oo}_c{cc}_rho{rho}"
-        if rho_str in self.logS_rho: # Check if it is cached
+        if cache and rho_str in self.logS_rho: # Check if it is cached
             logS_r = self.logS_rho[rho_str]
         else:
             N = self.log_L_bkg.numel()
-            logS_r = torch.empty((N), device=self.device)
             logS_r = batch_interp1d(torch.log10(torch.as_tensor(rho, device=self.device, dtype=torch.float32)).expand(N), self.log_rho, logS)
-            self.logS_rho[rho_str] = logS_r        
+            if cache:
+                self.logS_rho[rho_str] = logS_r
 
         # Then, interpolate across luminance levels    
         #S = 10**interp1q( self.log_L_bkg, logS_r, logL_bkg )
