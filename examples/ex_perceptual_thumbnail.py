@@ -24,11 +24,11 @@ import imageio.v2 as io
 
 debug = False
 save_results = False
-output_dir = "perceptual_downsampling"
+output_dir = "perceptual_thumbnail"
 if save_results:
     os.makedirs(output_dir, exist_ok=True)
 
-R = 8  # Downsampling factor
+R = 6  # Downsampling factor
 
 class ThumbnailModel(torch.nn.Module):
     def __init__(self, ref_img, R=8):
@@ -45,7 +45,9 @@ class ThumbnailModel(torch.nn.Module):
 
 device = torch.device("cuda:0")
 
-I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'palm_beach.png'))
+#I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'palm_beach.png'))
+I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'perc_downscaling_face_1.png'))
+
 
 # Crop the image so that its dimensions are divisible by R
 H, W = I_ref.shape[:2]
@@ -61,7 +63,8 @@ model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-2 )
 
-cvvdp = pycvvdp.cvvdp(display_name='standard_4k')
+cvvdp = pycvvdp.cvvdp(display_name='standard_4k' )
+# cvvdp = pycvvdp.cvvdp(display_name='standard_4k', config_paths=['../metric_configs/cvvdp_add_mutual/cvvdp_parameters.json'] )
 
 loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
 
@@ -81,6 +84,12 @@ max_iter = 1001
 loss_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 grad_mag_tab = np.ones( (max_iter), dtype=np.float32 ) * np.nan
 
+thumb_naive_t = torch.nn.functional.interpolate(model.init_thumb.unsqueeze(0), scale_factor=R, mode="nearest").squeeze(0)        
+th, tw = model.thumb.shape[-2], model.thumb.shape[-1]
+thumb_naive_t[...,-th:,-tw:] = model.init_thumb
+thumb_naive = thumb_naive_t.detach().clamp(0, 1).permute((1,2,0)).cpu().numpy()
+
+
 for kk in range(max_iter):
     print( f"Iteration {kk}" )
     optimizer.zero_grad()
@@ -96,10 +105,7 @@ for kk in range(max_iter):
         opt_img = pred.detach().clamp(0, 1).permute((1,2,0)).cpu().numpy()
 
         ax[0].clear()
-        disp_img = torch.nn.functional.interpolate(model.init_thumb.unsqueeze(0), scale_factor=R, mode="nearest").squeeze(0)        
-        th, tw = model.thumb.shape[-2], model.thumb.shape[-1]
-        disp_img[...,-th:,-tw:] = model.init_thumb
-        ax[0].imshow( disp_img.detach().clamp(0, 1).permute((1,2,0)).cpu().numpy() )
+        ax[0].imshow( thumb_naive )
         ax[0].set_title( f"Naive thumbnail ({th}x{tw})" )
         ax[1].clear()
         disp_img = torch.nn.functional.interpolate(model.thumb.detach().unsqueeze(0), scale_factor=R, mode="nearest").squeeze(0)        

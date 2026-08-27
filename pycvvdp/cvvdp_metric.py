@@ -766,10 +766,13 @@ class cvvdp(vq_metric):
                 # The sensitivity is computed assuming the adaptation to the luminance of the sustained channel of the reference image only
                 S_ref[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
             else:
-                # The sensitivity is computed assuming the adaptation to the lumiance of the sustained channel of the test and reference images
+                # The sensitivity is computed assuming the adaptation to the lumiance of the sustained channel of either the test or reference image
                 S_both = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,0:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
                 S_test[:,cc:(cc+1),:,:,:] = S_both[:,0:1,:,:,:]
                 S_ref[:,cc:(cc+1),:,:,:] = S_both[:,1:2,:,:,:]
+                # Just for testing
+                # S_test[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho*6, self.omega[tch], logL_bkg[...,0:1,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
+                # S_ref[:,cc:(cc+1),:,:,:] = self.csf.sensitivity(rho, self.omega[tch], logL_bkg[...,1:2,:,:,:], cch, self.csf_sigma) * 10.0**(self.sensitivity_correction/20.0)
         return (S_test, S_ref)
 
     # @torch.compile
