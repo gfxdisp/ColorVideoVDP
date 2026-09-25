@@ -20,7 +20,7 @@ def tensor_to_numpy_image(T):
     return torch.squeeze(T.permute((3,4,1,0,2)), dim=(3,4)).cpu().numpy()
 
 """
-A fake metric that writes the output of a display model to either HDR video or OpenEXR images/frames. This is useful for checking and debugging display models. 
+A fake metric that writes the output of a display model to either HDR video or OpenEXR images/frames. This is useful for checking and debugging display models.
 """
 class dm_preview(vq_metric):
 
@@ -36,14 +36,14 @@ class dm_preview(vq_metric):
 
         self.output_exr = output_exr
         self.side_by_side = side_by_side
-        self.set_display_model( display_name=display_name, display_photometry=display_photometry )        
+        self.set_display_model( display_name=display_name, display_photometry=display_photometry )
         self.verbose = verbose
 
 
     def predict_video_source(self, vid_source, frame_padding="replicate"):
 
         _, _, N_frames = vid_source.get_video_size()
-        
+
         batch_sz = vid_source.get_batch_size()
         assert batch_sz==1, 'DM-preview does not work with batches'
 
@@ -76,7 +76,7 @@ class dm_preview(vq_metric):
                 test_vw.write_frame_rgb(tensor_to_numpy_image(T))
                 if not self.side_by_side:
                     ref_vw.write_frame_rgb(tensor_to_numpy_image(R))
-        
+
         if not write_exr:
             test_vw.close()
             if not self.side_by_side:
@@ -106,4 +106,3 @@ register_metric( dm_preview )
 register_metric( dm_preview_sbs )
 register_metric( dm_preview_exr )
 register_metric( dm_preview_exr_sbs )
-

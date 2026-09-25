@@ -105,7 +105,7 @@ class DumpChannels:
         yv = R[0:1,4:5,...]
         yv_rgb = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(yv), white_dkl[1].expand_as(yv), yv ], dim=1 )+gray )
 
-        frame = torch.cat( [ torch.cat( [ach_sust_rgb, ach_trans_rgb], dim=-1 ), 
+        frame = torch.cat( [ torch.cat( [ach_sust_rgb, ach_trans_rgb], dim=-1 ),
                   torch.cat( [rg_rgb, yv_rgb], dim=-1 ) ], dim=-2 )
         for ff in range(frame.shape[2]): # for each frame
             frame_de = ((frame[0,:,ff,...] / self.max_V) ** (1/2.2) * 255).clip(0, 255)

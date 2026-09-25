@@ -10,8 +10,8 @@ def get_luma(img):
     return 0.212656*img[...,0,:,:,:] + 0.715158 * img[...,1,:,:,:] + 0.072186 * img[...,2,:,:,:]
 
 """
-Plain SSIM metric, computed on the luma channel. Operates on display-encoded values. If HDR/linear color is encountered, it will be 
-PU21-encoded. The display model is used only for images in linear color spaces. Usage is same as 
+Plain SSIM metric, computed on the luma channel. Operates on display-encoded values. If HDR/linear color is encountered, it will be
+PU21-encoded. The display model is used only for images in linear color spaces. Usage is same as
 the ColorVideoVDP metric (see pytorch_examples).
 """
 class ssim_metric(vq_metric):
@@ -37,18 +37,18 @@ class ssim_metric(vq_metric):
     def predict_video_source(self, vid_source, frame_padding="replicate"):
 
         _, _, N_frames = vid_source.get_video_size()
-        
-        ssim_index = 0 
+
+        ssim_index = 0
         n = 0
         for ff in range(N_frames):
             # colorspace='display_encoded_100nit' will get us display-encoded image, or if the original source is linear, it will apply PU-encoding.
-            # If the input is PQ-encoded, it will return a PQ-encoded values (). 
+            # If the input is PQ-encoded, it will return a PQ-encoded values ().
             T = get_luma(vid_source.get_test_frame(ff, device=self.device, colorspace='display_encoded_100nit'))
             R = get_luma(vid_source.get_reference_frame(ff, device=self.device, colorspace='display_encoded_100nit'))
 
             ssim_index += self.ssim.forward(T, R)
             n += 1
-        
+
         return ssim_index/n, None
 
     def short_name(self):
@@ -56,4 +56,3 @@ class ssim_metric(vq_metric):
 
     def quality_unit(self):
         return ""
-

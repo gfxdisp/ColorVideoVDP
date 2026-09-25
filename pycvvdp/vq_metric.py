@@ -11,7 +11,7 @@ class vq_exception(Exception):
 class vq_metric:
 
     '''
-    test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames. 
+    test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames.
         Depending on the display model (display_photometry), the pixel values should be either display encoded, or absolute linear.
         The two supported datatypes are float16 and uint8.
     dim_order - a string with the order of dimensions of test_cont and reference_cont. The individual characters denote
@@ -21,7 +21,7 @@ class vq_metric:
         H - height
         W - width
         Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - color image; "FCHW" - color video
-        The default order is "BCFHW". The processing can be a bit faster if data is provided in that order. 
+        The default order is "BCFHW". The processing can be a bit faster if data is provided in that order.
     frame_padding - the metric requires at least 250ms of video for temporal processing. Because no previous frames exist in the
         first 250ms of video, the metric must pad those first frames. This options specifies the type of padding to use:
           'replicate' - replicate the first frame
@@ -61,7 +61,7 @@ class vq_metric:
             self.display_name = "unspecified"
 
     '''
-    Set the base name and path for any extra debuging info or outputs that a metric may produce. 
+    Set the base name and path for any extra debuging info or outputs that a metric may produce.
     '''
     def set_base_fname( self, base_fname ):
         self.base_fname = base_fname
@@ -83,4 +83,4 @@ class vq_metric:
 vq_metric_dict = dict()
 
 def register_metric( metric_class ):
-    vq_metric_dict[metric_class.__name__] = metric_class    
+    vq_metric_dict[metric_class.__name__] = metric_class

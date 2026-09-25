@@ -121,7 +121,7 @@ class ImGaussFilt():
         self.K = self.K/self.K.sum()
 
     def run(self, img):
-        
+
         if len(img.shape) == 2: img_4d = img.reshape((1,1,img.shape[0],img.shape[1]))
         else:                   img_4d = img
 
@@ -137,7 +137,7 @@ class ImGaussFilt():
 
 class config_files:
     # fvvdp_config_dir = None
-    
+
     # @classmethod
     # def set_config_dir( cls, path ):
     #     cls.fvvdp_config_dir = path
@@ -251,7 +251,7 @@ def get_best_device( device_name='auto' ):
         elif torch.backends.mps.is_available():
             device_name = 'mps'
         else:
-            logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')            
+            logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')
             device_name = 'cpu'
 
     if device_name.startswith('cuda') and torch.cuda.is_available():

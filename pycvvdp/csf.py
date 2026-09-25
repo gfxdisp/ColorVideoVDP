@@ -43,9 +43,9 @@ class castleCSF:
             N = self.log_L_bkg.numel()
             logS_r = torch.empty((N), device=self.device)
             logS_r = batch_interp1d(torch.log10(torch.as_tensor(rho, device=self.device, dtype=torch.float32)).expand(N), self.log_rho, logS)
-            self.logS_rho[rho_str] = logS_r        
+            self.logS_rho[rho_str] = logS_r
 
-        # Then, interpolate across luminance levels    
+        # Then, interpolate across luminance levels
         S = 10**interp1q( self.log_L_bkg, logS_r, logL_bkg )
 
         return S

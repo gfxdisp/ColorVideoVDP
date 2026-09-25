@@ -6,8 +6,8 @@ from pycvvdp.interp import interp1
 def luminance_NCHW(x):
     if x.shape[1] == 3: # NC***
         y = (
-            x[:,0:1,...] * 0.212656 + 
-            x[:,1:2,...] * 0.715158 + 
+            x[:,0:1,...] * 0.212656 +
+            x[:,1:2,...] * 0.715158 +
             x[:,2:3,...] * 0.072186)
     else:
         y = x
@@ -22,10 +22,10 @@ def log_luminance(x):
 
 def vis_tonemap(b, dr):
     t = 3.0
-    
+
     b_min = torch.min(b)
     b_max = torch.max(b)
-    
+
     if b_max-b_min < dr: # No tone-mapping needed
         tmo_img = (b-b_min)/(b_max-b_min+1e-3)*dr + (1-dr)/2
         return tmo_img
@@ -33,13 +33,13 @@ def vis_tonemap(b, dr):
     b_scale = torch.linspace( b_min, b_max, 1024, device=b.device)
     b_p = torch.histc( b, 1024, b_min, b_max )
     b_p = b_p / torch.sum(b_p)
-    
+
     sum_b_p = torch.sum(torch.pow(b_p, 1.0/t))
 
     dy = torch.pow(b_p, 1.0/t) / sum_b_p
-    
+
     v = torch.cumsum(dy, 0)*dr + (1.0-dr)/2.0
-    
+
     tmo_img = interp1(b_scale, v, b)
 
     return tmo_img
@@ -79,12 +79,12 @@ def visualize_diff_map(diff_map, context_image=None, colormap_type="supra-thresh
         color_map_in = torch.tensor([0.0, 0.5, 1.0], device=diff_map.device)*0.3
 
     elif colormap_type == 'monochromatic':
-        
+
         color_map = torch.tensor([
             [1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0],
         ], device=diff_map.device)
-        
+
         color_map_in = torch.tensor([0.0, 1.0], device=diff_map.device)
     else:
         print("Unknown colormap: %s" % colormap_type)

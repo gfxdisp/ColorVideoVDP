@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as Func
-import numpy as np 
+import numpy as np
 import math
 import logging
 import os
@@ -71,7 +71,7 @@ def pq2lin( V ):
     return L
 
 # Convert pixel values to linear RGB using sRGB non-linearity
-# 
+#
 # L = srgb2lin( p )
 #
 # p - pixel values (between 0 and 1)
@@ -130,7 +130,7 @@ class vvdp_display_photometry:
     def forward( self, V ):
         pass
 
-    # Print the display specification    
+    # Print the display specification
     @abstractmethod
     def print( self ):
         pass
@@ -183,7 +183,7 @@ class vvdp_display_photometry:
             E_ambient = 0
 
         # Reflectivity of the display panel
-        if "k_refl" in model: 
+        if "k_refl" in model:
             k_refl = model["k_refl"]
         else:
             k_refl = 0.005
@@ -200,10 +200,10 @@ class vvdp_display_photometry:
 
         return obj
 
-    # Transform content from its source color space (typically display-encoded RGB) into 
+    # Transform content from its source color space (typically display-encoded RGB) into
     # the colorimetric values of light emmitted from the display and then into the target color
     # space used by a metric.
-    def source_2_target_colorspace(self, I_src, target_colorspace):        
+    def source_2_target_colorspace(self, I_src, target_colorspace):
 
         if target_colorspace in ['display_encoded_01', 'display_encoded_dmax', 'display_encoded_100nit']: # if a display-encoded frame is requested
 
@@ -221,9 +221,9 @@ class vvdp_display_photometry:
                     PU_max = self.PU.encode(torch.as_tensor(100.0)) # White diffuse of 100 nit will be mapped to 1
                 else:
                     PU_max = self.PU.encode(torch.as_tensor(self.get_peak_luminance()))
-                
+
                 I_lin = self.forward( I_src )
-                I_target = self.PU.encode(I_lin) / PU_max 
+                I_target = self.PU.encode(I_lin) / PU_max
         else:
             # Apply forward display model to get absolute linear values
             I_lin = self.forward( I_src )
@@ -237,8 +237,8 @@ class vvdp_display_photometry:
         return I_target
 
     # Transform frame/image from native linear color space to the target color space.
-    # Internal, do not use. 
-    def linear_2_target_colorspace(self, RGB_lin, target_colorspace):        
+    # Internal, do not use.
+    def linear_2_target_colorspace(self, RGB_lin, target_colorspace):
         if hasattr(self, "rgb2xyz"):
             rgb2xyz = self.rgb2xyz
         else:
@@ -275,7 +275,7 @@ class vvdp_display_photometry:
 
             return ABC
 
-class vvdp_display_photo_eotf(vvdp_display_photometry): 
+class vvdp_display_photo_eotf(vvdp_display_photometry):
     # Display model with several EOTF, to simulate both SDR and HDR displays
     #
     # dm = vvdp_display_photo_eotf( Y_peak, contrast, EOTF, gamma, E_ambient, k_refl )
@@ -285,9 +285,9 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     #          office monitor, 1000 for an HDR display, ...
     # contrast - [1000] the contrast of the display. The value 1000 means
     #          1000:1
-    # source_colorspace - color space from colorspaces.json. colorspace entry includes EOTF, 
+    # source_colorspace - color space from colorspaces.json. colorspace entry includes EOTF,
     #          but it can be overriden using EOTF parameter.
-    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2. 
+    # EOTF - 'sRGB', 'PQ', 'linear' or a string with a numeric value, such as "2.2", for gamma 2.2.
     #        This parameter will overwrite the EOTF attribute in the JSON file with corresponding 'source_colorspace'.
     # E_ambient - [0] ambient light illuminance in lux, e.g. 600 for bright
     #         office
@@ -299,24 +299,24 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     #
     # Copyright (c) 2010-2022, Rafal Mantiuk
     def __init__( self, Y_peak, contrast = 1000, source_colorspace='sRGB', EOTF=None, E_ambient = 0, k_refl = 0.005, exposure=1, name=None, config_paths=[] ):
-            
+
         super().__init__(source_colorspace=source_colorspace, config_paths=config_paths)
-        if not EOTF is None: 
+        if not EOTF is None:
             self.EOTF = EOTF
 
-        self.Y_peak = Y_peak            
+        self.Y_peak = Y_peak
         self.contrast = contrast
         self.E_ambient = E_ambient
         self.k_refl = k_refl
-        self.name = name    
+        self.name = name
         self.exposure = exposure
 
-    # Say whether the input frame is display-encoded. False if it is linear. 
+    # Say whether the input frame is display-encoded. False if it is linear.
     def is_input_display_encoded(self):
         # Is not display encoded if EOTF is "linear"
         return (self.EOTF!='linear')
 
-    def __eq__(self, other): 
+    def __eq__(self, other):
         if not isinstance(other, self.__class__):
             # don't attempt to compare against unrelated types
             return NotImplemented
@@ -331,13 +331,13 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
     # 0-1 into absolute linear colorimetric values emitted from
     # the display.
     def forward( self, V ):
-        
+
         if self.EOTF != 'linear' and ((V>1).flatten().any() or (V<0).flatten().any()):
             logging.warning("Pixel outside the valid range 0-1")
             V = V.clamp( 0., 1. )
-            
+
         Y_black, Y_refl = self.get_black_level()
-                
+
         if self.EOTF=='sRGB':
             if self.exposure == 1:
                 L = (self.Y_peak-Y_black)*srgb2lin(V) + Y_black + Y_refl
@@ -361,24 +361,24 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
             gamma = float(self.EOTF)
             L = (self.Y_peak-Y_black)*(torch.pow(V, gamma)*self.exposure).clip(0., 1.) + Y_black + Y_refl
         else:
-            raise RuntimeError( f"Unknown EOTF '{self.EOTF}'" )        
+            raise RuntimeError( f"Unknown EOTF '{self.EOTF}'" )
         return L
-        
+
 
     def get_peak_luminance( self ):
         return self.Y_peak
 
     # Get the black level and the light reflected from the display
     def get_black_level( self ):
-        Y_refl = self.E_ambient/math.pi*self.k_refl  # Reflected ambient light            
+        Y_refl = self.E_ambient/math.pi*self.k_refl  # Reflected ambient light
         Y_black = self.Y_peak/self.contrast
 
         return Y_black, Y_refl
 
-    # Print the display specification    
+    # Print the display specification
     def print( self ):
         Y_black, Y_refl = self.get_black_level()
-        
+
         logging.info( 'Photometric display model: {}'.format(self.name) )
         logging.info( '  Peak luminance: {} cd/m^2'.format(self.Y_peak) )
         logging.info( '  EOTF: {}'.format(self.EOTF) )
@@ -386,7 +386,7 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
         logging.info( '  Contrast - effective: {}:1'.format( round(self.Y_peak/(Y_black+Y_refl)) ) )
         logging.info( '  Ambient light: {} lux'.format( self.E_ambient ) )
         logging.info( '  Display reflectivity: {}%'.format( self.k_refl*100 ) )
-    
+
 
 
 # Use this class to compute the effective resolution of a display in pixels
@@ -398,8 +398,8 @@ class vvdp_display_photo_eotf(vvdp_display_photometry):
 # and visual degrees. Check 'display_size_m' and 'display_size_deg' class
 # properties for that.
 #
-# R = fvvdp_display_geometry(resolution, distance_m=None, distance_display_heights=None, 
-#                            fov_horizontal=None, fov_vertical=None, fov_diagonal=None, 
+# R = fvvdp_display_geometry(resolution, distance_m=None, distance_display_heights=None,
+#                            fov_horizontal=None, fov_vertical=None, fov_diagonal=None,
 #                            diagonal_size_inches=None)
 #
 # resolution is the 2-element touple with the pixel resolution of the
@@ -433,9 +433,9 @@ class vvdp_display_geometry:
     def __init__(self, resolution, distance_m=None, distance_display_heights=None, fov_horizontal=None, fov_vertical=None, fov_diagonal=None, diagonal_size_inches=None, ppd=None) -> None:
 
         self.resolution = resolution
-        
+
         ar = resolution[0]/resolution[1] # width/height
-        
+
         if not ppd is None:
             self.fixed_ppd = ppd
             return
@@ -445,10 +445,10 @@ class vvdp_display_geometry:
         if not diagonal_size_inches is None:
             height_mm = math.sqrt( (diagonal_size_inches*25.4)**2 / (1+ar**2) )
             self.display_size_m = (ar*height_mm/1000, height_mm/1000)
-                
+
         if (not distance_m is None) and (not distance_display_heights is None):
             raise RuntimeError( 'You can pass only one of: ''distance_m'', ''distance_display_heights''.' )
-        
+
         if not distance_m is None:
             self.distance_m = distance_m;
         elif not distance_display_heights is None:
@@ -460,10 +460,10 @@ class vvdp_display_geometry:
             self.distance_m = 3
         else:
             raise RuntimeError( 'Viewing distance must be specified as ''distance_m'' or ''distance_display_heights''.' )
-        
+
         if ((not fov_horizontal is None) + (not fov_vertical is None) + (not fov_diagonal is None)) > 1:
             raise RuntimeError( 'You can pass only one of ''fov_horizontal'', ''fov_vertical'', ''fov_diagonal''. The other dimensions are inferred from the resolution assuming that the pixels are square.' )
-        
+
         if not fov_horizontal is None:
             width_m = 2*math.tan( math.radians(fov_horizontal/2) )*self.distance_m
             self.display_size_m = (width_m, width_m/ar)
@@ -474,17 +474,17 @@ class vvdp_display_geometry:
             # Note that we cannot use Pythagorean theorem on degs -
             # we must operate on a distance measure
             # This is incorrect: height_deg = p.Results.fov_diagonal / sqrt( 1+ar^2 );
-            
+
             distance_px = math.sqrt(self.resolution[0]**2 + self.resolution[1]**2) / (2.0 * math.tan( math.radians(fov_diagonal*0.5)) )
             height_deg = math.degrees(math.atan( self.resolution[1]/2 / distance_px ))*2
-            
+
             height_m = 2*math.tan( math.radians(height_deg/2) )*self.distance_m
             self.display_size_m = (height_m*ar, height_m)
-        
+
         self.display_size_deg = ( 2 * math.degrees(math.atan( self.display_size_m[0] / (2*self.distance_m) )), \
                                   2 * math.degrees(math.atan( self.display_size_m[1] / (2*self.distance_m) )) )
 
-    def __eq__(self, other): 
+    def __eq__(self, other):
         if not isinstance(other, self.__class__):
             # don't attempt to compare against unrelated types
             return NotImplemented
@@ -501,27 +501,27 @@ class vvdp_display_geometry:
     # not specified, the central ppd value (for 0 eccentricity) is
     # returned.
     def get_ppd(self, eccentricity = None):
-        
+
         # if ~isempty( dr.fixed_ppd )
         #     ppd = dr.fixed_ppd;
         #     return;
         # end
-        
+
         if not self.fixed_ppd is None:
             return self.fixed_ppd
 
         # pixel size in the centre of the display
         pix_deg = 2*math.degrees(math.atan( 0.5*self.display_size_m[0]/self.resolution[0]/self.distance_m ))
-        
+
         base_ppd = 1/pix_deg
-        
+
         if eccentricity is None:
             return base_ppd
         else:
             delta = pix_deg/2
             tan_delta = math.tan(math.radians(delta))
             tan_a = torch.tan( torch.deg2rad(eccentricity) )
-            
+
             ppd = base_ppd * (torch.tan(torch.deg2rad(eccentricity+delta))-tan_a)/tan_delta
             return ppd
 
@@ -534,7 +534,7 @@ class vvdp_display_geometry:
     #   pixels indexed from 0
     # gaze_pix - [x y] of the gaze position, in pixels
     def pix2eccentricity( self, resolution_pix, x_pix, y_pix, gaze_pix ):
-                        
+
         if not self.fixed_ppd is None:
             ecc = torch.sqrt( (x_pix-gaze_pix[0])**2 + (y_pix-gaze_pix[1])**2 )/self.fixed_ppd
         else:
@@ -542,42 +542,42 @@ class vvdp_display_geometry:
             shift_to_centre = -resolution_pix/2
             x_pix_rel = x_pix+shift_to_centre[0]
             y_pix_rel = y_pix+shift_to_centre[1]
-            
+
             x_m = x_pix_rel * self.display_size_m[0] / self.resolution[0]
             y_m = y_pix_rel * self.display_size_m[1] / self.resolution[1]
-            
+
             device = x_pix.device
 
             gaze_m = (gaze_pix + shift_to_centre) * torch.tensor(self.display_size_m) / torch.tensor(self.resolution)
             gaze_deg = torch.rad2deg(torch.atan( gaze_m/self.distance_m ))
-            
-            ecc = torch.sqrt( (torch.rad2deg(torch.atan(x_m/self.distance_m))-gaze_deg[0])**2 + (torch.rad2deg(torch.atan(y_m/self.distance_m))-gaze_deg[1])**2 )
-        
-        return ecc
-        
-    def get_resolution_magnification( self, eccentricity ):
-            # Get the relative magnification of the resolution due to
-            # eccentricity.
-            # 
-            # M = R.get_resolution_magnification(eccentricity)
-            # 
-            # eccentricity is the viewing angle from the center to the fixation point in degrees.
-            
-            if not self.fixed_ppd is None:
-                M = torch( (1), device=eccentricity.device )
-            else:            
-                eccentricity = torch.minimum( eccentricity, torch.tensor((89.9)) ) # To avoid singulatities
-                
-                # pixel size in the centre of the display
-                pix_rad = 2*math.atan( 0.5*self.display_size_m[0]/self.resolution[0]/self.distance_m )
-                
-                delta = pix_rad/2
-                tan_delta = math.tan(delta)
-                tan_a = torch.tan( torch.deg2rad(eccentricity) )
-                
-                M = (torch.tan(torch.deg2rad(eccentricity)+delta)-tan_a)/tan_delta
 
-            return M
+            ecc = torch.sqrt( (torch.rad2deg(torch.atan(x_m/self.distance_m))-gaze_deg[0])**2 + (torch.rad2deg(torch.atan(y_m/self.distance_m))-gaze_deg[1])**2 )
+
+        return ecc
+
+    def get_resolution_magnification( self, eccentricity ):
+        # Get the relative magnification of the resolution due to
+        # eccentricity.
+        #
+        # M = R.get_resolution_magnification(eccentricity)
+        #
+        # eccentricity is the viewing angle from the center to the fixation point in degrees.
+
+        if not self.fixed_ppd is None:
+            M = torch( (1), device=eccentricity.device )
+        else:
+            eccentricity = torch.minimum( eccentricity, torch.tensor((89.9)) ) # To avoid singulatities
+
+            # pixel size in the centre of the display
+            pix_rad = 2*math.atan( 0.5*self.display_size_m[0]/self.resolution[0]/self.distance_m )
+
+            delta = pix_rad/2
+            tan_delta = math.tan(delta)
+            tan_a = torch.tan( torch.deg2rad(eccentricity) )
+
+            M = (torch.tan(torch.deg2rad(eccentricity)+delta)-tan_a)/tan_delta
+
+        return M
 
     def print(self):
         logging.info( 'Geometric display model:' )
@@ -619,9 +619,8 @@ class vvdp_display_geometry:
             else:                                    distance_m = None
 
             if   "diagonal_size_meters" in model: diag_size_inch = model["diagonal_size_meters"] / inches_to_meters
-            elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"] 
+            elif "diagonal_size_inches" in model: diag_size_inch = model["diagonal_size_inches"]
             else:                                 diag_size_inch = None
 
             obj = vvdp_display_geometry( (W, H), distance_m=distance_m, fov_diagonal=fov_diagonal, diagonal_size_inches=diag_size_inch)
         return obj
-
