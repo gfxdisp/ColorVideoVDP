@@ -1,9 +1,7 @@
 # Classes for reading images or videos from files so that they can be passed to ColorVideoVDP frame-by-frame
 
 from asyncio.log import logger
-from functools import cache
-from importlib.resources import path
-import os
+import os.path
 # from turtle import color
 import imageio.v2 as io
 import numpy as np
@@ -12,7 +10,6 @@ import torch
 import ffmpeg
 import re
 import math
-import torch.nn.functional as Func
 
 import scipy.io as sio
 

@@ -1,11 +1,10 @@
 from abc import abstractmethod
 import torch
-import os
 import numpy as np
 import logging
-from torch.functional import Tensor
+from torch import Tensor
 import pycvvdp.utils as utils
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry, vvdp_display_photo_eotf
+from pycvvdp.display_model import vvdp_display_photometry
 
 #from pycvvdp.colorspace import ColorTransform
 

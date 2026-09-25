@@ -1,32 +1,34 @@
 # Command-line interface for ColorVideoVDP.
 
-import os, sys
+import sys
 import os.path
 import argparse
 import logging
-#from natsort import natsorted
 import glob
 import ffmpeg
 import numpy as np
 import torch
 import imageio.v2 as imageio
-import re
 import inspect
 import traceback
 
 from pycvvdp.vq_metric import vq_metric_dict
 
-import pycvvdp
-
 import shlex
 
-#from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
-# from pyfvvdp.visualize_diff_map import visualize_diff_map
 import pycvvdp.utils as utils
-
-from pycvvdp.ssim_metric import ssim_metric
-from pycvvdp.dm_preview_metric import *
+from pycvvdp.vq_metric import vq_exception
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.dump_channels import DumpChannels
+from pycvvdp.video_source_file import video_source_temp_resample_file, video_source_file
+
+# import all modules with `register_metric()`
+import pycvvdp.cvvdp_metric  # noqa: F401
+import pycvvdp.cvvdp_ml_metric  # noqa: F401
+import pycvvdp.dm_preview_metric  # noqa: F401
+import pycvvdp.psnr_metric  # noqa: F401
+import pycvvdp.vq_metric  # noqa: F401
+
 
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
@@ -132,7 +134,7 @@ def run_on_args(args):
         logging.debug( f'Platform: {platform.platform()}' )
 
     if args.display == "?":
-        pycvvdp.vvdp_display_photometry.list_displays(args.config_paths)
+        vvdp_display_photometry.list_displays(args.config_paths)
         return
 
     if args.test is None or args.ref is None:
@@ -233,11 +235,11 @@ def run_on_args(args):
         sys.exit()
 
     metrics = []
-    display_photometry = pycvvdp.vvdp_display_photometry.load(args.display, config_paths=args.config_paths)
+    display_photometry = vvdp_display_photometry.load(args.display, config_paths=args.config_paths)
     if args.pix_per_deg is None:
-        display_geometry = pycvvdp.vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
+        display_geometry = vvdp_display_geometry.load(args.display, config_paths=args.config_paths)
     else:
-        display_geometry = pycvvdp.vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
+        display_geometry = vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
 
     out_dir = "." if args.output_dir is None else args.output_dir
     os.makedirs(out_dir, exist_ok=True)
@@ -249,7 +251,7 @@ def run_on_args(args):
 
     for mm in args.metric:
         if not mm in vq_metric_dict:
-            raise pycvvdp.vq_exception( f"Unknown metric {mm}")
+            raise vq_exception( f"Unknown metric {mm}")
         metric_class = vq_metric_dict[mm]
 
         # The code below will figure out and pass only the parameters that a metric needs
@@ -312,8 +314,8 @@ def run_on_args(args):
 
                 if args.temp_resample>=0:
                     if args.temp_resample>0:
-                        pycvvdp.video_source_temp_resample_file.max_fps = args.temp_resample
-                    vs = pycvvdp.video_source_temp_resample_file( test_file, ref_file,
+                        video_source_temp_resample_file.max_fps = args.temp_resample
+                    vs = video_source_temp_resample_file( test_file, ref_file,
                                                 display_photometry=display_photometry,
                                                 config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize,
@@ -322,7 +324,7 @@ def run_on_args(args):
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
                 else:
-                    vs = pycvvdp.video_source_file( test_file, ref_file,
+                    vs = video_source_file( test_file, ref_file,
                                                 display_photometry=display_photometry,
                                                 config_paths=args.config_paths,
                                                 full_screen_resize=args.full_screen_resize,
@@ -400,7 +402,7 @@ def main():
                 run_on_args(args)
         else:
             run_on_args(args)
-    except pycvvdp.vq_exception as ex:
+    except vq_exception as ex:
         logging.error( str(ex) )
         if args.debug:
             traceback.print_exc()

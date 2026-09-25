@@ -1,20 +1,11 @@
-from abc import abstractmethod
-from urllib.parse import ParseResultBytes
-try:
-    from numpy import expand_dims
-except ImportError:
-    from numpy.lib.shape_base import expand_dims
 import math
 import torch
 from torch.utils import checkpoint
-from torch.functional import Tensor
+from torch import Tensor
 from torchvision.transforms import GaussianBlur
-import torch.nn.functional as Func
 import numpy as np
 import os
-import sys
 import json
-import torch.utils.benchmark as torchbench
 import logging
 from tqdm import tqdm
 from datetime import date
@@ -38,16 +29,13 @@ from pycvvdp.video_source import *
 
 from pycvvdp.vq_metric import *
 
-from pycvvdp.dump_channels import DumpChannels
-
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
-from pycvvdp.third_party.cpuinfo import cpuinfo
-from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from pycvvdp.interp import interp1, interp3, interp1dim2
+from pycvvdp.lpyr_dec import lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
+from pycvvdp.interp import interp1dim2
 
 import pycvvdp.utils as utils
 
@@ -623,6 +611,7 @@ class cvvdp(vq_metric):
         per_sband_w = torch.ones( (1,no_channels,1,no_bands), dtype=torch.float32, device=self.device)
         per_sband_w[:,:,0,-1] = self.baseband_weight[0:no_channels]
 
+        #from pycvvdp.interp import interp1
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
         Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=3, normalize=False)  # Sum across spatial bands

@@ -1,10 +1,7 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import torch
-import torch.nn.functional as Func
-import numpy as np
 import math
 import logging
-import os
 
 import pycvvdp.utils as utils
 from pycvvdp.vq_metric import vq_exception
@@ -36,7 +33,7 @@ XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986),
 def lms2006_to_dkld65( img ):
     M = torch.as_tensor( LMS2006_to_DKLd65, dtype=img.dtype, device=img.device)
 
-    ABC = torch.empty_like(img)  # noqa: F811. ABC represents any linear color space
+    ABC = torch.empty_like(img)  # ABC represents any linear color space
     # To avoid permute (slow), perform separate dot products
     for cc in range(3):
         ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
@@ -137,6 +134,7 @@ class vvdp_display_photometry:
 
     # @classmethod
     # def default_model_file( cls ):
+    #     import os.path
     #     return os.path.join(os.path.dirname(__file__), "fvvdp_data/display_models.json")
 
     @classmethod
@@ -263,7 +261,7 @@ class vvdp_display_photometry:
             else:
                 raise RuntimeError( f"Unknown colorspace '{target_colorspace}'" )
 
-            ABC = torch.empty_like(RGB_lin)  # noqa: F811. ABC represents any linear color space
+            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear color space
             # To avoid permute (slow), perform separate dot products
             for cc in range(3):
                 ABC[:,cc:(cc+1),:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)

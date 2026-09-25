@@ -2,7 +2,6 @@ from pycvvdp.video_source import *
 import re
 
 import logging
-from asyncio.log import logger
 
 def decode_video_props( fname ):
     vprops = dict()

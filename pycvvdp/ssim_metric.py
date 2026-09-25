@@ -1,6 +1,5 @@
 import torch
 
-from pycvvdp.utils import PU
 from pycvvdp.video_source import *
 from pycvvdp.vq_metric import *
 

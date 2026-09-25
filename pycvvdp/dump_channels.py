@@ -1,5 +1,4 @@
 # Dump intermediate channel data for debugging and visualization
-from operator import is_
 import torch
 import math
 import os

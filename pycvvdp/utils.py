@@ -11,7 +11,7 @@ import re
 
 import pycvvdp
 
-from pycvvdp.interp import interp1, interp1q
+from pycvvdp.interp import interp1q
 #from PIL import Image
 
 from pycvvdp.third_party.loadmat import loadmat

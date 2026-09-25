@@ -1,51 +1,22 @@
 from abc import abstractmethod
-from urllib.parse import ParseResultBytes
 
-try:
-    from numpy import expand_dims
-except ImportError:
-    from numpy.lib.shape_base import expand_dims
 import math
 import torch
 from torch.utils import checkpoint
-from torch.functional import Tensor
-from torchvision.transforms import GaussianBlur
-import torch.nn.functional as Func
-import numpy as np
 import os
-import sys
-import json
-import torch.utils.benchmark as torchbench
 import logging
-from datetime import date
 from torchvision.ops import MLP
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
-
-try:
-    import matplotlib.pyplot as plt
-    from matplotlib import ticker
-    from matplotlib.colors import Normalize
-    has_matplotlib = True
-except:
-    has_matplotlib = False
-
-try:
-    from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-    has_nvml = True
-except:
-    has_nvml = False
 
 from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import *
 
 from pycvvdp.vq_metric import *
 
-from pycvvdp.dump_channels import DumpChannels
-
-from pycvvdp.cvvdp_metric import cvvdp, safe_pow, cvvdp_frame_buffers
+from pycvvdp.cvvdp_metric import cvvdp, cvvdp_frame_buffers
+# from pycvvdp.cvvdp_metric import safe_pow
 from pycvvdp.vq_metric import vq_exception
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
@@ -53,13 +24,10 @@ from pycvvdp.vq_metric import vq_exception
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
-from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from pycvvdp.interp import interp1, interp3, interp1dim2
+from pycvvdp.lpyr_dec import lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
 
 import pycvvdp.utils as utils
 
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
-from pycvvdp.csf import castleCSF
 
 from huggingface_hub import hf_hub_download
 os.environ["HF_HUB_TOKEN"] = ""  # empty string disables token
