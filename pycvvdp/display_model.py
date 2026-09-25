@@ -25,12 +25,12 @@ LMS2006_to_DKLd65 = (
   (1.000000000000000,  -2.311130179947035,                   0),
   (-1.000000000000000,  -1.000000000000000,  50.977571328718781) )
 
-XYZ_to_RGB2020 = (  (1.716502508360628, -0.355584689096764,  -0.253375213570850), \
-                    (-0.666625609145029,   1.616446566522207,   0.015775479726511), \
+XYZ_to_RGB2020 = (  (1.716502508360628, -0.355584689096764,  -0.253375213570850),
+                    (-0.666625609145029,   1.616446566522207,   0.015775479726511),
                     (0.017655211703087,  -0.042810696059636,   0.942089263920533) )
 
-XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986), \
-                    (-0.9689,  1.8758,  0.0415), \
+XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986),
+                    (-0.9689,  1.8758,  0.0415),
                     (0.0557, -0.2040,  1.0570) )
 
 def lms2006_to_dkld65( img ):
@@ -450,7 +450,7 @@ class vvdp_display_geometry:
             raise RuntimeError( 'You can pass only one of: ''distance_m'', ''distance_display_heights''.' )
 
         if not distance_m is None:
-            self.distance_m = distance_m;
+            self.distance_m = distance_m
         elif not distance_display_heights is None:
             if not hasattr( self, "display_size_m" ):
                 raise RuntimeError( 'You need to specify display diagonal size ''diagonal_size_inches'' to specify viewing distance as ''distance_display_heights'' ' )
@@ -481,7 +481,7 @@ class vvdp_display_geometry:
             height_m = 2*math.tan( math.radians(height_deg/2) )*self.distance_m
             self.display_size_m = (height_m*ar, height_m)
 
-        self.display_size_deg = ( 2 * math.degrees(math.atan( self.display_size_m[0] / (2*self.distance_m) )), \
+        self.display_size_deg = ( 2 * math.degrees(math.atan( self.display_size_m[0] / (2*self.distance_m) )),
                                   2 * math.degrees(math.atan( self.display_size_m[1] / (2*self.distance_m) )) )
 
     def __eq__(self, other):

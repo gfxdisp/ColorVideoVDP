@@ -251,7 +251,7 @@ def get_best_device( device_name='auto' ):
         elif torch.backends.mps.is_available():
             device_name = 'mps'
         else:
-            logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')
+            logging.warning('No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')
             device_name = 'cpu'
 
     if device_name.startswith('cuda') and torch.cuda.is_available():

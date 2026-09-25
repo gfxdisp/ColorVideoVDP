@@ -205,7 +205,7 @@ class video_source_dm( video_source ):
 
     def __init__( self,  display_photometry='sdr_4k_30', config_paths=[] ):
 
-#        self.color_trans = ColorTransform(color_space_name)
+        # self.color_trans = ColorTransform(color_space_name)
 
         if isinstance( display_photometry, str ):
             self.dm_photometry = vvdp_display_photometry.load(display_photometry, config_paths)

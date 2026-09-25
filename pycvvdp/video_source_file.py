@@ -114,7 +114,7 @@ class video_reader:
                 duration = (hrs * 60 + mins) * 60 + secs
                 frames_in_vstream = int(np.floor(duration * self.avg_fps))
             else:
-                frames_in_vstream = -1; # Unspecified number of frames
+                frames_in_vstream = -1 # Unspecified number of frames
 
         if frames<0:
             self.frames = frames_in_vstream
@@ -651,18 +651,18 @@ class video_source_image_frames(video_source_dm):
         I = self.apply_dm_and_color_transform(img_torch, colorspace)
         return I
 
-            # if not full_screen_resize is None:
-            #     logging.error("full-screen-resize not implemented for images.")
-            #     raise RuntimeError( "Not implemented" )
-            # self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
+        # if not full_screen_resize is None:
+        #     logging.error("full-screen-resize not implemented for images.")
+        #     raise RuntimeError( "Not implemented" )
+        # self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
 
-            # hdr_extensions = [".exr", ".hdr"]
-            # if extension in hdr_extensions:
-            #     if self.vs.dm_photometry.EOTF != "linear":
-            #         logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
-            # else:
-            #     if self.vs.dm_photometry.EOTF == "linear":
-            #         logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
+        # hdr_extensions = [".exr", ".hdr"]
+        # if extension in hdr_extensions:
+        #     if self.vs.dm_photometry.EOTF != "linear":
+        #         logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
+        # else:
+        #     if self.vs.dm_photometry.EOTF == "linear":
+        #         logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
 
 
 

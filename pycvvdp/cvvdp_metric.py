@@ -499,7 +499,7 @@ class cvvdp(vq_metric):
                     fb.sw_buf[1] = torch.zeros((batch_sz,3,buf_len,height,width), device=self.device, dtype=torch.float32)
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
-                            # Memory allocated after creating buffers for temporal filters
+                        # Memory allocated after creating buffers for temporal filters
                         self.sw_buf_allocated = torch.cuda.max_memory_allocated(self.device)
 
                     for fi in range(cur_block_N_frames):
@@ -557,7 +557,7 @@ class cvvdp(vq_metric):
                 R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
 
                 for cc in range(no_channels): # Iterate over chromatic and temporal channels
-                        # 1D filter over time (over frames)
+                    # 1D filter over time (over frames)
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1])
                     sw_ch = 0 if cc==3 else cc # color channel in the sliding window
                     for fi in range(cur_block_N_frames):
@@ -658,8 +658,8 @@ class cvvdp(vq_metric):
         jod_a_p = self.jod_a * (Q_t**(self.jod_exp-1.))
 
         Q_JOD = torch.empty_like(Q)
-        Q_JOD[Q<=Q_t] = 10. - jod_a_p * Q[Q<=Q_t];
-        Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp);
+        Q_JOD[Q<=Q_t] = 10. - jod_a_p * Q[Q<=Q_t]
+        Q_JOD[Q>Q_t] = 10. - self.jod_a * (Q[Q>Q_t]**self.jod_exp)
         return Q_JOD
 
     def process_block_of_frames(self, R, vid_sz, temp_ch, lpyr, is_image):
