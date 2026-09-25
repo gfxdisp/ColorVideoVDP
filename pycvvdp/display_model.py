@@ -36,7 +36,7 @@ XYZ_to_RGB709 = (   ( 3.2406, -1.5372, -0.4986),
 def lms2006_to_dkld65( img ):
     M = torch.as_tensor( LMS2006_to_DKLd65, dtype=img.dtype, device=img.device)
 
-    ABC = torch.empty_like(img)  # ABC represents any linear color space
+    ABC = torch.empty_like(img)  # noqa: F811. ABC represents any linear color space
     # To avoid permute (slow), perform separate dot products
     for cc in range(3):
         ABC[...,cc,:,:,:] = torch.sum(img*(M[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
@@ -263,7 +263,7 @@ class vvdp_display_photometry:
             else:
                 raise RuntimeError( f"Unknown colorspace '{target_colorspace}'" )
 
-            ABC = torch.empty_like(RGB_lin)  # ABC represents any linear color space
+            ABC = torch.empty_like(RGB_lin)  # noqa: F811. ABC represents any linear color space
             # To avoid permute (slow), perform separate dot products
             for cc in range(3):
                 ABC[:,cc:(cc+1),:,:,:] = torch.sum(RGB_lin*(rgb2abc[cc,:].view(1,3,1,1,1)), dim=-4, keepdim=True)
@@ -546,7 +546,7 @@ class vvdp_display_geometry:
             x_m = x_pix_rel * self.display_size_m[0] / self.resolution[0]
             y_m = y_pix_rel * self.display_size_m[1] / self.resolution[1]
 
-            device = x_pix.device
+            # device = x_pix.device
 
             gaze_m = (gaze_pix + shift_to_centre) * torch.tensor(self.display_size_m) / torch.tensor(self.resolution)
             gaze_deg = torch.rad2deg(torch.atan( gaze_m/self.distance_m ))

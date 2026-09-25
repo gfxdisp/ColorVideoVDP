@@ -27,7 +27,7 @@ try:
     # mac: brew install openexr
     import pyexr
     pyexr_imported = True
-except ImportError as e:
+except ImportError:
     # Imageio's imread is unreliable for OpenEXR images
     # See https://github.com/imageio/imageio/issues/517
     pyexr_imported = False
@@ -579,11 +579,11 @@ class video_source_image_frames(video_source_dm):
             if not frame_range:
                 frame_range = range(0, 10000)
 
-            last_frame = 0
+            # last_frame = 0
             frame_count = 0
             for nn in frame_range:
                 if os.path.isfile( self.test_fname.format(nn) ) and os.path.isfile( self.reference_fname.format(nn) ):
-                    last_frame = nn
+                    # last_frame = nn
                     frame_count += 1
                 else:
                     break

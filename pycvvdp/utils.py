@@ -17,10 +17,10 @@ from pycvvdp.interp import interp1, interp1q
 from pycvvdp.third_party.loadmat import loadmat
 
 def torch_gpu_mem_info():
-    t = torch.cuda.get_device_properties(0).total_memory
+    # t = torch.cuda.get_device_properties(0).total_memory
     c = torch.cuda.memory_cached(0)
     a = torch.cuda.memory_allocated(0)
-    f = c-a  # free inside cache
+    # f = c-a  # free inside cache
     print("GPU mem used: %d M (cache %d M)" % (a/(1024*1024), c/(1024*1024)))
 
 def json2dict(file):

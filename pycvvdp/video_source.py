@@ -105,10 +105,10 @@ class video_source_filter(video_source):
     # 'display_encoded_100nit' when the input is 100, the PU-encoded value is 1, the values can be >1
     # 'display_encoded_dmax' when the input is equal display peak luminance, the PU-encoded value is 1, the values can be >1
     def get_test_frame( self, frame, device, colorspace ) -> Tensor:
-        return self.vs.get_test_frame(frame, device, color_space)
+        return self.vs.get_test_frame(frame, device, colorspace)
 
     def get_reference_frame( self, frame, device, colorspace ) -> Tensor:
-        return self.vs.get_reference_frame(frame, device, color_space)
+        return self.vs.get_reference_frame(frame, device, colorspace)
 
 
 

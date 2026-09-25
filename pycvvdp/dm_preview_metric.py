@@ -10,7 +10,7 @@ try:
     # mac: brew install openexr
     import pyexr
     pyexr_imported = True
-except ImportError as e:
+except ImportError:
     # Imageio's imread is unreliable for OpenEXR images
     # See https://github.com/imageio/imageio/issues/517
     pyexr_imported = False

@@ -186,7 +186,7 @@ class DumpChannels:
         frames = b0_sh[2]
         lpv = torch.ones( [3, frames, height, width], device=b0.device)*0.2716
 
-        white_dkl = torch.as_tensor( [1, 0.003775328226986, 0.010327227989383], device=b0.device )
+        # white_dkl = torch.as_tensor( [1, 0.003775328226986, 0.010327227989383], device=b0.device )
 
         B = self.diff_pyr.get_band_count()
         if self.is_image:

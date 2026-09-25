@@ -436,7 +436,7 @@ class cvvdp(vq_metric):
         if self.debug:
             logging.debug( f"Processing {block_N_frames} frames in a batch." )
             logging.debug( f"Resolution: {width}x{height} = {width*height/1e6} Mpixels" )
-            mem_allocated_peak = torch.cuda.max_memory_allocated(self.device)
+            # mem_allocated_peak = torch.cuda.max_memory_allocated(self.device)
             # logging.debug( f"Memory allocated at start: {self.start_allocated/1e9} GB" )
             if hasattr( self, "sw_buf_allocated" ):
                 logging.debug( f"Memory allocated for temp. filter buffers: {self.sw_buf_allocated/1e9} GB" )
@@ -1148,7 +1148,7 @@ class cvvdp(vq_metric):
         dmap /= jod_max
 
         fps = stats['frames_per_second']
-        band_no = Q_per_ch.shape[3]
+        # band_no = Q_per_ch.shape[3]
         frame_no = Q_per_ch.shape[2]
         rho_band = stats['rho_band']
         band_labels = [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
