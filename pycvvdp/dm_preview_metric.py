@@ -1,7 +1,6 @@
 import torch
 
-from pycvvdp.video_source import *
-from pycvvdp.vq_metric import *
+from pycvvdp.vq_metric import register_metric, vq_metric
 from pycvvdp.video_writer import VideoWriter
 
 try:

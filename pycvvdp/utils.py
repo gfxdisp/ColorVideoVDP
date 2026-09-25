@@ -9,9 +9,8 @@ import logging
 import sys
 import re
 
-import pycvvdp
-
 from pycvvdp.interp import interp1q
+from pycvvdp.vq_exception import vq_exception
 #from PIL import Image
 
 from pycvvdp.third_party.loadmat import loadmat
@@ -176,7 +175,7 @@ class config_files:
         if os.path.isfile(path):
             return path
 
-        raise pycvvdp.vq_exception( f"The configuration file {fname} not found" )
+        raise vq_exception( f"The configuration file {fname} not found" )
 
 
 class PU():

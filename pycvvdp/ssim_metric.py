@@ -1,7 +1,6 @@
 import torch
 
-from pycvvdp.video_source import *
-from pycvvdp.vq_metric import *
+from pycvvdp.vq_metric import vq_metric
 
 from pycvvdp.third_party.ssim import SSIM
 

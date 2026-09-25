@@ -4,7 +4,7 @@ import math
 import logging
 
 import pycvvdp.utils as utils
-from pycvvdp.vq_metric import vq_exception
+from pycvvdp.vq_exception import vq_exception
 
 # I am unsure where it is comming from
 # XYZ_to_LMS2006 = (

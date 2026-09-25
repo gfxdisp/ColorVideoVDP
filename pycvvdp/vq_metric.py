@@ -1,12 +1,10 @@
 import abc
 
-from pycvvdp.video_source import *
+from pycvvdp.display_model import vvdp_display_photometry
+from pycvvdp.video_source import video_source_array
+from pycvvdp.vq_exception import vq_exception
 
 # A base class for the video quality metrtics
-
-class vq_exception(Exception):
-    def __init__(self, message):
-        super().__init__(message)
 
 class vq_metric:
 

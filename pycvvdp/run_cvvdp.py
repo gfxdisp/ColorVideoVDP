@@ -17,7 +17,7 @@ from pycvvdp.vq_metric import vq_metric_dict
 import shlex
 
 import pycvvdp.utils as utils
-from pycvvdp.vq_metric import vq_exception
+from pycvvdp.vq_exception import vq_exception
 from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.dump_channels import DumpChannels
 from pycvvdp.video_source_file import video_source_temp_resample_file, video_source_file

@@ -25,9 +25,9 @@ except:
     has_nvml = False
 
 from pycvvdp.visualize_diff_map import visualize_diff_map
-from pycvvdp.video_source import *
-
-from pycvvdp.vq_metric import *
+from pycvvdp.video_source import video_source_array
+from pycvvdp.vq_metric import register_metric, vq_metric
+from pycvvdp.vq_exception import vq_exception
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
@@ -1120,7 +1120,7 @@ class cvvdp(vq_metric):
         Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
         batch_no = Q_per_ch.shape[0]
         if batch_no != 1:
-            raise cvvdp_exception( 'Exporting distograms in batch mode is not supported' )
+            raise vq_exception( 'Exporting distograms in batch mode is not supported' )
         ch_no = Q_per_ch.shape[1]
 
         is_image = (Q_per_ch.shape[2]==1)

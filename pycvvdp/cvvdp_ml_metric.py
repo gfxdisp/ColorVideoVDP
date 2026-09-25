@@ -11,13 +11,11 @@ import torch.nn.functional as F
 from einops.layers.torch import Rearrange
 
 from pycvvdp.visualize_diff_map import visualize_diff_map
-from pycvvdp.video_source import *
-
-from pycvvdp.vq_metric import *
+from pycvvdp.vq_metric import register_metric
 
 from pycvvdp.cvvdp_metric import cvvdp, cvvdp_frame_buffers
 # from pycvvdp.cvvdp_metric import safe_pow
-from pycvvdp.vq_metric import vq_exception
+from pycvvdp.vq_exception import vq_exception
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 

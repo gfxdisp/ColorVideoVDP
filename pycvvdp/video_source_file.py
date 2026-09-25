@@ -5,7 +5,7 @@ import os.path
 # from turtle import color
 import imageio.v2 as io
 import numpy as np
-from torch.functional import Tensor
+from torch import Tensor
 import torch
 import ffmpeg
 import re
@@ -14,8 +14,9 @@ import math
 import scipy.io as sio
 
 import logging
-from pycvvdp.vq_metric import vq_exception
-from pycvvdp.video_source import *
+from pycvvdp.vq_exception import vq_exception
+from pycvvdp.video_source import (
+    video_source_dm, video_source_array, numpy2torch_frame, video_source, reshuffle_dims)
 from pycvvdp.video_source_yuv import video_reader_yuv
 
 try:
