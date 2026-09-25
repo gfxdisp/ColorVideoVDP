@@ -37,6 +37,11 @@ cuda = [
    "nvidia-ml-py"
 ]
 
+[dependency-groups]
+dev = [
+   "flake8"
+]
+
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
