@@ -54,7 +54,7 @@ from pycvvdp.vq_metric import vq_exception
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
 from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from interp import interp1, interp3, interp1dim2
+from pycvvdp.interp import interp1, interp3, interp1dim2
 
 import pycvvdp.utils as utils
 

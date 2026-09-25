@@ -1,4 +1,4 @@
-from video_source import *
+from pycvvdp.video_source import *
 import re
 
 import logging

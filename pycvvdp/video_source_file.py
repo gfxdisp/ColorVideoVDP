@@ -18,8 +18,8 @@ import scipy.io as sio
 
 import logging
 from pycvvdp.vq_metric import vq_exception
-from video_source import *
-from video_source_yuv import video_reader_yuv
+from pycvvdp.video_source import *
+from pycvvdp.video_source_yuv import video_reader_yuv
 
 try:
     # This may fail if OpenEXR is not installed. To install,

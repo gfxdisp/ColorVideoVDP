@@ -45,11 +45,9 @@ from pycvvdp.dump_channels import DumpChannels
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from third_party.cpuinfo import cpuinfo
+from pycvvdp.third_party.cpuinfo import cpuinfo
 from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from interp import interp1, interp3, interp1dim2
+from pycvvdp.interp import interp1, interp3, interp1dim2
 
 import pycvvdp.utils as utils
 

@@ -1,7 +1,7 @@
 import torch
 import pycvvdp.utils as utils
 
-from interp import interp1q, batch_interp1d
+from pycvvdp.interp import interp1q, batch_interp1d
 
 class castleCSF:
 
