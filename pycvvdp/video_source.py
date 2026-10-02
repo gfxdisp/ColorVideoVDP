@@ -1,21 +1,20 @@
 from abc import abstractmethod
 import torch
-import os
-import numpy as np 
+import numpy as np
 import logging
-from torch.functional import Tensor
+from torch import Tensor
 import pycvvdp.utils as utils
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry, vvdp_display_photo_eotf
+from pycvvdp.display_model import vvdp_display_photometry
 
 #from pycvvdp.colorspace import ColorTransform
 
 """
-video_source_* objects are used to supply test/reference frames to ColorVideoVDP. 
+video_source_* objects are used to supply test/reference frames to ColorVideoVDP.
 Those could be coming from memory or files. The subclasses of this abstract class implement
-reading the frames and converting them to the approprtate format. 
+reading the frames and converting them to the approprtate format.
 """
 class video_source:
-   
+
     # Return (height, width, frames) touple with the resolution and
     # the length of the video clip.
     @abstractmethod
@@ -27,10 +26,10 @@ class video_source:
     def get_frames_per_second(self) -> float:
         pass
     
-    # Get a test video frame with the index `frame_no`` in the selected colorspace. 
-    # See display_model.py->linear_2_target_colorspace for the list of available color spaces. 
+    # Get a test video frame with the index `frame_no`` in the selected colorspace.
+    # See display_model.py->linear_2_target_colorspace for the list of available color spaces.
     # You can also pass:
-    # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return 
+    # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return
     #  display-encoded image (e.g. sRGB) with the values between 0 and 1. If the input source contains linear
     #  values (e.g. an HDR image) they will be PU-encoded:
     # 'display_encoded_01' when the input is 0.005 to 10000, the PU-encoded values are between 0-1
@@ -98,7 +97,7 @@ class video_source_filter(video_source):
     # Get a test video frame with the index `frame_no`` in the selected colorspace. 
     # See display_model.py->linear_2_target_colorspace for the list of available color spaces. 
     # You can also pass:
-    # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return 
+    # 'display_encoded_01', 'display_encoded_100nit' or 'display_encoded_dmax' for the method to return
     #  display-encoded image (e.g. sRGB) with the values between 0 and 1. If the input source contains linear
     #  values (e.g. an HDR image) they will be PU-encoded:
     # 'display_encoded_01' when the input is 0.005 to 10000, the PU-encoded values are between 0-1
@@ -119,11 +118,11 @@ If a dimension is missing in in_dims, it will be added as a singleton dimension
 """
 def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
     in_dims = in_dims.upper()
-    out_dims = out_dims.upper()    
+    out_dims = out_dims.upper()
 
     assert len(in_dims) == T.dim(), "The in_dims string must have as many characters as there are dimensions in T"
 
-    # Find intersection of two strings    
+    # Find intersection of two strings
     inter_dims = ""
     for kk in range(len(out_dims)):
         if in_dims.find(out_dims[kk]) != -1:
@@ -149,12 +148,12 @@ def reshuffle_dims( T: Tensor, in_dims: str, out_dims: str ) -> Tensor:
     for kk in range(len(inter_dims)):
         ind = in_dims.find(inter_dims[kk])
         assert ind != -1, 'Dimension "{}" missing in the target dimensions: "{}"'.format(in_dims[kk],out_dims)
-        perm[kk] = ind                    
+        perm[kk] = ind
     T_p = T.permute(perm)
 
     # Add missing dimensions
     out_sh = [1] * len(out_dims)
-    for kk in range(len(out_dims)):        
+    for kk in range(len(out_dims)):
         ind = inter_dims.find(out_dims[kk])
         if ind != -1:
             out_sh[kk] = T_p.shape[ind]
@@ -245,12 +244,12 @@ class video_source_dm( video_source ):
 This video source supplies frames from either Pytorch tensors and Numpy arrays. It also applies a photometric display model.
 
 A batch of videos should be stored as a tensor or numpy array. Ideally, the tensor should have the dimensions BCFHW (batch, color, frame, height, width).If tensor is stored in another formay, you can pass the order of dimsions as "dim_order" parameter. If any dimension is missing, it will
-be added as a singleton dimension. 
+be added as a singleton dimension.
 
 This class is for display-encoded (gamma-encoded) content that will be processed by a display model to produce linear  absolute luminance emitted from a display.
 """
 class video_source_array( video_source_dm ):
-               
+
     # test_video, reference video - tensor with test and reference video frames. See the class description above for the explanation of dimensions of those tensors.
     # fps - frames per second. Must be 0 for images
     # dim_order - a string with the order of the dimensions. 'BCFHW' is the default.
@@ -260,7 +259,7 @@ class video_source_array( video_source_dm ):
     #   fvvdp_data/color_spaces.json)
     def __init__( self, test_video, reference_video, fps, dim_order='BCFHW', display_photometry='sdr_4k_30', config_paths=[], ):
 
-        super().__init__(display_photometry=display_photometry, config_paths=config_paths)        
+        super().__init__(display_photometry=display_photometry, config_paths=config_paths)
 
         if test_video.shape != reference_video.shape:
             ind = dim_order.find('B')
@@ -268,7 +267,7 @@ class video_source_array( video_source_dm ):
                 pass # We can have a singleton dimension for a batch
             else:
                 raise RuntimeError( 'Test and reference image/video tensors must be exactly the same shape' )
-        
+
         if len(dim_order) != len(test_video.shape):
             raise RuntimeError( 'Input tensor much have exactly as many dimensions as there are characters in the "dims" parameter' )
 
@@ -293,7 +292,7 @@ class video_source_array( video_source_dm ):
         reference_video = reshuffle_dims( reference_video, in_dims=dim_order, out_dims="BCFHW" )
 
         B, C, F, H, W = test_video.shape
-        
+
         if fps==0 and F>1:
             raise RuntimeError( 'When passing video sequences, you must set ''frames_per_second'' parameter' )
 
@@ -312,15 +311,15 @@ class video_source_array( video_source_dm ):
 
     def get_frames_per_second(self):
         return self.fps
-            
+
     # Return a [height width frames] vector with the resolution and
     # the number of frames in the video clip. [height width 1] is
-    # returned for an image. 
+    # returned for an image.
     def get_video_size(self):
 
         sh = self.test_video.shape
         return (sh[3], sh[4], sh[2])
-    
+
     def get_batch_size(self):
         return self.test_video.shape[0]
 
@@ -335,7 +334,7 @@ class video_source_array( video_source_dm ):
     def get_reference_frame( self, frame_no, device, colorspace ):
         return self._get_frame(self.reference_video, frame_no, device, colorspace, is_test=False )
 
-    def _get_frame( self, from_array, frame_no, device, colorspace, is_test ):        
+    def _get_frame( self, from_array, frame_no, device, colorspace, is_test ):
         # Determine the maximum value of the data type storing the
         # image/video
 

@@ -1,5 +1,4 @@
 # Dump intermediate channel data for debugging and visualization
-from operator import is_
 import torch
 import math
 import os
@@ -105,7 +104,7 @@ class DumpChannels:
         yv = R[0:1,4:5,...]
         yv_rgb = dkld65_to_rgb( torch.cat( [ white_dkl[0].expand_as(yv), white_dkl[1].expand_as(yv), yv ], dim=1 )+gray )
 
-        frame = torch.cat( [ torch.cat( [ach_sust_rgb, ach_trans_rgb], dim=-1 ), 
+        frame = torch.cat( [ torch.cat( [ach_sust_rgb, ach_trans_rgb], dim=-1 ),
                   torch.cat( [rg_rgb, yv_rgb], dim=-1 ) ], dim=-2 )
         for ff in range(frame.shape[2]): # for each frame
             frame_de = ((frame[0,:,ff,...] / self.max_V) ** (1/2.2) * 255).clip(0, 255)
@@ -187,7 +186,7 @@ class DumpChannels:
         frames = b0_sh[2]
         lpv = torch.ones( [3, frames, height, width], device=b0.device)*0.2716
 
-        white_dkl = torch.as_tensor( [1, 0.003775328226986, 0.010327227989383], device=b0.device )
+        # white_dkl = torch.as_tensor( [1, 0.003775328226986, 0.010327227989383], device=b0.device )
 
         B = self.diff_pyr.get_band_count()
         if self.is_image:

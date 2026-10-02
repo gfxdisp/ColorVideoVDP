@@ -1,20 +1,12 @@
-from abc import abstractmethod
-from urllib.parse import ParseResultBytes
-try:
-    from numpy import expand_dims
-except ImportError:
-    from numpy.lib.shape_base import expand_dims
 import math
 import torch
 from torch.utils import checkpoint
-from torch.functional import Tensor
+from torch import Tensor
 from torchvision.transforms import GaussianBlur
 import torch.nn.functional as Func
-import numpy as np 
+import numpy as np
 import os
-import sys
 import json
-import torch.utils.benchmark as torchbench
 import logging
 from tqdm import tqdm
 from datetime import date
@@ -34,23 +26,17 @@ except:
     has_nvml = False
 
 from pycvvdp.visualize_diff_map import visualize_diff_map
-from pycvvdp.video_source import *
-
-from pycvvdp.vq_metric import *
-
-from pycvvdp.dump_channels import DumpChannels
-from pycvvdp.video_writer import VideoWriter, ImageWriter
+from pycvvdp.video_source import video_source_array
+from pycvvdp.vq_metric import register_metric, vq_metric
+from pycvvdp.vq_exception import vq_exception
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from third_party.cpuinfo import cpuinfo
-from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from interp import interp1, interp3, interp1dim2
+from pycvvdp.lpyr_dec import lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
+from pycvvdp.interp import interp1dim2
 
 import pycvvdp.utils as utils
 
@@ -106,7 +92,7 @@ class SeparableGaussianBlur:
 
 
 # A differentiable variant of a power function
-def safe_pow( x:Tensor, p ): 
+def safe_pow( x:Tensor, p ):
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
     #assert torch.all(x>=0), "Must be positive"
 
@@ -119,7 +105,7 @@ def safe_pow( x:Tensor, p ):
 
 
 # A power function that can handle negative values (by preserving the sign)
-def pow_neg( x:Tensor, p ): 
+def pow_neg( x:Tensor, p ):
     #assert (not x.isnan().any()) and (not x.isinf().any()), "Must not be nan"
 
     #return torch.tanh(100*x) * (torch.abs(x) ** p)
@@ -157,7 +143,7 @@ class cvvdp(vq_metric):
         self.gpu_mem = gpu_mem # how many GB of memory we are allowed to use
         self.training_mode = False
 
-        assert heatmap in ["threshold", "supra-threshold", "raw", "none", None], "Unknown heatmap type"            
+        assert heatmap in ["threshold", "supra-threshold", "raw", "none", None], "Unknown heatmap type"
 
         self.do_heatmap = (not self.heatmap is None) and (self.heatmap != "none")
 
@@ -171,7 +157,7 @@ class cvvdp(vq_metric):
                 self.device = torch.device('cpu')
         else:
             self.device = device
-        
+
         self.set_display_model(display_name, display_photometry=display_photometry, display_geometry=display_geometry, config_paths=config_paths)
 
         self.temp_resample = False  # When True, resample the temporal features to nominal_fps
@@ -202,7 +188,7 @@ class cvvdp(vq_metric):
         if self.pu_dilate>0:
             self.pu_blur = SeparableGaussianBlur(int(self.pu_dilate*4)+1, self.pu_dilate, device=self.device)
             self.pu_padsize = int(self.pu_dilate*2)
-            
+
         self.beta = torch.as_tensor( parameters['beta'], device=self.device ) # The exponent of the spatial summation (p-norm)
         self.beta_t = torch.as_tensor( parameters['beta_t'], device=self.device ) # The exponent of the summation over time (p-norm)
         self.beta_tch = torch.as_tensor( parameters['beta_tch'], device=self.device ) # The exponent of the summation over temporal channels (p-norm)
@@ -276,7 +262,7 @@ class cvvdp(vq_metric):
 
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
-        
+
         # other parameters
         self.debug = False
 
@@ -284,7 +270,7 @@ class cvvdp(vq_metric):
         assert os.path.isfile(ckpt), f'Calibrated PyTorch checkpoint not found at: {ckpt}'
         # Read relevant parameters from state_dict
         prefix = 'params.'
-        
+
         if torch.cuda.is_available():
             for key, value in torch.load(ckpt)['state_dict'].items():
                 if key.startswith(prefix):
@@ -293,8 +279,8 @@ class cvvdp(vq_metric):
             for key, value in torch.load(ckpt, map_location=torch.device('cpu'))['state_dict'].items():
                 if key.startswith(prefix):
                     setattr(self, key[len(prefix):], value.to(self.device))
-        
-        
+
+
     def set_display_model(self, display_name="standard_4k", display_photometry=None, display_geometry=None, config_paths=[]):
         if display_photometry is None:
             self.display_photometry = vvdp_display_photometry.load(display_name, config_paths)
@@ -305,7 +291,7 @@ class cvvdp(vq_metric):
                 self.display_name = display_photometry.short_name
             else:
                 self.display_name = "unspecified"
-        
+
         if display_geometry is None:
             self.display_geometry = vvdp_display_geometry.load(display_name, config_paths)
         else:
@@ -318,7 +304,7 @@ class cvvdp(vq_metric):
     '''
     Predict image/video quality using ColorVideoVDP.
 
-    test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames. 
+    test_cont and reference_cont can be either numpy arrays or PyTorch tensors with images or video frames.
         Depending on the display model (display_photometry), the pixel values should be either display encoded, or absolute linear.
         The two supported datatypes are float16 and uint8.
     dim_order - a string with the order of dimensions of test_cont and reference_cont. The individual characters denote
@@ -328,7 +314,7 @@ class cvvdp(vq_metric):
         H - height
         W - width
         Examples: "HW" - gray-scale image (column-major pixel order); "HWC" - color image; "FCHW" - color video
-        The default order is "BCFHW". The processing can be a bit faster if data is provided in that order. 
+        The default order is "BCFHW". The processing can be a bit faster if data is provided in that order.
     frame_padding - the metric requires at least 250ms of video for temporal processing. Because no previous frames exist in the
         first 250ms of video, the metric must pad those first frames. This options specifies the type of padding to use:
           'replicate' - replicate the first frame (default)
@@ -341,7 +327,7 @@ class cvvdp(vq_metric):
         return self.predict_video_source(test_vs, heatmap_file=heatmap_file)
 
     '''
-    Compute a loss function between test and reference images/videos. Used as an optimization term in which the loss is minimized. 
+    Compute a loss function between test and reference images/videos. Used as an optimization term in which the loss is minimized.
     '''
     def loss(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0):
 
@@ -364,7 +350,7 @@ class cvvdp(vq_metric):
 
         if batch_sz>1 and (self.heatmap is not None and self.heatmap!='none'):
             raise vq_exception( 'Heatmaps not supported when batches are used' )
-        
+
         assert batch_sz==1 or self.device.type != 'mps', "Batch mode curretly does not work correctly with MPS (most likely due to a PyTorch bug). Run on a CPU."
 
         # 'medium' is a bit slower than 'high' on 3090
@@ -446,9 +432,9 @@ class cvvdp(vq_metric):
 
             if Q_per_ch is None:
                 Q_per_ch = torch.zeros((batch_sz,Q_per_ch_block.shape[1], N_frames, Q_per_ch_block.shape[3]), device=self.device)
-            
+
             ff_end = ff+Q_per_ch_block.shape[2]
-            Q_per_ch[:,:,ff:ff_end,:] = Q_per_ch_block  
+            Q_per_ch[:,:,ff:ff_end,:] = Q_per_ch_block
 
             # print_large_tensors()
 
@@ -507,7 +493,7 @@ class cvvdp(vq_metric):
         if heatmap is not None:
             stats['heatmap'] = heatmap
 
-        if self.debug: 
+        if self.debug:
             logging.debug( f"Processing {block_N_frames} frames in a batch." )
             logging.debug( f"Filter length {self.filter_len} frames." )
             logging.debug( f"Resolution: {width}x{height} = {width*height/1e6} Mpixels" )
@@ -577,7 +563,7 @@ class cvvdp(vq_metric):
                     fb.sw_buf[1] = torch.zeros((batch_sz,3,buf_len,height,width), device=self.device, dtype=torch.float32)
 
                     if self.debug and not hasattr( self, 'sw_buf_allocated' ):
-                            # Memory allocated after creating buffers for temporal filters
+                        # Memory allocated after creating buffers for temporal filters
                         self.sw_buf_allocated = torch.cuda.max_memory_allocated(self.device)
 
                     for fi in range(cur_block_N_frames):
@@ -635,7 +621,7 @@ class cvvdp(vq_metric):
                 R = torch.zeros((batch_sz, 8, cur_block_N_frames, height, width), device=self.device)
 
                 for cc in range(no_channels): # Iterate over chromatic and temporal channels
-                        # 1D filter over time (over frames)
+                    # 1D filter over time (over frames)
                     corr_filter = self.F[cc].flip(0).view([1,1,self.F[cc].shape[0],1,1])
                     sw_ch = 0 if cc==3 else cc # color channel in the sliding window
                     for fi in range(cur_block_N_frames):
@@ -643,7 +629,7 @@ class cvvdp(vq_metric):
                         R[:,(cc*2+1):(cc*2+2), fi:(fi+1), :, :] = (fb.sw_buf[1][:, sw_ch:(sw_ch+1), fi:(fl+fi), :, :] * corr_filter).sum(dim=-3,keepdim=True) # Reference
         return R
 
-    # Determine how many frames we can process in a single batch 
+    # Determine how many frames we can process in a single batch
     # Larger batch means faster processing, but it requires more memory
     def estimate_block_N(self, pix_cnt, filter_len):
         # Determine how much memory we have
@@ -694,7 +680,7 @@ class cvvdp(vq_metric):
         else:
             # Depreciated - will be removed later
             per_ch_w_all = self.ch_weights
-            
+
         # Weights for the channels: sustained, RG, YV, [transient]
         per_ch_w = per_ch_w_all[0:no_channels].view(1,-1,1,1)
         return per_ch_w
@@ -714,6 +700,7 @@ class cvvdp(vq_metric):
         per_sband_w = torch.ones( (1,no_channels,1,no_bands), dtype=torch.float32, device=self.device)
         per_sband_w[:,:,0,-1] = self.baseband_weight[0:no_channels]
 
+        #from pycvvdp.interp import interp1
         #per_sband_w = torch.exp(interp1( self.quality_band_freq_log, self.quality_band_w_log, torch.log(torch.as_tensor(rho_band, device=self.device)) ))[:,None,None]
 
         Q_sc = self.lp_norm(Q_per_ch*per_ch_w*per_sband_w, self.beta_sch, dim=3, normalize=False)  # Sum across spatial bands
@@ -722,7 +709,7 @@ class cvvdp(vq_metric):
         t_int = self.image_int if is_image else 1.0 # Integration correction for images
 
         if not self.block_channels is None:
-            Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels                
+            Q_tc = self.lp_norm(Q_sc[self.block_channels[0:no_channels],...], self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels
         else:
             Q_tc = self.lp_norm(Q_sc,     self.beta_tch, dim=1, normalize=False)  # Sum across temporal and chromatic channels
 
@@ -733,13 +720,13 @@ class cvvdp(vq_metric):
 
         Q = Q.squeeze()
 
-        Q_JOD = self.met2jod(Q)            
+        Q_JOD = self.met2jod(Q)
         return Q_JOD
 
     # Convert contrast differences to JODs
     def met2jod(self, Q):
 
-        # We could use 
+        # We could use
         # Q_JOD = 10. - self.jod_a * Q**self.jod_exp
         # but it does not differentiate well near Q=0
 
@@ -807,13 +794,13 @@ class cvvdp(vq_metric):
         rho_band[lpyr.get_band_count()-1] = 0.1 # Baseband
 
         Q_per_ch_block = None
-        block_N_frames = R.shape[-3] 
+        block_N_frames = R.shape[-3]
 
         for bb in range(lpyr.get_band_count()):  # For each spatial frequency band
 
             is_baseband = (bb==(lpyr.get_band_count()-1))
 
-            B_bb = lpyr.get_band(B_bands, bb) 
+            B_bb = lpyr.get_band(B_bands, bb)
             T_f = B_bb[:,0::2,...] # Test
             R_f = B_bb[:,1::2,...] # Reference
 
@@ -952,7 +939,7 @@ class cvvdp(vq_metric):
             if self.masking_model.endswith( "none" ):
                 D = self.clamp_diffs(torch.abs(T_p-R_p))
             elif self.masking_model.endswith( "transducer" ):
-                D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))                
+                D = torch.abs(self.cm_transd(T_p)-self.cm_transd(R_p))
             elif self.masking_model.endswith( "mutual" ):
 
                 M_mm = self.phase_uncertainty(torch.min( torch.abs(T_p), torch.abs(R_p) ))
@@ -980,7 +967,7 @@ class cvvdp(vq_metric):
                 D_m = D_band / (1 + safe_pow(M,q))
 
                 #D = self.clamp_diffs( D_m )
-                k_c = self.k_c                
+                k_c = self.k_c
                 D = k_c*D_m / (k_c + D_m)
 
             elif self.masking_model.endswith( "transducer-texture" ):
@@ -1061,7 +1048,7 @@ class cvvdp(vq_metric):
         return M_pu
 
     def mask_func_perc_norm(self, G, G_mask ):
-        # Masking on perceptually normalized quantities (as in Daly's VDP)        
+        # Masking on perceptually normalized quantities (as in Daly's VDP)
         p = self.mask_p
         if self.masking_model == "none":
             R = torch.pow(G,p)
@@ -1092,7 +1079,7 @@ class cvvdp(vq_metric):
     def compute_local_contrast(self, T_f, R_f, lpyr, L_bkg_pyr, bb):
         if self.local_adapt=="simple_ref":
             L_bkg = lpyr.get_gband(L_bkg_pyr,bb)[1:2,:,:,:].clamp(min=0.01) # sustained, reference
-            T = T_f / L_bkg  
+            T = T_f / L_bkg
             R = R_f / L_bkg
         else:
             raise RuntimeError( f"Error: local adaptation {self.local_adapt} not supported" )
@@ -1100,7 +1087,7 @@ class cvvdp(vq_metric):
         return L_bkg, T, R
 
     def weber2log(self, W):
-        # Convert Weber contrast 
+        # Convert Weber contrast
         #
         # W = (B-A)/A
         #
@@ -1124,9 +1111,9 @@ class cvvdp(vq_metric):
         else:
             N = 1.0
 
-        if isinstance( p, torch.Tensor ): 
+        if isinstance( p, torch.Tensor ):
             # p is a Tensor if it is being optimized. In that case, we need the formula for the norm
-            return safe_pow( torch.sum( safe_pow(x, p), dim=dim, keepdim=keepdim)/float(N), 1/p) 
+            return safe_pow( torch.sum( safe_pow(x, p), dim=dim, keepdim=keepdim)/float(N), 1/p)
         else:
             return torch.norm(x, p, dim=dim, keepdim=keepdim) / (float(N) ** (1./p))
 
@@ -1142,7 +1129,7 @@ class cvvdp(vq_metric):
         omega = torch.linspace( 0, frames_per_s/2, N_omega, device=self.device ).view(1,N_omega)
 
         R = torch.empty( (4, N_omega), device=self.device )
-        # Sustained channels 
+        # Sustained channels
         R[0:3,:] = torch.exp( -omega ** self.beta_tf[0:3].view(3,1) / self.sigma_tf[0:3].view(3,1) )  # Freqency-space response
         # Transient channel
 
@@ -1227,7 +1214,7 @@ class cvvdp(vq_metric):
                 continue
             elif isinstance(parameters[key], int):
                 # integers are never trained
-                #parameters[key] = getattr(self, key).item()                
+                #parameters[key] = getattr(self, key).item()
                 continue
             elif isinstance(parameters[key], float):
                 if torch.is_tensor(getattr(self, key)):
@@ -1251,7 +1238,7 @@ class cvvdp(vq_metric):
         Q_per_ch = torch.as_tensor( stats['Q_per_ch'], device=self.device )
         batch_no = Q_per_ch.shape[0]
         if batch_no != 1:
-            raise cvvdp_exception( 'Exporting distograms in batch mode is not supported' )
+            raise vq_exception( 'Exporting distograms in batch mode is not supported' )
         ch_no = Q_per_ch.shape[1]
 
         is_image = (Q_per_ch.shape[2]==1)
@@ -1262,11 +1249,11 @@ class cvvdp(vq_metric):
 
         if jod_max is None:
             jod_max = math.ceil(dmap.max())
-        
+
         dmap /= jod_max
 
         fps = stats['frames_per_second']
-        band_no = Q_per_ch.shape[3]
+        # band_no = Q_per_ch.shape[3]
         frame_no = Q_per_ch.shape[2]
         rho_band = stats['rho_band']
         band_labels = [f"{val:.2f}" for val in np.flip(rho_band)[::2]]
@@ -1274,7 +1261,7 @@ class cvvdp(vq_metric):
 
         if not has_matplotlib:
             raise RuntimeError( 'matplotlib is missing. Please install it before exporting distograms.')
-            
+
         fig, axs = plt.subplots(nrows=ch_no, figsize=(base_size*frame_no/60+1, base_size))
 
         ch_labels = ["A-sust", "RG", "YV", "A-trans"]
@@ -1300,17 +1287,17 @@ class cvvdp(vq_metric):
         else:
             plt.subplots_adjust(bottom=0.1, right=0.9, top=0.9)
             cax = plt.axes([0.925, 0.1, 0.025, 0.8])
-        
+
         plt.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, jod_max), cmap=cmap), cax=cax, cmap=cmap)
 
         # fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(0, 1), cmap=cmap),
         #             ax=axs[0], label="JODs")
 
-        plt.savefig( fname, bbox_inches='tight' )  
+        plt.savefig( fname, bbox_inches='tight' )
 
         # fig.show()
-        # plt.waitforbuttonpress()        
-        
+        # plt.waitforbuttonpress()
+
     # # Visualize the local contrast pyramid
     # def visualize_lpyr(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, met_colorspace='DKLd65'):
     #     vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
@@ -1322,7 +1309,7 @@ class cvvdp(vq_metric):
     #         elif self.contrast.startswith("log"):
     #             self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
     #         else:
-    #             raise RuntimeError( f"Unknown contrast {self.contrast}" )    
+    #             raise RuntimeError( f"Unknown contrast {self.contrast}" )
     #     R = torch.empty((1, 6, 1, height, width), device=self.device)
     #     if self.contrast=="log":
     #         met_colorspace='logLMS_DKLd65'
@@ -1335,12 +1322,12 @@ class cvvdp(vq_metric):
     #     test_pyr = []
     #     ref_pyr = []
     #     for bb in range(self.lpyr.get_band_count()):  # For each spatial frequency band
-    #         B_bb = self.lpyr.get_band(B_bands, bb) 
+    #         B_bb = self.lpyr.get_band(B_bands, bb)
     #         test_pyr.append(B_bb[0::2,...]) # Test
     #         ref_pyr.append(B_bb[1::2,...]) # Reference
 
     #     return test_pyr, ref_pyr
-    
+
     # # Visualize the pyramids
     # def visualize_pyr(self, test_cont, reference_cont, dim_order="BCFHW", frames_per_second=0, keep_gaussian=False, met_colorspace='DKLd65'):
     #     vid_source = video_source_array( test_cont, reference_cont, frames_per_second, dim_order=dim_order, display_photometry=self.display_photometry )
@@ -1355,7 +1342,7 @@ class cvvdp(vq_metric):
     #         met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
     #     R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
     #     R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
-        
+
     #     _, _ = self.lpyr.decompose(R[0,...])
 
     #     return self.lpyr
@@ -1374,7 +1361,7 @@ class cvvdp(vq_metric):
     #         met_colorspace='DKLd65' # This metric uses DKL colourspaxce with d65 whitepoint
     #     R[:,0::2, :, :, :] = vid_source.get_test_frame(0, device=self.device, colorspace=met_colorspace)
     #     R[:,1::2, :, :, :] = vid_source.get_reference_frame(0, device=self.device, colorspace=met_colorspace)
-        
+
     #     return R[0,...]
 
 

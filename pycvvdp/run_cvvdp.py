@@ -1,32 +1,34 @@
-# Command-line interface for ColorVideoVDP. 
+# Command-line interface for ColorVideoVDP.
 
-import os, sys
+import sys
 import os.path
 import argparse
 import logging
-#from natsort import natsorted
 import glob
 import ffmpeg
 import numpy as np
 import torch
 import imageio.v2 as imageio
-import re
 import inspect
 import traceback
 
 from pycvvdp.vq_metric import vq_metric_dict
 
-import pycvvdp
-
 import shlex
 
-#from pyfvvdp.fvvdp_display_model import fvvdp_display_photometry, fvvdp_display_geometry
-# from pyfvvdp.visualize_diff_map import visualize_diff_map
 import pycvvdp.utils as utils
-
-from pycvvdp.ssim_metric import ssim_metric
-from pycvvdp.dm_preview_metric import *
+from pycvvdp.vq_exception import vq_exception
+from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
 from pycvvdp.dump_channels import DumpChannels
+from pycvvdp.video_source_file import video_source_temp_resample_file, video_source_file
+
+# import all modules with `register_metric()`
+import pycvvdp.cvvdp_metric  # noqa: F401
+import pycvvdp.cvvdp_ml_metric  # noqa: F401
+import pycvvdp.dm_preview_metric  # noqa: F401
+import pycvvdp.psnr_metric  # noqa: F401
+import pycvvdp.vq_metric  # noqa: F401
+
 
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
@@ -108,7 +110,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-q", "--quiet", action='store_true', default=False, help="Do not print any information but the final JOD value. Warning message will be still printed.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Print out extra information.")
     parser.add_argument("--debug", action='store_true', default=False, help="Prints full stack trace when error is encountered.")
-    parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and color conversion. Use custom pytorch code by default (faster and less memory).")    
+    parser.add_argument("--ffmpeg-cc", action='store_true', default=False, help="Use ffmpeg for upsampling and color conversion. Use custom pytorch code by default (faster and less memory).")
     parser.add_argument("--temp-resample", type=float, nargs="?", default=-1, const=0, help="Resample test and reference video to a common frame rate. Allows to compare videos of different frame rates. An optional argument - the maximum frame rate used when resampling.")
     parser.add_argument("-i", "--interactive", action='store_true', default=False, help="Run in an interactive mode, in which command line arguments are provided to the standard input, line by line. Saves on start-up time when running a large number of comparisons.")
     parser.add_argument("--dump-channels", nargs='+', choices=['temporal', 'lpyr', 'difference'], default=None, help="Output video/images with intermediate processing stages (for debugging and visualization).")
@@ -125,9 +127,9 @@ def parse_args(arg_list=None):
 def run_on_args(args):
     if args.quiet:
         log_level = logging.ERROR
-    else:        
+    else:
         log_level = logging.DEBUG if args.verbose else logging.INFO
-        
+
     logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
     args.metric = [mm.replace('-', '_') for mm in args.metric] # We need underscore for class names
@@ -159,7 +161,7 @@ def run_on_args(args):
             frame_range = range(sn[0],(sn[2]+1),sn[1])
         elif len(ss) <= 2:
             frame_range = range(sn[0],(sn[1]+1))
-        
+
 
     device = utils.get_best_device(args.device)
 
@@ -178,7 +180,7 @@ def run_on_args(args):
         do_heatmap = True
     else:
         do_heatmap = False
-        
+
     # Check for valid resizing methods
     #if args.gpu_decode:
         # Doc: https://pytorch.org/docs/stable/generated/torch.nn.functional.interpolate.html
@@ -191,7 +193,7 @@ def run_on_args(args):
     #    sys.exit()
 
     args.test = expand_wildcards(args.test)
-    args.ref = expand_wildcards(args.ref)    
+    args.ref = expand_wildcards(args.ref)
 
     N_test = len(args.test)
     N_ref = len(args.ref)
@@ -217,7 +219,7 @@ def run_on_args(args):
     if args.pix_per_deg is None:
         display_geometry = pycvvdp.vvdp_display_geometry.load(args.display[0], config_paths=args.config_paths)
     else:
-        display_geometry = pycvvdp.vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
+        display_geometry = vvdp_display_geometry( [1024, 1024], ppd=args.pix_per_deg )
 
     out_dir = "." if args.output_dir is None else args.output_dir
     os.makedirs(out_dir, exist_ok=True)
@@ -229,7 +231,7 @@ def run_on_args(args):
 
     for mm in args.metric:
         if not mm in vq_metric_dict:
-            raise pycvvdp.vq_exception( f"Unknown metric {mm}")
+            raise vq_exception( f"Unknown metric {mm}")
         metric_class = vq_metric_dict[mm]
 
         # The code below will figure out and pass only the parameters that a metric needs
@@ -245,21 +247,21 @@ def run_on_args(args):
         if 'display_geometry' in constructor_args:
             met_args['display_geometry'] = display_geometry
         if 'device' in constructor_args:
-            met_args['device'] = device        
+            met_args['device'] = device
         if 'heatmap' in constructor_args:
-            met_args['heatmap'] = args.heatmap        
+            met_args['heatmap'] = args.heatmap
         if 'temp_padding' in constructor_args:
             met_args['temp_padding'] = args.temp_padding        
         if 'spatial_padding' in constructor_args:
             met_args['spatial_padding'] = args.spatial_padding        
         if 'config_paths' in constructor_args:
-            met_args['config_paths'] = args.config_paths        
+            met_args['config_paths'] = args.config_paths
         if 'gpu_mem' in constructor_args:
-            met_args['gpu_mem'] = args.gpu_mem        
+            met_args['gpu_mem'] = args.gpu_mem
         if 'dump_channels' in constructor_args:
-            met_args['dump_channels'] = dump_channels        
+            met_args['dump_channels'] = dump_channels
         if 'quiet' in constructor_args:
-            met_args['quiet'] = args.quiet        
+            met_args['quiet'] = args.quiet
         fv = metric_class(**met_args)
         fv.train(False)
         metrics.append( fv )
@@ -277,7 +279,7 @@ def run_on_args(args):
         res_fh.write( '\n' )
     else:
         res_fh = None
-        
+
 
     for kk in range( max(N_test, N_ref) ): # For each test and reference pair
         test_file = args.test[min(kk,N_test-1)]
@@ -294,21 +296,21 @@ def run_on_args(args):
 
                 if args.temp_resample>=0:
                     if args.temp_resample>0:
-                        pycvvdp.video_source_temp_resample_file.max_fps = args.temp_resample
-                    vs = pycvvdp.video_source_temp_resample_file( test_file, ref_file, 
-                                                display_photometry=display_photometry, 
+                        video_source_temp_resample_file.max_fps = args.temp_resample
+                    vs = video_source_temp_resample_file( test_file, ref_file,
+                                                display_photometry=display_photometry,
                                                 config_paths=args.config_paths,
-                                                full_screen_resize=args.full_screen_resize, 
-                                                resize_resolution=display_geometry.resolution, 
+                                                full_screen_resize=args.full_screen_resize,
+                                                resize_resolution=display_geometry.resolution,
                                                 frames=nframes,
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
                 else:
-                    vs = pycvvdp.video_source_file( test_file, ref_file, 
-                                                display_photometry=display_photometry, 
+                    vs = video_source_file( test_file, ref_file,
+                                                display_photometry=display_photometry,
                                                 config_paths=args.config_paths,
-                                                full_screen_resize=args.full_screen_resize, 
-                                                resize_resolution=display_geometry.resolution, 
+                                                full_screen_resize=args.full_screen_resize,
+                                                resize_resolution=display_geometry.resolution,
                                                 frames=nframes,
                                                 fps=args.fps,
                                                 frame_range=frame_range,
@@ -316,7 +318,7 @@ def run_on_args(args):
                                                 ffmpeg_cc=args.ffmpeg_cc,
                                                 verbose=args.verbose )
 
-                base, ext = os.path.splitext(os.path.basename(test_file))            
+                base, ext = os.path.splitext(os.path.basename(test_file))
                 base_fname = os.path.join(out_dir, base)
                 mm.set_base_fname(base_fname)
 
@@ -333,7 +335,7 @@ def run_on_args(args):
                     Q_pred, stats = mm.predict_video_source(vs)
                 Q_pred_scalar = Q_pred.item()
                 if args.quiet:
-                    print( "{Q:0.4f}".format(Q=Q_pred_scalar) )                    
+                    print( "{Q:0.4f}".format(Q=Q_pred_scalar) )
                 else:
                     units_str = f" [{mm.quality_unit()}]"
                     print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred_scalar, units=units_str) )
@@ -350,11 +352,11 @@ def run_on_args(args):
                     mm.write_features_to_json(stats, dest_name)
 
                 if args.distogram != -1:
-                    dest_name = os.path.join(out_dir, base + "_distogram.png")                    
+                    dest_name = os.path.join(out_dir, base + "_distogram.png")
                     logging.info("Writing distogram '" + dest_name + "' ...")
                     jod_max = args.distogram
                     mm.export_distogram( stats, dest_name, jod_max=jod_max )
-                    
+
                 del stats
 
         if not res_fh is None:
@@ -382,7 +384,7 @@ def main():
                 run_on_args(args)
         else:
             run_on_args(args)
-    except pycvvdp.vq_exception as ex:
+    except vq_exception as ex:
         logging.error( str(ex) )
         if args.debug:
             traceback.print_exc()

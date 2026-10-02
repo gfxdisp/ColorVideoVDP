@@ -11,3 +11,4 @@ build/
 features*/
 logs/
 new_config/
+uv.lock

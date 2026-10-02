@@ -1,9 +1,5 @@
 
 import torch
-import numpy as np 
-import os
-import sys
-import math
 
 def bucketize(tensor, bucket_boundaries):
     if tensor.device.type != 'mps':
@@ -16,7 +12,7 @@ def bucketize(tensor, bucket_boundaries):
     assert (result.cpu() == torch.bucketize(tensor.cpu(), bucket_boundaries.cpu())).flatten().all()
     return result
 
-# x_q : query tensor 
+# x_q : query tensor
 # x   : boundaries tensor
 # inspired from: https://github.com/sbarratt/torch_interpolations/blob/master/torch_interpolations/multilinear.py#L39
 def get_interpolants_v1(x_q, x):
@@ -56,7 +52,7 @@ def get_interpolants_quick(x_q, x):
     ind = ((x_q-x[0])/(x[-1]-x[0])*(x.numel()-1)).clamp(0,x.shape[0] - 1)
     ifrc = torch.frac(ind)
     imin = ind.to(dtype=torch.int32)
-    imax = (imin+1).clamp(max=x.shape[0] - 1)    
+    imax = (imin+1).clamp(max=x.shape[0] - 1)
     return imin, imax, ifrc
 
 
@@ -71,9 +67,9 @@ def interp3(x, y, z, v, x_q, y_q, z_q):
     kmin, kmax, kfrc = get_interpolants_v1(z_q, z)
 
     filtered = (
-        ((v[jmin,imin,kmin] * (1.0-ifrc) + v[jmin,imax,kmin] * (ifrc)) * (1.0-jfrc) + 
-         (v[jmax,imin,kmin] * (1.0-ifrc) + v[jmax,imax,kmin] * (ifrc)) *     (jfrc)) * (1.0 - kfrc) + 
-        ((v[jmin,imin,kmax] * (1.0-ifrc) + v[jmin,imax,kmax] * (ifrc)) *     (1.0-jfrc) + 
+        ((v[jmin,imin,kmin] * (1.0-ifrc) + v[jmin,imax,kmin] * (ifrc)) * (1.0-jfrc) +
+         (v[jmax,imin,kmin] * (1.0-ifrc) + v[jmax,imax,kmin] * (ifrc)) *     (jfrc)) * (1.0 - kfrc) +
+        ((v[jmin,imin,kmax] * (1.0-ifrc) + v[jmin,imax,kmax] * (ifrc)) *     (1.0-jfrc) +
          (v[jmax,imin,kmax] * (1.0-ifrc) + v[jmax,imax,kmax] * (ifrc)) *     (jfrc)) * (kfrc))
 
     return filtered.reshape(shp)
@@ -84,7 +80,7 @@ def interp1(x, v, x_q):
 
     imin, imax, ifrc = get_interpolants_v1(x_q, x)
 
-    filtered = v[imin] * (1.0-ifrc) + v[imax] * (ifrc) 
+    filtered = v[imin] * (1.0-ifrc) + v[imax] * (ifrc)
 
     return filtered.reshape(shp)
 
@@ -95,7 +91,7 @@ def interp1q(x, v, x_q):
 
     imin, imax, ifrc = get_interpolants_quick(x_q, x)
 
-    filtered = v[imin] * (1.0-ifrc) + v[imax] * (ifrc) 
+    filtered = v[imin] * (1.0-ifrc) + v[imax] * (ifrc)
 
     return filtered.reshape(shp)
 
@@ -145,7 +141,7 @@ def interp1dim2(x, v, x_q):
     sh[1] = ifrc.shape[0]
     ifrc = ifrc.view(sh)
 
-    filtered = v[:,imin,...] * (1.0-ifrc) + v[:,imax,...] * (ifrc) 
+    filtered = v[:,imin,...] * (1.0-ifrc) + v[:,imax,...] * (ifrc)
 
     return filtered
 

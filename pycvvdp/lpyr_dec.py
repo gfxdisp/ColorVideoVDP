@@ -2,13 +2,10 @@
 from functools import cache
 import torch
 import torch.nn.functional as Func
-import numpy as np 
-#import scipy.io as spio
-#import os
+import numpy as np
 #import sys
 import math
-#import torch.autograd.profiler as profiler
-from pycvvdp.vq_metric import vq_exception
+
 
 def ceildiv(a, b):
     return -(-a // b)
@@ -83,7 +80,7 @@ class lpyr_dec():
     #             # print ("deleting " + str(level))
     #             del level
 
-    def decompose(self, image): 
+    def decompose(self, image):
         # assert len(image.shape)==4, "NCHW (C==1) is expected, got " + str(image.shape)
         # assert image.shape[-2] == self.H
         # assert image.shape[-1] == self.W
@@ -310,7 +307,7 @@ class lpyr_dec_2(lpyr_dec):
         self.lbands = lpyr
 
         if self.keep_gaussian:
-            self.gbands = gpyr        
+            self.gbands = gpyr
 
         return lpyr, gpyr
 
@@ -356,7 +353,7 @@ class weber_contrast_pyr(lpyr_dec):
                     layer[...,-4:,4:-4] = 0
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
-                # L_bkg is set to ref-sustained 
+                # L_bkg is set to ref-sustained
                 if self.contrast == 'weber_g1_ref':
                     L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
                 elif self.contrast == 'weber_g1':
@@ -368,8 +365,8 @@ class weber_contrast_pyr(lpyr_dec):
 
             if L_bkg.shape[-4]==2: # If L_bkg NOT identical for the test and reference images
                 contrast = torch.empty_like(layer)
-                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0:1,:,:,:]), max=1000.0)    
-                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1:2,:,:,:]), max=1000.0)    
+                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0:1,:,:,:]), max=1000.0)
+                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1:2,:,:,:]), max=1000.0)
             else:
                 contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
 
@@ -414,16 +411,16 @@ class log_contrast_pyr(lpyr_dec):
                 L_bkg = self.a * (gpyr[i][...,0:2,:,:,:] - self.b)
             else:
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
-                contrast = gpyr[i] - glayer_ex 
+                contrast = gpyr[i] - glayer_ex
 
-                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y                
+                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # Mapping from log10(L) + log10(M) to log10(L+M)
                 L_bkg = self.a * (glayer_ex[...,0:2,:,:,:] - self.b)
 
             lpyr.append(contrast)
             L_bkg_pyr.append(L_bkg)
 
-        
+
         return lpyr, L_bkg_pyr
 
 
@@ -490,4 +487,3 @@ class log_contrast_pyr(lpyr_dec):
 #     # print("----Laplacian----")
 #     # for li in range(lp.get_band_count()):
 #     #     print(lp.get_band(lpyr, li))
-

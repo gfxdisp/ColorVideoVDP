@@ -9,18 +9,17 @@ import logging
 import sys
 import re
 
-import pycvvdp
-
-from pycvvdp.interp import interp1, interp1q
+from pycvvdp.interp import interp1q
+from pycvvdp.vq_exception import vq_exception
 #from PIL import Image
 
 from pycvvdp.third_party.loadmat import loadmat
 
 def torch_gpu_mem_info():
-    t = torch.cuda.get_device_properties(0).total_memory
+    # t = torch.cuda.get_device_properties(0).total_memory
     c = torch.cuda.memory_cached(0)
     a = torch.cuda.memory_allocated(0)
-    f = c-a  # free inside cache
+    # f = c-a  # free inside cache
     print("GPU mem used: %d M (cache %d M)" % (a/(1024*1024), c/(1024*1024)))
 
 def json2dict(file):
@@ -121,7 +120,7 @@ class ImGaussFilt():
         self.K = self.K/self.K.sum()
 
     def run(self, img):
-        
+
         if len(img.shape) == 2: img_4d = img.reshape((1,1,img.shape[0],img.shape[1]))
         else:                   img_4d = img
 
@@ -137,7 +136,7 @@ class ImGaussFilt():
 
 class config_files:
     # fvvdp_config_dir = None
-    
+
     # @classmethod
     # def set_config_dir( cls, path ):
     #     cls.fvvdp_config_dir = path
@@ -179,7 +178,7 @@ class config_files:
         if os.path.isfile(path):
             return path
 
-        raise pycvvdp.vq_exception( f"The configuration file {fname} not found" )
+        raise vq_exception( f"The configuration file {fname} not found" )
 
 
 class PU():
@@ -254,7 +253,7 @@ def get_best_device( device_name='auto' ):
         elif torch.backends.mps.is_available():
             device_name = 'mps'
         else:
-            logging.warning(f'No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')            
+            logging.warning('No CUDA or MPS found and ColorVideoVDP will run on CPU. This may result in slow execution.')
             device_name = 'cpu'
 
     if device_name.startswith('cuda') and torch.cuda.is_available():

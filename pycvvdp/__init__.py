@@ -1,5 +1,5 @@
 from pycvvdp.cvvdp_metric import cvvdp
-from pycvvdp.vq_metric import vq_exception
+from pycvvdp.vq_exception import vq_exception
 from pycvvdp.psnr_metric import pu_psnr_y, pu_psnr_rgb2020, psnr_rgb
 from pycvvdp.video_source_file import video_source_file, video_source_video_file, load_image_as_array, video_source_temp_resample_file
 from pycvvdp.video_source import video_source_filter
@@ -7,3 +7,12 @@ from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_photo_eo
 from pycvvdp.video_source_yuv import video_source_yuv_file
 from pycvvdp.cvvdp_ml_metric import cvvdp_ml_saliency, cvvdp_ml_transformer
 from pycvvdp import third_party
+
+
+__all__ = [
+    "cvvdp", "vq_exception", "pu_psnr_y", "pu_psnr_rgb2020", "psnr_rgb",
+    "video_source_file", "video_source_video_file", "load_image_as_array",
+    "video_source_temp_resample_file", "vvdp_display_photometry",
+    "vvdp_display_photo_eotf", "vvdp_display_geometry", "video_source_yuv_file",
+    "cvvdp_ml_saliency", "cvvdp_ml_transformer", "third_party"
+]

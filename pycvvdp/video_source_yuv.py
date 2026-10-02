@@ -1,8 +1,13 @@
-from video_source import *
 import re
+import os.path
 
 import logging
-from asyncio.log import logger
+
+import torch
+from torch import Tensor
+import numpy as np
+
+from pycvvdp.video_source import video_source_dm, reshuffle_dims
 
 def decode_video_props( fname ):
     vprops = dict()
@@ -23,7 +28,7 @@ def decode_video_props( fname ):
 
         lfield = field.lower()
         if res_match.match( field ):
-            nums = re.findall(r"\d+", field) 
+            nums = re.findall(r"\d+", field)
             if len(nums)<2 or len(nums)>3:
                 raise ValueError("Cannot decode the resolution")
             vprops["width"]=int(nums[0])
@@ -81,7 +86,7 @@ def create_yuv_fname( basename, vprops ):
 
 class YUVReader:
 
-    def __init__(self, file_name):        
+    def __init__(self, file_name):
         self.file_name = file_name
 
         if not os.path.isfile(file_name):
@@ -104,11 +109,11 @@ class YUVReader:
             self.frame_bytes *= 3
             self.uv_pixels = self.y_pixels
             self.uv_shape = self.y_shape
-        elif vprops["chroma_ss"]=="420": 
+        elif vprops["chroma_ss"]=="420":
             self.frame_bytes = self.frame_bytes*3/2
             self.uv_pixels = int(self.y_pixels/4)
             self.uv_shape = (int(self.y_shape[0]/2), int(self.y_shape[1]/2))
-        elif vprops["chroma_ss"]=="422": 
+        elif vprops["chroma_ss"]=="422":
             self.frame_bytes = self.frame_bytes*2
             self.uv_pixels = int(self.y_pixels/2)
             self.uv_shape = (int(self.y_shape[0]), int(self.y_shape[1]/2))
@@ -132,7 +137,7 @@ class YUVReader:
 
     def get_frame_count(self):
         return int(self.frames)
-    
+
     def get_frame_yuv( self, frame_index ):
 
         if frame_index<0 or frame_index>=self.frames:
@@ -251,7 +256,7 @@ class video_reader_yuv(YUVReader):
         self.in_pix_fmt = 'yuv' + self.chroma_ss + 'p'
         self.resize_fn=resize_fn
         self.resize_width = resize_width
-        self.resize_height = resize_height        
+        self.resize_height = resize_height
         self.color_transfer = None
         if frames!=-1:
             self.frames = min(self.frames, frames)
@@ -259,7 +264,7 @@ class video_reader_yuv(YUVReader):
 
     def get_frame(self):
         self.curr_frame += 1
-        return self.curr_frame       
+        return self.curr_frame
 
     def unpack(self, frame_index, device):
         RGB = self.get_frame_rgb_tensor(frame_index, device)
@@ -299,7 +304,7 @@ class video_source_yuv_file(video_source_dm):
         #     else:
         #         color_space_name="sRGB"
 
-        super().__init__(display_photometry=display_photometry)        
+        super().__init__(display_photometry=display_photometry)
 
         for vr in [self.test_vidr, self.reference_vidr]:
             if vr == self.test_vidr:
@@ -312,7 +317,7 @@ class video_source_yuv_file(video_source_dm):
                 rs_str = f"->[{resize_resolution[0]}x{resize_resolution[1]}]"
             logging.debug(f"  [{vr.width}x{vr.height}]{rs_str}, colorspace: {vr.color_space}, EOTF: {self.dm_photometry[0].EOTF}, fps: {vr.avg_fps}, frames: {self.frames}" )
 
-        
+
     # Return (height, width, frames) touple with the resolution and
     # the length of the video clip.
     def get_video_size(self):
@@ -324,10 +329,10 @@ class video_source_yuv_file(video_source_dm):
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
         return self.test_vidr.avg_fps
-    
+
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
-    # starting from 0. 
+    # starting from 0.
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
         L = self._get_frame( self.test_vidr, frame, device, is_test=True, colorspace=colorspace )
         return L
@@ -347,7 +352,7 @@ class video_source_yuv_file(video_source_dm):
 
         I = self.apply_dm_and_color_transform(RGB_bcfhw, colorspace, is_test=is_test)
         return I
-    
+
     def set_offset( self, offset:int ):
         self.offset = offset
 
