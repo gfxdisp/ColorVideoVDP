@@ -1,25 +1,23 @@
 # Classes for reading images or videos from files so that they can be passed to ColorVideoVDP frame-by-frame
 
 from asyncio.log import logger
-from functools import cache
-from importlib.resources import path
-import os
+import os.path
 # from turtle import color
 import imageio.v2 as io
 import numpy as np
-from torch.functional import Tensor
+from torch import Tensor
 import torch
 import ffmpeg
 import re
 import math
-import torch.nn.functional as Func
 
 import scipy.io as sio
 
 import logging
-from pycvvdp.vq_metric import vq_exception
-from video_source import *
-from video_source_yuv import video_reader_yuv
+from pycvvdp.vq_exception import vq_exception
+from pycvvdp.video_source import (
+    video_source_dm, video_source_array, numpy2torch_frame, video_source, reshuffle_dims)
+from pycvvdp.video_source_yuv import video_reader_yuv
 
 try:
     # This may fail if OpenEXR is not installed. To install,
@@ -27,7 +25,7 @@ try:
     # mac: brew install openexr
     import pyexr
     pyexr_imported = True
-except ImportError as e:
+except ImportError:
     # Imageio's imread is unreliable for OpenEXR images
     # See https://github.com/imageio/imageio/issues/517
     pyexr_imported = False
@@ -78,7 +76,7 @@ class video_reader:
 
         try:
             # Counting frames is much slower, but more accurate
-            do_count_frames = vidfile.lower().endswith('.y4m') or frames==-2            
+            do_count_frames = vidfile.lower().endswith('.y4m') or frames==-2
 
             if do_count_frames:
                 probe = ffmpeg.probe(vidfile, count_frames=None)
@@ -91,7 +89,7 @@ class video_reader:
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
 
         self.fname = vidfile
-        self.width = int(video_stream['width']) 
+        self.width = int(video_stream['width'])
         self.src_width = self.width
         self.height = int(video_stream['height'])
         self.src_height = self.height
@@ -104,7 +102,7 @@ class video_reader:
 
         if 'nb_read_frames' in video_stream:
             frames_in_vstream = int(video_stream['nb_read_frames'])
-        elif 'nb_frames' in video_stream: 
+        elif 'nb_frames' in video_stream:
             frames_in_vstream = int(video_stream['nb_frames'])
         else:
             # Metadata may not contain total number of frames - this is the case of some VP9 videos
@@ -114,11 +112,11 @@ class video_reader:
                 duration = (hrs * 60 + mins) * 60 + secs
                 frames_in_vstream = int(np.floor(duration * self.avg_fps))
             else:
-                frames_in_vstream = -1; # Unspecified number of frames
+                frames_in_vstream = -1 # Unspecified number of frames
 
         if frames<0:
             self.frames = frames_in_vstream
-        else:    
+        else:
             self.frames = frames if frames_in_vstream==-1 else min( frames_in_vstream, frames ) # Use at most as many frames as passed in "frames" argument
 
         self._setup_ffmpeg(vidfile, resize_fn, resize_height, resize_width, verbose)
@@ -154,7 +152,7 @@ class video_reader:
             return None
         in_frame = np.frombuffer(in_bytes, self.dtype)
         self.curr_frame += 1
-        return in_frame       
+        return in_frame
 
     def unpack(self, frame_np, device):
         if self.dtype == np.uint8:
@@ -237,10 +235,10 @@ class video_reader_yuv_pytorch(video_reader):
 
 
         self.chroma_ss = self.in_pix_fmt[3:6]
-        if not self.chroma_ss in ['444', '420', '422']: 
+        if not self.chroma_ss in ['444', '420', '422']:
             raise vq_exception(f"GPU-accelerated decoding cannot handle chroma subsampling {self.chroma_ss}. Run with `--ffmpeg-cc` command-line argument.")
 
-        if self.bit_depth>8: 
+        if self.bit_depth>8:
             self.dtype = np.uint16
             out_pix_fmt = f'yuv{self.chroma_ss}p{self.bit_depth}le'
         else:
@@ -329,7 +327,7 @@ def safe_floor(x):
     x_f = math.floor(x)
     return x_f if (x-x_f)<(1-1e-6) else x_f+1
 
-    
+
 
 '''
 Use ffmpeg to read video frames, one by one.
@@ -354,8 +352,8 @@ class video_source_video_file(video_source_dm):
         self.resize_resolution = resize_resolution
         self.ffmpeg_cc = ffmpeg_cc
         self.verbose = verbose
-        self.fps = fps       
-        self.ignore_framerate_mismatch = ignore_framerate_mismatch 
+        self.fps = fps
+        self.ignore_framerate_mismatch = ignore_framerate_mismatch
 
         super().__init__(display_photometry=display_photometry, config_paths=config_paths)
 
@@ -400,7 +398,7 @@ class video_source_video_file(video_source_dm):
                     rs_str = ""
                 else:
                     rs_str = f"->[{self.resize_resolution[0]}x{self.resize_resolution[1]}]"
-                if not self.ignore_framerate_mismatch:  
+                if not self.ignore_framerate_mismatch:
                     self.fps = vr.avg_fps if self.fps is None else self.fps
                     logging.debug(f"  [{vr.src_width}x{vr.src_height}]{rs_str}, colorspace: {vr.color_space}, color transfer: {vr.color_transfer}, fps: {self.fps}, pixfmt: {vr.in_pix_fmt}, frames: {self.frames}" )
 
@@ -432,10 +430,10 @@ class video_source_video_file(video_source_dm):
     def get_frames_per_second(self) -> int:
         self.init_readers()
         return self.fps
-    
+
     # Get a test (reference) video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
-    # starting from 0. 
+    # starting from 0.
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
         self.init_readers()
         #print( f"{self.test_fname} - {self.fs_width}x{self.fs_height}" )
@@ -453,7 +451,7 @@ class video_source_video_file(video_source_dm):
         # self.reference_test_frame = (frame,L)
         return L
 
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace ):
         self.init_readers()
 
         if frame != (vid_reader.curr_frame+1):
@@ -476,15 +474,15 @@ class video_source_video_file(video_source_dm):
 
 
 '''
-This video source will resample the frames over time and can handle test and reference videos that have different frame rates. 
-It currently handles only constant fps video. 
+This video source will resample the frames over time and can handle test and reference videos that have different frame rates.
+It currently handles only constant fps video.
 '''
 class video_source_temp_resample_file(video_source_video_file):
 
     max_fps = 166 # upsample to at most this FPS
 
     def __init__( self, test_fname, reference_fname, display_photometry='sdr_4k_30', config_paths=[], frames=-1, full_screen_resize=None, resize_resolution=None, ffmpeg_cc=False, verbose=False ):
-        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize, 
+        super().__init__(test_fname, reference_fname, display_photometry=display_photometry, config_paths=config_paths, frames=frames, full_screen_resize=full_screen_resize,
                          resize_resolution=resize_resolution, ffmpeg_cc=ffmpeg_cc, verbose=verbose, ignore_framerate_mismatch=True)
 
 
@@ -519,7 +517,7 @@ class video_source_temp_resample_file(video_source_video_file):
 
         self.cache_ind = [-1, -1]
         self.cache_frame = [None, None]
-    
+
     # Return the frame rate of the video
     def get_frames_per_second(self):
         return self.resample_fps
@@ -528,7 +526,7 @@ class video_source_temp_resample_file(video_source_video_file):
         return super().get_video_size()
 
 
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+    def _get_frame( self, vid_reader, frame, device, colorspace ):
 
         frame_ind = int(safe_floor((frame+0.5) * vid_reader.avg_fps/self.resample_fps))
 
@@ -540,17 +538,17 @@ class video_source_temp_resample_file(video_source_video_file):
             self.cache_ind[ce] = frame_ind
             self.cache_frame[ce] = super()._get_frame( vid_reader, frame_ind, device=device, colorspace=colorspace )
             #self.cache_frame[ce] = self.cache_frame[ce][...,4:-4,4:-4]  # Crop 4 pixels from all the sided because of the dark frame in the test videos
-            return self.cache_frame[ce]            
+            return self.cache_frame[ce]
 
 
 '''
 Load video frame-by-frame from image files. It can also handle single images.
 '''
 class video_source_image_frames(video_source_dm):
-        
+
     def __init__( self, test_fname, reference_fname, fps=0, frame_range=None, display_photometry='sdr_4k_30', config_paths=[], full_screen_resize=None, resize_resolution=None, verbose=False ):
 
-        super().__init__(display_photometry=display_photometry, config_paths=config_paths)        
+        super().__init__(display_photometry=display_photometry, config_paths=config_paths)
 
         if not fps:
             fps = 0
@@ -579,11 +577,11 @@ class video_source_image_frames(video_source_dm):
             if not frame_range:
                 frame_range = range(0, 10000)
 
-            last_frame = 0
+            # last_frame = 0
             frame_count = 0
             for nn in frame_range:
                 if os.path.isfile( self.test_fname.format(nn) ) and os.path.isfile( self.reference_fname.format(nn) ):
-                    last_frame = nn
+                    # last_frame = nn
                     frame_count += 1
                 else:
                     break
@@ -596,13 +594,13 @@ class video_source_image_frames(video_source_dm):
             self.N = frame_count
             self.frame_range = frame_range[0:frame_count]
             self.ff_name = self.test_fname.format(self.frame_range[0])
-        
+
 
     def convert_c2python_format_str( self, str ):
         if not hasattr( self, 'format_re' ):
             self.format_re = re.compile( r"%(\d)*d" )
 
-        m = self.format_re.search( str )        
+        m = self.format_re.search( str )
         if m:
             has_frame_no = True
             (beg, end) = m.span()
@@ -610,14 +608,14 @@ class video_source_image_frames(video_source_dm):
         else:
             has_frame_no = False
             new_str = str
-        return (new_str, has_frame_no)            
+        return (new_str, has_frame_no)
 
     def get_frames_per_second(self):
         return self.fps
-            
+
     # Return a [height width frames] vector with the resolution and
     # the number of frames in the video clip. [height width 1] is
-    # returned for an image.     
+    # returned for an image.
     def get_video_size(self):
         if self.video_size is None:
             # Need to load first image to get the dimensions
@@ -639,7 +637,7 @@ class video_source_image_frames(video_source_dm):
 
     def _get_frame(self, file_name, frame, device, colorspace, cache_img=None):
 
-        if not cache_img is None: 
+        if not cache_img is None:
             img = cache_img
         else:
             if self.fps>0: # video
@@ -648,21 +646,21 @@ class video_source_image_frames(video_source_dm):
             img = load_image_as_array(file_name)
 
         img_torch = numpy2torch_frame(img, 0, device)
-        I = self.apply_dm_and_color_transform(img_torch, colorspace)    
+        I = self.apply_dm_and_color_transform(img_torch, colorspace)
         return I
 
-            # if not full_screen_resize is None:
-            #     logging.error("full-screen-resize not implemented for images.")
-            #     raise RuntimeError( "Not implemented" )
-            # self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
+        # if not full_screen_resize is None:
+        #     logging.error("full-screen-resize not implemented for images.")
+        #     raise RuntimeError( "Not implemented" )
+        # self.vs = video_source_array( img_test, img_reference, 0, dim_order='HWC', display_photometry=display_photometry, config_paths=config_paths )
 
-            # hdr_extensions = [".exr", ".hdr"]
-            # if extension in hdr_extensions:
-            #     if self.vs.dm_photometry.EOTF != "linear":
-            #         logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
-            # else:
-            #     if self.vs.dm_photometry.EOTF == "linear":
-            #         logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
+        # hdr_extensions = [".exr", ".hdr"]
+        # if extension in hdr_extensions:
+        #     if self.vs.dm_photometry.EOTF != "linear":
+        #         logging.warning('Use a display model with linear color space (EOTF="linear") for HDR images. Make sure that the pixel values are absolute.')
+        # else:
+        #     if self.vs.dm_photometry.EOTF == "linear":
+        #         logging.warning('A display model with linear colour space should not be used with display-encoded SDR images.')
 
 
 
@@ -670,8 +668,8 @@ class video_source_image_frames(video_source_dm):
 The same functionality as to fvvdp_video_source_video_file, but preloads all the frames and stores in the CPU memory - allows for random access.
 '''
 class video_source_video_file_preload(video_source_video_file):
-    
-    def _get_frame( self, vid_reader, frame, device, colorspace ):        
+
+    def _get_frame( self, vid_reader, frame, device, colorspace ):
 
         if not hasattr( self, "frame_array_tst" ):
 
@@ -791,14 +789,14 @@ class video_source_file(video_source):
         else:
             assert os.path.splitext(reference_fname)[1].lower() not in image_extensions, 'Test is a video, but reference is an image'
             vs_class = video_source_video_file_preload if preload else video_source_video_file
-            self.vs = vs_class( test_fname, reference_fname, 
-                                display_photometry=display_photometry, 
+            self.vs = vs_class( test_fname, reference_fname,
+                                display_photometry=display_photometry,
                                 config_paths=config_paths,
-                                frames=frames,   
+                                frames=frames,
                                 fps=fps,
-                                full_screen_resize=full_screen_resize, 
-                                resize_resolution=resize_resolution, 
-                                ffmpeg_cc=ffmpeg_cc, 
+                                full_screen_resize=full_screen_resize,
+                                resize_resolution=resize_resolution,
+                                ffmpeg_cc=ffmpeg_cc,
                                 verbose=verbose )
 
     # Return (height, width, frames) touple with the resolution and
@@ -809,10 +807,10 @@ class video_source_file(video_source):
     # Return the frame rate of the video
     def get_frames_per_second(self) -> int:
         return self.vs.get_frames_per_second()
-    
+
     # Get a pair of test and reference video frames as a single-precision luminance map
     # scaled in absolute inits of cd/m^2. 'frame' is the frame index,
-    # starting from 0. 
+    # starting from 0.
     def get_test_frame( self, frame, device, colorspace="Y" ) -> Tensor:
         return self.vs.get_test_frame( frame, device, colorspace )
 

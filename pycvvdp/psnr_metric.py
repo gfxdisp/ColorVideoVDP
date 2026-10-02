@@ -2,13 +2,12 @@
 import torch
 
 from pycvvdp.utils import PU
-from pycvvdp.video_source import *
-from pycvvdp.vq_metric import *
+from pycvvdp.vq_metric import register_metric, vq_metric
 
 
 """
-Plain PSNR-RGB metric. Operates on display-encoded values. If HDR/linear color is encountered, it will be 
-PU21-encoded. The display model is used only for images in linear color spaces. Usage is same as 
+Plain PSNR-RGB metric. Operates on display-encoded values. If HDR/linear color is encountered, it will be
+PU21-encoded. The display model is used only for images in linear color spaces. Usage is same as
 the ColorVideoVDP metric (see pytorch_examples).
 """
 class psnr_rgb(vq_metric):
@@ -36,14 +35,14 @@ class psnr_rgb(vq_metric):
         mse = torch.zeros((batch_sz), device=self.device)
         for ff in range(N_frames):
             # colorspace='display_encoded_100nit' will get us display-encoded image, or if the original source is linear, it will apply PU-encoding.
-            # If the input is PQ-encoded, it will return a PQ-encoded values. 
+            # If the input is PQ-encoded, it will return a PQ-encoded values.
             T = vid_source.get_test_frame(ff, device=self.device, colorspace='display_encoded_100nit')
             R = vid_source.get_reference_frame(ff, device=self.device, colorspace='display_encoded_100nit')
             mse += torch.mean( (T - R)**2, dim=(1,2,3,4) )
 
         max_I = 1
-        psnr = 20*torch.log10( max_I/torch.sqrt(mse/N_frames) ) 
-        
+        psnr = 20*torch.log10( max_I/torch.sqrt(mse/N_frames) )
+
         return psnr, None
 
     def short_name(self):
@@ -94,8 +93,8 @@ class pu_psnr_y(vq_metric):
             R_enc = self.pu.encode(R)
 
             mse += torch.mean( (T_enc - R_enc)**2, dim=(1,2,3,4) )
-        
-        psnr = 20*torch.log10( self.max_I/torch.sqrt(mse/N_frames) ) 
+
+        psnr = 20*torch.log10( self.max_I/torch.sqrt(mse/N_frames) )
 
         return psnr, None
 

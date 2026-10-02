@@ -1,13 +1,9 @@
 # Decimated Laplacian Pyramid
-from functools import cache
 import torch
 import torch.nn.functional as Func
-import numpy as np 
-#import scipy.io as spio
-#import os
+import numpy as np
 #import sys
 import math
-#import torch.autograd.profiler as profiler
 
 def ceildiv(a, b):
     return -(-a // b)
@@ -24,7 +20,7 @@ class lpyr_dec():
 
         max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
+        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0
 
         # print(max_levels)
         # print(bands)
@@ -85,7 +81,7 @@ class lpyr_dec():
     #             # print ("deleting " + str(level))
     #             del level
 
-    def decompose(self, image): 
+    def decompose(self, image):
         # assert len(image.shape)==4, "NCHW (C==1) is expected, got " + str(image.shape)
         # assert image.shape[-2] == self.H
         # assert image.shape[-1] == self.W
@@ -181,7 +177,7 @@ class lpyr_dec():
         self.K_horiz = torch.reshape(K, (1, 1, 1, K.shape[0]))
         # self.K_ch_dim = ch_dim
         return self.K_vert, self.K_horiz
-        
+
 
     def gausspyr_reduce(self, x, kernel_a = 0.4):
 
@@ -191,7 +187,7 @@ class lpyr_dec():
         y_a = Func.conv2d(x.view(-1,1,H,W), K_vert, stride=(2,1), padding=(2,0)).view( x.shape[0:-2] + (-1,W) )
         # view(B,C,-1,W)
 
-        # Symmetric padding 
+        # Symmetric padding
         y_a[...,0,:] += x[...,0,:]*K_vert[...,1,0] + x[...,1,:]*K_vert[...,0,0]
         if (x.shape[-2] % 2)==1: # odd number of rows
             y_a[...,-1,:] += x[...,-1,:]*K_vert[...,3,0] + x[...,-2,:]*K_vert[...,4,0]
@@ -201,12 +197,12 @@ class lpyr_dec():
         H = y_a.shape[-2]
         y = Func.conv2d(y_a.view(-1,1,H,W), K_horiz, stride=(1,2), padding=(0,2)).view( x.shape[0:-2] + (H,-1) )
 
-        # Symmetric padding 
+        # Symmetric padding
         y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
         if (x.shape[-2] % 2)==1: # odd number of columns
             y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,3] + y_a[...,:,-2]*K_horiz[...,0,4]
         else: # even number of columns
-            y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4] 
+            y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4]
 
         return y
 
@@ -260,7 +256,7 @@ class lpyr_dec_2(lpyr_dec):
 
         max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0 
+        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,14.0)) * 0.3228], 0) * self.ppd/2.0
 
         # print(max_levels)
         # print(bands)
@@ -322,7 +318,7 @@ class lpyr_dec_2(lpyr_dec):
     #             # print ("deleting " + str(level))
     #             del level
 
-    def decompose(self, image): 
+    def decompose(self, image):
         return self.laplacian_pyramid_dec(image, self.height+1)
 
     def reconstruct(self):
@@ -350,7 +346,7 @@ class lpyr_dec_2(lpyr_dec):
         self.lbands = lpyr
 
         if self.keep_gaussian:
-            self.gbands = gpyr        
+            self.gbands = gpyr
 
         return lpyr, gpyr
 
@@ -384,10 +380,10 @@ class weber_contrast_pyr(lpyr_dec):
                     L_bkg = torch.mean(torch.clamp(gpyr[i][...,0:2,:,:,:], min=0.01), dim=[-1, -2], keepdim=True)
             else:
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
-                layer = gpyr[i] - glayer_ex 
+                layer = gpyr[i] - glayer_ex
 
                 # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
-                # L_bkg is set to ref-sustained 
+                # L_bkg is set to ref-sustained
                 if self.contrast == 'weber_g1_ref':
                     L_bkg = torch.clamp(glayer_ex[...,1:2,:,:,:], min=0.01)
                 elif self.contrast == 'weber_g1':
@@ -399,8 +395,8 @@ class weber_contrast_pyr(lpyr_dec):
 
             if L_bkg.shape[-4]==2: # If L_bkg NOT identical for the test and reference images
                 contrast = torch.empty_like(layer)
-                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0:1,:,:,:]), max=1000.0)    
-                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1:2,:,:,:]), max=1000.0)    
+                contrast[...,0::2,:,:,:] = torch.clamp(torch.div(layer[...,0::2,:,:,:], L_bkg[...,0:1,:,:,:]), max=1000.0)
+                contrast[...,1::2,:,:,:] = torch.clamp(torch.div(layer[...,1::2,:,:,:], L_bkg[...,1:2,:,:,:]), max=1000.0)
             else:
                 contrast = torch.clamp(torch.div(layer, L_bkg), max=1000.0)
 
@@ -445,16 +441,16 @@ class log_contrast_pyr(lpyr_dec):
                 L_bkg = self.a * (gpyr[i][...,0:2,:,:,:] - self.b)
             else:
                 glayer_ex = self.gausspyr_expand(gpyr[i+1], [gpyr[i].shape[-2], gpyr[i].shape[-1]], kernel_a)
-                contrast = gpyr[i] - glayer_ex 
+                contrast = gpyr[i] - glayer_ex
 
-                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y                
+                # Order: test-sustained-Y, ref-sustained-Y, test-rg, ref-rg, test-yv, ref-yv, test-transient-Y, ref-transient-Y
                 # Mapping from log10(L) + log10(M) to log10(L+M)
                 L_bkg = self.a * (glayer_ex[...,0:2,:,:,:] - self.b)
 
             lpyr.append(contrast)
             L_bkg_pyr.append(L_bkg)
 
-        
+
         return lpyr, L_bkg_pyr
 
 
@@ -536,4 +532,3 @@ class log_contrast_pyr(lpyr_dec):
 #     # print("----Laplacian----")
 #     # for li in range(lp.get_band_count()):
 #     #     print(lp.get_band(lpyr, li))
-

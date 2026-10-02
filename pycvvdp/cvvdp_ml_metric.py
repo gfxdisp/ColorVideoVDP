@@ -1,65 +1,31 @@
 from abc import abstractmethod
-from urllib.parse import ParseResultBytes
 
-try:
-    from numpy import expand_dims
-except ImportError:
-    from numpy.lib.shape_base import expand_dims
 import math
 import torch
 from torch.utils import checkpoint
-from torch.functional import Tensor
-from torchvision.transforms import GaussianBlur
-import torch.nn.functional as Func
-import numpy as np 
 import os
-import sys
-import json
-import torch.utils.benchmark as torchbench
 import logging
-from datetime import date
 from torchvision.ops import MLP
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-try:
-    import matplotlib.pyplot as plt
-    from matplotlib import ticker
-    from matplotlib.colors import Normalize
-    has_matplotlib = True
-except:
-    has_matplotlib = False
-
-try:
-    from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-    has_nvml = True
-except:
-    has_nvml = False
-
 from pycvvdp.visualize_diff_map import visualize_diff_map
-from pycvvdp.video_source import *
+from pycvvdp.vq_metric import register_metric
 
-from pycvvdp.vq_metric import *
-
-from pycvvdp.dump_channels import DumpChannels
-
-from pycvvdp.cvvdp_metric import cvvdp, safe_pow, cvvdp_frame_buffers
-from pycvvdp.vq_metric import vq_exception
+from pycvvdp.cvvdp_metric import cvvdp, cvvdp_frame_buffers
+# from pycvvdp.cvvdp_metric import safe_pow
+from pycvvdp.vq_exception import vq_exception
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
 # For debugging only
 # from gfxdisp.pfs.pfs_torch import pfs_torch
 
-from pycvvdp.lpyr_dec import lpyr_dec, lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
-from interp import interp1, interp3, interp1dim2
+from pycvvdp.lpyr_dec import lpyr_dec_2, weber_contrast_pyr, log_contrast_pyr
 
 import pycvvdp.utils as utils
 
-from pycvvdp.display_model import vvdp_display_photometry, vvdp_display_geometry
-from pycvvdp.csf import castleCSF
 
 from huggingface_hub import hf_hub_download
 os.environ["HF_HUB_TOKEN"] = ""  # empty string disables token
@@ -87,7 +53,7 @@ class cvvdp_feature_pooling(torch.nn.Module):
         # D - difference
         # T[batch,channels,frames,width,height]
         # F[batch,frames,width,height,channels,stat]
-                
+
         dim_order = [0, 2, 3, 4, 1] # put channels as the last dimension
         mean_T = self.avg_pool( T ).permute(dim_order)
         var_T = self.avg_pool( T**2 ).permute(dim_order) - mean_T**2
@@ -114,7 +80,7 @@ class cvvdp_ml_base(cvvdp):
     def __init__(self, random_init = False, disabled_features=None, **kwargs):
 
         self.random_init = random_init
-        self.disabled_features = disabled_features        
+        self.disabled_features = disabled_features
 
         super().__init__(**kwargs)
 
@@ -144,9 +110,9 @@ class cvvdp_ml_base(cvvdp):
             for param in getattr(self, net).parameters():
                 param.requires_grad = do_training
             getattr(self, net).train(do_training)
-            # if not do_training:            
+            # if not do_training:
             #     for param in getattr(self, net).parameters():
-            #         param.requires_grad = False    
+            #         param.requires_grad = False
 
     # So that we can override in the super classes
     @abstractmethod
@@ -186,7 +152,7 @@ class cvvdp_ml_base(cvvdp):
 
         stats = {}
         rho_band = self.lpyr.get_freqs()
-        stats['rho_band'] = rho_band # The spatial frequency per band in cpd        
+        stats['rho_band'] = rho_band # The spatial frequency per band in cpd
         fps = vid_source.get_frames_per_second()
         stats['frames_per_second'] = fps
         stats['width'] = width
@@ -196,7 +162,7 @@ class cvvdp_ml_base(cvvdp):
         if self.dump_channels:
             self.dump_channels.close()
 
-        if self.do_heatmap:            
+        if self.do_heatmap:
             stats['heatmap'] = heatmap
 
         return (Q_jod.squeeze(), stats)
@@ -254,7 +220,7 @@ class cvvdp_ml_base(cvvdp):
             self.dump_channels.open(vid_source.get_frames_per_second())
 
         # Spatial size of a feature patch in 1 visual degree
-        # feature_size = math.floor(self.pix_per_deg) 
+        # feature_size = math.floor(self.pix_per_deg)
 
         features = None
 
@@ -274,7 +240,7 @@ class cvvdp_ml_base(cvvdp):
             else:
                 features_per_block, heatmap_block = self.process_block_of_frames(R, temp_ch, self.lpyr, is_image)
 
-            
+
             if features is None:
                 features = [None] * len(features_per_block)
                 for bb in range(len(features_per_block)):
@@ -319,16 +285,16 @@ class cvvdp_ml_base(cvvdp):
         rho_band[lpyr.get_band_count()-1] = 0.1 # Baseband
 
         features_block = None
-        block_N_frames = R.shape[-3] 
+        block_N_frames = R.shape[-3]
         N_bands = lpyr.get_band_count()
 
-        features_block = [None] * N_bands        
+        features_block = [None] * N_bands
 
         for bb in range(N_bands):  # For each spatial frequency band
 
             is_baseband = (bb==(lpyr.get_band_count()-1))
 
-            B_bb = lpyr.get_band(B_bands, bb) 
+            B_bb = lpyr.get_band(B_bands, bb)
             T_f = B_bb[:,0::2,...] # Test
             R_f = B_bb[:,1::2,...] # Reference
 
@@ -439,7 +405,7 @@ class cvvdp_ml(cvvdp_ml_base):
             if is_image:
                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
             if self.disabled_features is not None:
-                f[:, :, :, :, self.disabled_features] = 0  
+                f[:, :, :, :, self.disabled_features] = 0
 
             # We want to only keep mean D and std D in this version
             f = f[:, :, :, :, 4:]
@@ -512,21 +478,21 @@ class cvvdp_ml_saliency(cvvdp_ml):
 
             #F[batch,frames,width,height,channels,stat]
             f = features[bb]
-            
+
             # Variance into std
             f[...,1::2] = torch.sqrt(torch.abs(f[...,1::2]))
 
             if is_image:
                 f = torch.cat( (f, torch.zeros((f.shape[0:4] + (1,f.shape[5])), device=self.device)), dim=4) # Add the missing channel
             if self.disabled_features is not None:
-                f[..., self.disabled_features] = 0  
+                f[..., self.disabled_features] = 0
 
             f_TR = f[..., 0:4].flatten( start_dim=4 )
             f_D = f[..., 4:].flatten( start_dim=4 )
 
             Att = self.att_net(f_TR)
             Att = F.relu(Att)
-            D_all = self.feature_net(f_D) 
+            D_all = self.feature_net(f_D)
             D_all = F.relu(D_all) * Att /no_bands
 
             is_base_band = (bb==no_bands-1)
@@ -546,7 +512,7 @@ class cvvdp_ml_saliency(cvvdp_ml):
 
     def spatiotemporal_pooling(self, D_all):
         return D_all.view(D_all.shape[0],-1).mean(dim=1)
-    
+
 
 register_metric( cvvdp_ml_saliency )
 
@@ -589,7 +555,7 @@ class RegressionTransformer(nn.Module):
 
     def forward(self, x):
         # x: [B, D, H, W, C]
-        
+
         B, D, H, W, C = x.shape
         x = x.reshape(B * D, H, W, C)
         x = x.permute(0, 3, 1, 2)  # [B, C, H, W]
@@ -600,7 +566,7 @@ class RegressionTransformer(nn.Module):
         cls_feat = x[:, 0]
         y = self.reg_head(cls_feat).squeeze(-1).reshape(B,D)
         return y.mean(dim=1, keepdim=False)
-    
+
     def get_heatmap(self, x):
         # x: [B, D, H, W, C]
         B, D, H, W, C = x.shape
@@ -620,9 +586,9 @@ class cvvdp_ml_transformer(cvvdp_ml):
                  dim=256,
                  config_paths=[],
                  **kwargs):
-        
+
         self.set_device( kwargs.get('device') )
-        
+
         met_config_paths = config_paths.copy() # We do not want to modify config_path for other metrics
         path = os.path.join(os.path.dirname(__file__), "vvdp_data", "cvvdp_ml_transformer")
         met_config_paths.append( path )
@@ -644,7 +610,7 @@ class cvvdp_ml_transformer(cvvdp_ml):
 
     def get_nets_to_load(self):
         return ['transformer_net']
-    
+
     def do_pooling_and_jods(self, features):
         batch_sz = features[0].shape[0]
         Q_JOD = torch.ones((batch_sz), device=self.device)*10.
@@ -697,7 +663,7 @@ register_metric( cvvdp_ml_transformer )
 #         hidden_dims = 48
 #         num_layers = 6
 #         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
-#         stats_no = 2 # 6 extracted stats 
+#         stats_no = 2 # 6 extracted stats
 #         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
 #         super().__init__(display_name=display_name, display_photometry=display_photometry,
@@ -731,7 +697,7 @@ register_metric( cvvdp_ml_transformer )
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
@@ -769,7 +735,7 @@ register_metric( cvvdp_ml_transformer )
 #         hidden_dims = 48
 #         num_layers = 6
 #         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
-#         stats_no = 6 # 6 extracted stats 
+#         stats_no = 6 # 6 extracted stats
 #         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
 #         super().__init__(display_name=display_name, display_photometry=display_photometry,
@@ -803,7 +769,7 @@ register_metric( cvvdp_ml_transformer )
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
@@ -840,7 +806,7 @@ register_metric( cvvdp_ml_transformer )
 #         hidden_dims = 24
 #         num_layers = 6
 #         ch_no = 4 # 4 visual channels: A_sust, A_trans, RG, YV
-#         stats_no = 2 # 6 extracted stats 
+#         stats_no = 2 # 6 extracted stats
 #         self.feature_net = MLP(in_channels=stats_no*ch_no, hidden_channels=[hidden_dims]*num_layers + [1], activation_layer=torch.nn.ReLU, dropout=dropout).to(self.device)
 
 
@@ -849,7 +815,7 @@ register_metric( cvvdp_ml_transformer )
 #                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
 #                          dump_channels=dump_channels, gpu_mem=gpu_mem,
 #                          random_init=random_init, disabled_features=disabled_features)
-        
+
 #     # So that we can override in the super classes
 #     def get_nets_to_load(self):
 #         return [ 'feature_net' ]
@@ -871,14 +837,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             # Get similarity of means and stds between T and R
 #             distance = 0.5 * (f[:, :, :, :, 0] - f[:, :, :, :, 2])**2 + 0.5 * (f[:, :, :, :, 1] - f[:, :, :, :, 3])**2
@@ -929,7 +895,7 @@ register_metric( cvvdp_ml_transformer )
 #                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
 #                          dump_channels=dump_channels, gpu_mem=gpu_mem,
 #                          random_init=random_init, disabled_features=disabled_features)
-    
+
 #     # So that we can override in the super classes
 #     def get_nets_to_load(self):
 #         return [ 'feature_net' ]
@@ -951,14 +917,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             # Get similarity of means and stds between T and R as other features
 #             f[:, :, :, :, 2] = torch.sqrt( (f[:, :, :, :, 0] - f[:, :, :, :, 2])**2 )
@@ -979,7 +945,7 @@ register_metric( cvvdp_ml_transformer )
 
 #         assert(not Q_JOD.isnan())
 #         return Q_JOD
-    
+
 # register_metric( cvvdp_ml_dis_TR )
 
 # """
@@ -1005,7 +971,7 @@ register_metric( cvvdp_ml_transformer )
 #                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
 #                          dump_channels=dump_channels, gpu_mem=gpu_mem,
 #                          random_init=random_init, disabled_features=disabled_features)
-    
+
 #     # So that we can override in the super classes
 #     def get_nets_to_load(self):
 #         return [ 'feature_net' ]
@@ -1027,15 +993,15 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
-            
+#                 f[:, :, :, :, self.disabled_features] = 0
+
 #             c = 1e-6
 
 #             # Get similarity of means and stds between T and R as other features
@@ -1057,7 +1023,7 @@ register_metric( cvvdp_ml_transformer )
 
 #         assert(not Q_JOD.isnan())
 #         return Q_JOD
-    
+
 # register_metric( cvvdp_ml_dis_TR_normalised )
 
 # """
@@ -1083,7 +1049,7 @@ register_metric( cvvdp_ml_transformer )
 #                          quiet=quiet, device=device, temp_padding=temp_padding, use_checkpoints=use_checkpoints,
 #                          dump_channels=dump_channels, gpu_mem=gpu_mem,
 #                          random_init=random_init, disabled_features=disabled_features)
-    
+
 #     # So that we can override in the super classes
 #     def get_nets_to_load(self):
 #         return [ 'feature_net' ]
@@ -1105,14 +1071,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             # Get similarity of means and stds between T and R as other features
 #             mean_T = f[:, :, :, :, 0]
@@ -1185,14 +1151,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             #f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
 
@@ -1218,7 +1184,7 @@ register_metric( cvvdp_ml_transformer )
 
 #         D = safe_pow(D_b, 1/self.beta_sch)
 
-#         Q_JOD = self.met2jod(D)            
+#         Q_JOD = self.met2jod(D)
 
 #         assert(not Q_JOD.isnan())
 #         return Q_JOD
@@ -1245,7 +1211,7 @@ register_metric( cvvdp_ml_transformer )
 #                          dump_channels=dump_channels, gpu_mem=gpu_mem, random_init=random_init, disabled_features=disabled_features)
 
 #     def get_nets_to_load(self):
-#         return [] 
+#         return []
 
 #     # Perform pooling with per-band weights and map to JODs
 #     def do_pooling_and_jods(self, features):
@@ -1264,7 +1230,7 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
@@ -1272,7 +1238,7 @@ register_metric( cvvdp_ml_transformer )
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f_TR = f.flatten( start_dim=3 )
 
@@ -1342,14 +1308,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
 
@@ -1423,14 +1389,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f_TR = f[:, :, :, :, 0:4].flatten( start_dim=3 )
 
@@ -1509,15 +1475,15 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
-            
+#                 f[:, :, :, :, self.disabled_features] = 0
+
 #             f_d = f[:, :, :, :, 4:].flatten( start_dim=3 )
 
 #             mean_sim = (f[:, :, :, :, 0] - f[:, :, :, :, 2])**2
@@ -1558,7 +1524,7 @@ register_metric( cvvdp_ml_transformer )
 #         hidden_dims = 16
 #         num_layers = 1
 #         proj_size = 8
-#         self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)                
+#         self.pooling_net = torch.nn.LSTM(input_dims_pooling, hidden_dims, num_layers, dropout=dropout, batch_first=False, proj_size=proj_size).to(device)
 
 #         dropout = 0.2
 #         hidden_dims = 24
@@ -1575,7 +1541,7 @@ register_metric( cvvdp_ml_transformer )
 
 #     def get_nets_to_load(self):
 #         return [ 'pooling_net', 'feature_net' ]
-    
+
 #     # Perform pooling with per-band weights and map to JODs
 #     def do_pooling_and_jods(self, features):
 
@@ -1594,14 +1560,14 @@ register_metric( cvvdp_ml_transformer )
 
 #             #F[frames,width,height,channels,stat]
 #             f = features[bb]
-            
+
 #             # Variance into std
 #             f[:, :, :, :, 1::2] = torch.sqrt(torch.abs(f[:, :, :, :, 1::2]))
 
 #             if is_image:
 #                 f = torch.cat( (f, torch.zeros((f.shape[0], f.shape[1], f.shape[2], 1, f.shape[4]), device=self.device)), dim=3) # Add the missing channel
 #             if self.disabled_features is not None:
-#                 f[:, :, :, :, self.disabled_features] = 0  
+#                 f[:, :, :, :, self.disabled_features] = 0
 
 #             f_D = f[:, :, :, :, 4:].flatten( start_dim=3 )
 
@@ -1624,7 +1590,7 @@ register_metric( cvvdp_ml_transformer )
 #             return Q_JOD
 
 
-    
+
 
 
 # class RegressionTransformerPositionalEmbedding(nn.Module):
@@ -1673,7 +1639,7 @@ register_metric( cvvdp_ml_transformer )
 #         y_coords = (torch.arange(h, device=device).float() + 0.5) / h
 #         x_coords = (torch.arange(w, device=device).float() + 0.5) / w
 #         grid = torch.stack(torch.meshgrid(x_coords, y_coords, indexing='xy'), dim=-1)  # [H, W, 2]
-        
+
 #         pos_embed = self.pos_embed_mlp(grid)  # [H, W, dim]
 #         return pos_embed.view(1, h*w, self.dim)  # [1, N_patches, dim]
 
@@ -1681,24 +1647,24 @@ register_metric( cvvdp_ml_transformer )
 #         # x: [B, H, W, C]
 #         B, H, W, C = x.shape
 #         x = self.patch_embed(x)  # [B, N_patches, dim]
-            
+
 #         pos_embed = self.get_position_embedding(H, W, x.device)
 #         x += pos_embed
-        
+
 #         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
 #         x = torch.cat((cls_tokens, x), dim=1)
 #         x = self.transformer(x)
 #         cls_feat = x[:, 0]
 #         return self.reg_head(cls_feat).squeeze(-1)
 
-    
+
 # class cvvdp_ml_transformer_positional_embedding(cvvdp_ml_base):
 #     def __init__(self,
 #                  dim=256,
 #                  **kwargs):
-        
+
 #         self.set_device( kwargs.get('device') )
-        
+
 #         self.transformer_net = RegressionTransformerPositionalEmbedding(
 #             in_channels=24,  # TR(4*4) + D(2*4)
 #             dim=dim
@@ -1708,7 +1674,7 @@ register_metric( cvvdp_ml_transformer )
 
 #     def get_nets_to_load(self):
 #         return ['transformer_net']
-    
+
 #     def do_pooling_and_jods(self, features):
 
 #         Q_JOD = torch.as_tensor(10., device=self.device)
@@ -1747,24 +1713,24 @@ register_metric( cvvdp_ml_transformer )
 #                  depth=4,
 #                  heads=8,
 #                  dropout=0.1):
-        
+
 #         super().__init__()
 #         self.dim = dim
-        
+
 #         self.patch_embed = nn.Sequential(
 #             #Rearrange('b c h w -> b h w c'),
 #             nn.Linear(in_channels, dim),
 #             Rearrange('b h w c -> b (h w) c')
 #         )
-        
+
 #         self.pos_embed_mlp = nn.Sequential(
 #             nn.Linear(2, dim//2),
 #             nn.GELU(),
 #             nn.Linear(dim//2, dim)
 #         )
-        
+
 #         self.register_buffer('band_freq', 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim)))
-        
+
 #         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
 #         self.transformer = nn.TransformerEncoder(
 #             encoder_layer=nn.TransformerEncoderLayer(
@@ -1788,53 +1754,53 @@ register_metric( cvvdp_ml_transformer )
 #         y_coords = (torch.arange(h, device=device).float() + 0.5) / h
 #         x_coords = (torch.arange(w, device=device).float() + 0.5) / w
 #         grid = torch.stack(torch.meshgrid(x_coords, y_coords, indexing='xy'), dim=-1)  # [H, W, 2]
-        
+
 #         pos_embed = self.pos_embed_mlp(grid)  # [H, W, dim]
 #         return pos_embed.view(1, h*w, self.dim)  # [1, N_patches, dim]
 
 #     def get_band_embedding(self, band_idx, total_bands, device):
 #         # last band index is 0
 #         pos = total_bands - 1 - band_idx
-        
+
 #         angles = pos * self.band_freq  # [dim//2]
-        
+
 #         emb = torch.zeros(1, 1, self.dim, device=device)
 #         emb[0, 0, 0::2] = torch.sin(angles)
 #         emb[0, 0, 1::2] = torch.cos(angles)
-        
+
 #         return emb  # [1, 1, dim]
-    
+
 #     def forward(self, band_features):
 #         """
 #         band_features: list [B, H_i, W_i, C_i]
 #         """
 #         all_patches = []
-        
+
 #         total_bands = len(band_features)
 #         for band_idx, feat in enumerate(band_features):
 #             B, H, W, C = feat.shape
-        
+
 #             patches = self.patch_embed(feat)  # [B, N_patches, dim]
-            
+
 #             pos_embed = self.get_position_embedding(H, W, feat.device)
 #             patches += pos_embed
-            
+
 #             band_embed = self.get_band_embedding(band_idx, total_bands, feat.device)
 #             patches += band_embed
-            
+
 #             all_patches.append(patches)
-        
+
 #         del band_features
 
 #         x = torch.cat(all_patches, dim=1)  # [B, total_patches, dim]
 
 #         del all_patches
-        
+
 #         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)
 #         x = torch.cat((cls_tokens, x), dim=1)
 
 #         x = self.transformer(x)
-        
+
 #         cls_feat = x[:, 0]
 
 #         return self.reg_head(cls_feat).squeeze(-1)
@@ -1843,9 +1809,9 @@ register_metric( cvvdp_ml_transformer )
 #     def __init__(self,
 #                  dim=256,
 #                  **kwargs):
-        
+
 #         self.set_device( kwargs.get('device') )
-        
+
 #         self.transformer_net = RegressionTransformer_bands(
 #             dim=dim
 #         ).to(self.device)
@@ -1854,7 +1820,7 @@ register_metric( cvvdp_ml_transformer )
 
 #     def get_nets_to_load(self):
 #         return ['transformer_net']
-    
+
 #     def do_pooling_and_jods(self, features):
 #         Q_JOD = torch.as_tensor(10., device=self.device)
 #         is_image = (features[0].shape[3]==3)
@@ -1873,7 +1839,7 @@ register_metric( cvvdp_ml_transformer )
 #             #     f[..., 0:4].flatten(start_dim=3),
 #             #     f[..., 4:].flatten(start_dim=3)
 #             # ]
-            
+
 #             # f_all = torch.cat([
 #             #     f[..., 0:4].flatten(start_dim=3),
 #             #     f[..., 4:].flatten(start_dim=3)
@@ -1884,8 +1850,8 @@ register_metric( cvvdp_ml_transformer )
 #             #band_features = f_all.permute(0, 3, 1, 2)  # [B, C_i, H_i, W_i]
 
 #             input_features.append(f)
-        
-#         del features 
+
+#         del features
 
 #         delta = self.transformer_net(input_features) / no_bands
 
