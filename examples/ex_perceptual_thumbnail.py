@@ -46,7 +46,7 @@ class ThumbnailModel(torch.nn.Module):
 device = torch.device("cuda:0")
 
 #I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'palm_beach.png'))
-I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'perc_downscaling_face_1.png'))
+I_ref = pycvvdp.load_image_as_array(os.path.join('example_media', 'perc_downscaling_face_2.png'))
 
 
 # Crop the image so that its dimensions are divisible by R
@@ -63,8 +63,8 @@ model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-2 )
 
-cvvdp = pycvvdp.cvvdp(display_name='standard_4k' )
-# cvvdp = pycvvdp.cvvdp(display_name='standard_4k', config_paths=['../metric_configs/cvvdp_add_mutual/cvvdp_parameters.json'] )
+# cvvdp = pycvvdp.cvvdp(display_name='standard_4k' )
+cvvdp = pycvvdp.cvvdp(display_name='standard_4k', config_paths=['../metric_configs/cvvdp_add_mutual/cvvdp_parameters.json'] )
 
 loss_fn = lambda pred, y : cvvdp.loss( pred, y, dim_order="CHW")
 
