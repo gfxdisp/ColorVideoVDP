@@ -1,5 +1,6 @@
 from abc import abstractmethod
 import torch
+import warnings
 import numpy as np
 import logging
 from torch import Tensor
@@ -271,21 +272,24 @@ class video_source_array( video_source_dm ):
         if len(dim_order) != len(test_video.shape):
             raise RuntimeError( 'Input tensor much have exactly as many dimensions as there are characters in the "dims" parameter' )
 
-        # Convert numpy arrays to tensors. Note that we do not upload to device or change dtype at this point (to save GPU memory)
-        if isinstance( test_video, np.ndarray ):
-            if test_video.dtype == np.uint16:
-                # Torch does not natively support uint16. A workaround is to pack uint16 values into int16.
-                # This will be efficiently transferred and unpacked on the GPU.
-                # logging.info('Test has datatype uint16, packing into int16')
-                test_video = test_video.astype(np.int16)
-            test_video = torch.as_tensor(test_video)
-        if isinstance( reference_video, np.ndarray ):
-            if reference_video.dtype == np.uint16:
-                # Torch does not natively support uint16. A workaround is to pack uint16 values into int16.
-                # This will be efficiently transferred and unpacked on the GPU.
-                # logging.info('Reference has datatype uint16, packing into int16')
-                reference_video = reference_video.astype(np.int16)
-            reference_video = torch.as_tensor(reference_video)
+        with warnings.catch_warnings():
+            # We sometime pass memmap arrays, which are not writeable. Ignore the warning as we do not write to the input array.
+            warnings.filterwarnings("ignore", message="The given NumPy array is not writable")
+            # Convert numpy arrays to tensors. Note that we do not upload to device or change dtype at this point (to save GPU memory)
+            if isinstance( test_video, np.ndarray ):
+                if test_video.dtype == np.uint16:
+                    # Torch does not natively support uint16. A workaround is to pack uint16 values into int16.
+                    # This will be efficiently transferred and unpacked on the GPU.
+                    # logging.info('Test has datatype uint16, packing into int16')
+                    test_video = test_video.astype(np.int16)
+                test_video = torch.as_tensor(test_video)
+            if isinstance( reference_video, np.ndarray ):
+                if reference_video.dtype == np.uint16:
+                    # Torch does not natively support uint16. A workaround is to pack uint16 values into int16.
+                    # This will be efficiently transferred and unpacked on the GPU.
+                    # logging.info('Reference has datatype uint16, packing into int16')
+                    reference_video = reference_video.astype(np.int16)
+                reference_video = torch.as_tensor(reference_video)
 
         # Change the order of dimension to match BFCHW - batch, frame, color, height, width
         test_video = reshuffle_dims( test_video, in_dims=dim_order, out_dims="BCFHW" )
