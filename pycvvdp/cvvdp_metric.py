@@ -203,9 +203,6 @@ class cvvdp(vq_metric):
         self.d_max = torch.as_tensor( parameters['d_max'], device=self.device ) # Clamping of difference values
         self.version = parameters['version']
 
-        self.do_Bloch_int = True if parameters['Bloch_int'] == "on" else False
-        self.bfilt_duration = parameters['bfilt_duration']
-
         self.omega = [0, 5]
 
         self.csf = castleCSF(csf_version=self.csf, device=self.device, config_paths=config_paths)
