@@ -229,10 +229,9 @@ class cvvdp(vq_metric):
             self.mask_q_trans = torch.as_tensor( parameters['mask_q_trans'], device=self.device )
         self.filter_len = torch.as_tensor( parameters['filter_len'], device=self.device )
 
-        self.do_xchannel_masking = True if parameters['xchannel_masking'] == "on" else False
+        self.do_xchannel_masking = False if parameters['xchannel_masking'] == "off" else True
         self.xcm_weights = torch.as_tensor( parameters['xcm_weights'], device=self.device, dtype=torch.float32 )
         # Precompute the cross-channel masking weights (constant per model); consumed by mask_pool's einsum.
-        self.xcm_pow = 2**self.xcm_weights
 
         self.image_int = torch.as_tensor( parameters['image_int'], device=self.device )
 
@@ -852,6 +851,7 @@ class cvvdp(vq_metric):
         # Cross-channel masking
         num_ch = C.shape[-4]
         if self.do_xchannel_masking:
+            self.xcm_pow = 2**self.xcm_weights
             W = torch.reshape(self.xcm_pow, (4, 4))[:num_ch, :num_ch]
             M = torch.einsum('bkfhw,kc->bcfhw', C, W)
         else:
