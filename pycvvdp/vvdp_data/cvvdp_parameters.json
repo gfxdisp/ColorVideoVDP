@@ -1,8 +1,8 @@
 {
     "version": "0.6.0",
-    "__comment": "Model retrained using separate sensitivity calculation for test and referemnce images.",
+    "__comment": "Model retrained using separate sensitivity calculation for test and reference images.",
     "calibration_date": "18/06/2026",
-    "internal_model_name": "cvvdp_mult_mutual",
+    "internal_model_name": "cvvdp_mult_mutual, cvvdp_0_6_0_xukq",
     "mask_p": 2.0152320861816406,
     "mask_c": -0.7954971194267273,
     "pu_dilate": 3,
