@@ -34,6 +34,8 @@ class VideoWriter:
                 if self.codec == 'h265':
                     self.process = (ffmpeg
                             .input('pipe:', format='rawvideo', pix_fmt='rgb48le', s='{}x{}'.format(W, H), r=self.fps, colorspace="bt2020nc", color_primaries="bt2020", color_trc="smpte2084")
+                            # Set the RGB->YUV matrix explicitly; since ffmpeg 8 the default is BT.601, which does not match the BT.2020 tag
+                            .filter('scale', in_range='pc', out_range='tv', out_color_matrix='bt2020')
                             .output(self.fname, pix_fmt='yuv420p10le', crf=12, vcodec='libx265', **{'x265-params': 'hdr-opt=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(0,0)B(0,0)R(0,0)WP(0,0)L(0,0):max-cll=0,0'} )
                             .overwrite_output()
                             .global_args( '-loglevel', 'info' if self.verbose else 'warning')
@@ -44,6 +46,7 @@ class VideoWriter:
                 elif self.codec == 'vp9':
                     self.process = (ffmpeg
                             .input('pipe:', format='rawvideo', pix_fmt='rgb48le', s='{}x{}'.format(W, H), r=self.fps, colorspace="bt2020nc", color_primaries="bt2020", color_trc="smpte2084")
+                            .filter('scale', in_range='pc', out_range='tv', out_color_matrix='bt2020')
                             .output(self.fname, pix_fmt='yuv420p10le', crf=10, vcodec='libvpx-vp9', **{'color_primaries': '9', 'color_trc': '16', 'colorspace': '9', 'color_range': '1', 'profile:v': '2' , 'preset': 'fast', 'b:v': '0' } )
                             .overwrite_output()
                             .global_args( '-hide_banner')
@@ -56,6 +59,9 @@ class VideoWriter:
             else:
                 self.process = (ffmpeg
                         .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(W, H), r=self.fps)
+                        # BT.709 RGB->YUV matrix and tags, so players and video_reader decode with the same matrix
+                        .filter('scale', in_range='pc', out_range='tv', out_color_matrix='bt709')
+                        .filter('setparams', range='limited', color_primaries='bt709', color_trc='iec61966-2-1', colorspace='bt709')
                         # .output(self.fname, pix_fmt='yuv420p', **{ "c:v": "mpeg4", "qscale:v": "3" } ) #format='mp4', crf=10
                         .output(self.fname, pix_fmt='yuv420p', crf=10, **{ "c:v": "libx264" } ) #format='mp4', crf=10
                         .overwrite_output()
