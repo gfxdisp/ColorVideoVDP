@@ -29,6 +29,7 @@ from pycvvdp.visualize_diff_map import visualize_diff_map
 from pycvvdp.video_source import video_source_array
 from pycvvdp.vq_metric import register_metric, vq_metric
 from pycvvdp.vq_exception import vq_exception
+from pycvvdp.video_writer import VideoWriter, ImageWriter
 
 #from pycvvdp.colorspace import lms2006_to_dkld65
 
