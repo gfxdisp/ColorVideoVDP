@@ -297,7 +297,7 @@ This functionality is useful if you suspect that video/images are incorrectly lo
 
 You can also alternative versions of this debug "metric":
 * `--metric dm-preview-exr` - when processing video, OpenEXR frames will be written instead of a video file. 
-* `--metric dm-preview-sbs` - instead of creating two separate files, one for reference and one for test, put those in the same frame side-by-side. 
+* `--metric dm-preview-sbs` - instead of creating two separate files, one for reference and one for test, put those in the same frame side-by-side (test on the left or top, reference on the right or bottom). 
 * `--metric dm-preview-exr-sbs` - the two above combined
 
 ## Spatial and temporal padding

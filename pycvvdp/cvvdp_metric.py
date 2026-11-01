@@ -489,6 +489,7 @@ class cvvdp(vq_metric):
 
         if self.heatmap_vw is not None:
             self.heatmap_vw.close()
+            self.heatmap_vw = None
 
         if heatmap is not None:
             stats['heatmap'] = heatmap
@@ -503,9 +504,7 @@ class cvvdp(vq_metric):
                 logging.debug( f"Memory allocated for temp. filter buffers: {self.sw_buf_allocated/1e9} GB" )
             logging.debug( f"Max memory allocated: {torch.cuda.max_memory_allocated()/1e9} GB" )
             # The model is:  total_mem = a + pix_cnt*(block_N_frames+filter_len-1)*b + pix_cnt*block_N_frames*c
-
-
-
+            
         return (Q_jod.squeeze(), stats)
 
     # Get a positive index of a frame for symmetric padding
