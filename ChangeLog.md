@@ -5,6 +5,7 @@
 * Added: new examples - `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
 * Fixed: Code optimizations that reduce the inference and backpropagation times (up to 43% on a CUDA device) - thanks to Ethan Chen
 * Fix: the number of pyramid levels is set to stop at 0.2 cpd (excluding the base band)
+* Fix: bug in the symmetric padding of the Laplacian pyramid
 * Added: added multplipe spatial padding options
 
 # v0.5.7 (2/08/2026)
