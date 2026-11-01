@@ -1,3 +1,6 @@
+# v0.5.8 (?)
+* Fix: bug in the symmetric padding of the Laplacian pyramid
+
 # v0.5.7 (2/08/2026)
 * Bug fix: `--temp-padding=symmetric` now works with very short videos (when the number of frames in the stream is smaller than the temporal filter length)
 * Change: `--temp-padding` is set to `replicate` by default for compatibility with the previous versions

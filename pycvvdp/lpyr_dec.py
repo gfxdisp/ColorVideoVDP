@@ -199,7 +199,7 @@ class lpyr_dec():
 
         # Symmetric padding
         y[...,:,0] += y_a[...,:,0]*K_horiz[...,0,1] + y_a[...,:,1]*K_horiz[...,0,0]
-        if (x.shape[-2] % 2)==1: # odd number of columns
+        if (x.shape[-1] % 2)==1: # odd number of columns
             y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,3] + y_a[...,:,-2]*K_horiz[...,0,4]
         else: # even number of columns
             y[...,:,-1] += y_a[...,:,-1]*K_horiz[...,0,4]
