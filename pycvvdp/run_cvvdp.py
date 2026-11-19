@@ -91,7 +91,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-r", "--ref", type=str, nargs='+', required = False, help="list of reference images/videos")
     parser.add_argument("--device", type=str,  default='auto', help="select which PyTorch device to use. Pick from ['cpu', 'mps', 'cuda', 'cuda:0', 'cuda:1', ...]")
     parser.add_argument("--heatmap", type=str, default="none", help="type of difference map (none, raw, threshold, supra-threshold).")
-    parser.add_argument("-g", "--distogram", type=float, default=-1, const=10, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization.")
+    parser.add_argument("-g", "--distogram", type=float, default=-1, const=None, nargs='?', help="generate a distogram that visualizes the differences per-channel and per frame. The optional floating point parameter is the maximum JOD value to use in the visualization (default: the largest difference in any channel).")
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
     parser.add_argument("--result", type=str, default=None, help="write metric prediction results to a CSV file passed as an argument.")

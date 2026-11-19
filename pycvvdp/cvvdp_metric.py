@@ -1244,8 +1244,10 @@ class cvvdp(vq_metric):
         Q_per_ch *= self.get_ch_weights(ch_no)*ch_no
         dmap = (10. - self.met2jod(Q_per_ch)).cpu().numpy()
 
+        # By default, the top of the colour scale is the largest difference in any
+        # channel, band and frame (1 if there is none, to avoid dividing by 0)
         if jod_max is None:
-            jod_max = math.ceil(dmap.max())
+            jod_max = float(dmap.max()) if dmap.max() > 0. else 1.
 
         dmap /= jod_max
 
@@ -1266,7 +1268,9 @@ class cvvdp(vq_metric):
 
         for kk in range(ch_no):
             dmap_ch = np.flip(np.transpose(dmap[0,kk,:,:].clip(0.,1.)),axis=0)
-            axs[kk].imshow(dmap_ch, cmap=cmap, aspect="auto" )
+            # vmin/vmax: all channels use the colour bar's scale (dmap is already
+            # divided by jod_max), not each channel's own min and max
+            axs[kk].imshow(dmap_ch, cmap=cmap, aspect="auto", vmin=0., vmax=1. )
             axs[kk].set_ylabel( ch_labels[kk] )
             axs[kk].yaxis.set_major_locator(ticker.FixedLocator(range(0,len(band_labels)*2,2)))
             axs[kk].yaxis.set_minor_locator(ticker.MultipleLocator(1.0))
