@@ -3,19 +3,11 @@
 import torch
 from pycvvdp.interp import interp1
 
-def luminance_NCHW(x):
-    if x.shape[1] == 3: # NC***
-        y = (
-            x[:,0:1,...] * 0.212656 +
-            x[:,1:2,...] * 0.715158 +
-            x[:,2:3,...] * 0.072186)
-    else:
-        y = x
-
-    return y
-
-def log_luminance(x):
-    y = luminance_NCHW(x)
+# y: luminance (a single channel). The context image passed by the metric is
+# the achromatic channel only, so no RGB-to-luminance conversion is needed.
+# (Checking for RGB with y.shape[1] == 3 misread a block of exactly 3 frames as
+# R, G and B.)
+def log_luminance(y):
     clampval = torch.min(y[y>0.0])
     return torch.log(torch.clamp(y, min=clampval))
 
@@ -54,7 +46,11 @@ def visualize_diff_map(diff_map, context_image=None, colormap_type="supra-thresh
     if context_image is None:
         tmo_img = torch.ones_like(diff_map) * 0.5
     else:
-        tmo_img = vis_tonemap(log_luminance(context_image), 0.6)
+        # Tone-map each frame (dimension -3) on its own, so that the result does not
+        # depend on how many frames are processed in one block (which depends on
+        # the free GPU memory).
+        tmo_img = torch.cat([vis_tonemap(log_luminance(context_image[..., ff:ff+1, :, :]), 0.6)
+                             for ff in range(context_image.shape[-3])], dim=-3)
 
     if colormap_type == 'threshold':
         # Visualize up to 1 JOD (>=1 JOD will be all red)

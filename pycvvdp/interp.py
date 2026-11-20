@@ -23,6 +23,7 @@ def get_interpolants_v1(x_q, x):
     ifrc = (x_q - x[imin]) / (x[imax] - x[imin] + 0.000001)
     ifrc[imax == imin] = 0.
     ifrc[ifrc < 0.0] = 0.
+    ifrc[ifrc > 1.0] = 1. # Past the last point, hold the last value instead of extrapolating
 
     return imin, imax, ifrc
 
