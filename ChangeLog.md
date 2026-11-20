@@ -1,5 +1,7 @@
 # v0.5.8 (?)
 * Fix: bug in the symmetric padding of the Laplacian pyramid
+* Fix: distogram now uses the same colour range for each channel
+* Fix: the context image in heatmap is tone-mapped per-frame rather than a block of frames (otherwise the results depends on the block size)
 
 # v0.5.7 (2/08/2026)
 * Bug fix: `--temp-padding=symmetric` now works with very short videos (when the number of frames in the stream is smaller than the temporal filter length)
