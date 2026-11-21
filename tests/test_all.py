@@ -115,7 +115,7 @@ def test_all(device_name):
     version = parameters['version']
 
     metric_classes = [ pycvvdp.cvvdp, pycvvdp.cvvdp_ml_saliency, pycvvdp.cvvdp_ml_transformer ]
-    #metric_classes = [ pycvvdp.cvvdp ]
+    #metric_classes = [ pycvvdp.cvvdp_0_5_6 ]
 
     metric_instances = [mc(device=device) for mc in metric_classes]
     metric_names = [met.short_name() for met in metric_instances]

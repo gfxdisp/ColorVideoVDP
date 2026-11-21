@@ -1,4 +1,4 @@
-from pycvvdp.cvvdp_metric import cvvdp
+from pycvvdp.cvvdp_metric import cvvdp, cvvdp_0_5_6
 from pycvvdp.vq_exception import vq_exception
 from pycvvdp.psnr_metric import pu_psnr_y, pu_psnr_rgb2020, psnr_rgb
 from pycvvdp.video_source_file import video_source_file, video_source_video_file, load_image_as_array, video_source_temp_resample_file

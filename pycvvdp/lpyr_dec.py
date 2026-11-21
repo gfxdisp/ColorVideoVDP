@@ -15,7 +15,7 @@ class lpyr_dec():
 
     min_freq = 0.2
 
-    def __init__(self, W, H, ppd, device, padding_type='zero', padding_value=0.0001):
+    def __init__(self, W, H, ppd, device, padding_type='zero', padding_value=0.0001, old_band_peaks=False):
         self.device = device
         self.ppd = ppd
         self.W = W
@@ -31,7 +31,15 @@ class lpyr_dec():
         else:
             max_levels = int(np.floor(np.log2(min(self.H, self.W))))-1
 
-        bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
+        if old_band_peaks:
+            # There is a small inaccuracy in how the band peaks were computed in before v0.6.0
+            bands = np.concatenate([[1.0], np.power(2.0, -np.arange(0.0,max_levels)) * 0.3228], 0) * self.ppd/2.0 
+        else:
+            # Precomputed peaks of the Laplacian pyramid. Those should be more accurate then the ones from the original paper as they
+            # properly cascade the low-pass filters
+            freq_peaks = [0.499756, 0.148438, 0.0705566, 0.0349121, 0.017334, 0.00878906, 0.00439453, 0.00219727, 0.000976562]
+            max_levels = min( max_levels, len(freq_peaks) )
+            bands = np.array( freq_peaks ) * self.ppd 
 
         invalid_bands = np.argwhere(bands <= lpyr_dec.min_freq)
         max_band = int(invalid_bands[0][0])-1 if len(invalid_bands)>0 else max_levels
@@ -314,8 +322,8 @@ class lpyr_dec_2(lpyr_dec):
 # This pyramid computes and stores contrast during decomposition, improving performance and reducing memory consumption
 class weber_contrast_pyr(lpyr_dec):
 
-    def __init__(self, W, H, ppd, device, contrast, padding_type='zero'):
-        super().__init__(W, H, ppd, device, padding_type=padding_type)
+    def __init__(self, W, H, ppd, device, contrast, padding_type='zero', old_band_peaks=False):
+        super().__init__(W, H, ppd, device, padding_type=padding_type, old_band_peaks=old_band_peaks)
         self.contrast = contrast
 
     def decompose(self, image):

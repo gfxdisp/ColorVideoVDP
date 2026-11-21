@@ -263,6 +263,8 @@ class cvvdp(vq_metric):
         # Mask to block selected channels, used in the ablation stdies [Ysust, RB, YV, Ytrans]
         self.block_channels = torch.as_tensor( parameters['block_channels'], device=self.device, dtype=torch.bool ) if 'block_channels' in parameters else None
 
+        self.old_band_peaks = parameters.get( 'old_band_peaks', False )
+
         # other parameters
         self.debug = False
 
@@ -358,7 +360,7 @@ class cvvdp(vq_metric):
 
         if self.lpyr is None or self.lpyr.W!=width or self.lpyr.H!=height:
             if self.contrast.startswith("weber"):
-                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast, padding_type=self.spatial_padding)
+                self.lpyr = weber_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast, padding_type=self.spatial_padding, old_band_peaks=self.old_band_peaks)
             elif self.contrast.startswith("log"):
                 self.lpyr = log_contrast_pyr(width, height, self.pix_per_deg, self.device, contrast=self.contrast)
             else:

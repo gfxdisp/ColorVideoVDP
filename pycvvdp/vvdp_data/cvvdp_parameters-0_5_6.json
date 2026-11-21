@@ -69,5 +69,6 @@
     "image_int": 0.577918291091919,
     "lum_adapt_reference": true,
     "temporal_padding": "repeat",
-    "spatial_padding": "symmetric"
+    "spatial_padding": "symmetric",
+    "old_band_peaks": true
 }

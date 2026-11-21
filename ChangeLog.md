@@ -3,6 +3,7 @@
 * Added: Display photometry can now be specified separately for the test and reference content. This is useful when evaluating tone mapping, e.g., comparing a tone-mapped sRGB image to HDR reference.
 * Added: `heatmap_file` passed to the `cvvdp.predict` allows to save heatmaps to video files (of infinite length) rather than store them in memory
 * Added: new examples - `ex_luminance_masking.py`, `ex_contrast_masking.py`, `ex_custom_video_source.py`, `ex_noise_concealment.py`
+* Fixed: Updated the peak frequency of each band using a more accurate estimate
 * Fixed: Code optimizations that reduce the inference and backpropagation times (up to 43% on a CUDA device) - thanks to Ethan Chen
 * Fixed: the number of pyramid levels is set to stop at 0.2 cpd (excluding the base band)
 * Added: added spatial padding options
@@ -13,7 +14,7 @@
 * Fixed: the context image in heatmap is tone-mapped per-frame rather than a block of frames (otherwise the results depends on the block size)
 
 # v0.5.7 (2/08/2026)
-* Bug fix: `--temp-padding=symmetric` now works with very short videos (when the number of frames in the stream is smaller than the temporal filter length)
+* Fixed: `--temp-padding=symmetric` now works with very short videos (when the number of frames in the stream is smaller than the temporal filter length)
 * Change: `--temp-padding` is set to `replicate` by default for compatibility with the previous versions
 
 # v0.5.6 (4/06/2026)
