@@ -37,7 +37,7 @@ class lpyr_dec():
         else:
             # Precomputed peaks of the Laplacian pyramid. Those should be more accurate then the ones from the original paper as they
             # properly cascade the low-pass filters
-            freq_peaks = [0.499756, 0.148438, 0.0705566, 0.0349121, 0.017334, 0.00878906, 0.00439453, 0.00219727, 0.000976562]
+            freq_peaks = [0.5, 0.122559, 0.0585938, 0.0290527, 0.0144043, 0.00732422, 0.00366211, 0.00170898, 0.000976562]
             max_levels = min( max_levels, len(freq_peaks)-1 ) # -1 as the last entry is the base band
             bands = np.array( freq_peaks ) * self.ppd 
 
