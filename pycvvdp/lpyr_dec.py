@@ -39,7 +39,7 @@ class lpyr_dec():
             # properly cascade the low-pass filters
             freq_peaks = [0.5, 0.122559, 0.0585938, 0.0290527, 0.0144043, 0.00732422, 0.00366211, 0.00170898, 0.000976562]
             max_levels = min( max_levels, len(freq_peaks)-1 ) # -1 as the last entry is the base band
-            bands = np.array( freq_peaks ) * self.ppd 
+            bands = np.array( freq_peaks[0:(max_levels+1)] ) * self.ppd 
 
         invalid_bands = np.argwhere(bands <= lpyr_dec.min_freq)
         max_band = int(invalid_bands[0][0])-1 if len(invalid_bands)>0 else max_levels
