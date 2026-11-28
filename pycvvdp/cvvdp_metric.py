@@ -666,6 +666,10 @@ class cvvdp(vq_metric):
 
         block_N_frames = int(math.floor((mem_avail-a-pix_cnt*(filter_len-1)*b)/(pix_cnt*b+pix_cnt*c))) # how many frames can we fit into memory
 
+        # Cap the maximum number of frames on GPUs with very large memory. Otherwise, operations that rely on 32-bit indices fail.
+        max_ch = 4  # Y-sustained, RG, YV, Y-transient
+        block_N_frames = min(block_N_frames, int(0.9*(2**31-1) // (pix_cnt*max_ch)))
+
         if self.debug:
             logging.debug( f"Available memory (PyTorch): {mem_avail_pytorch/1e9} GB")            
             logging.debug( f"Available memory (NVML): {mem_avail_nvml/1e9} GB")
